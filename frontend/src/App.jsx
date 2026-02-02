@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiGet } from './api/client.js';
 
 export default function App() {
@@ -22,7 +23,9 @@ export default function App() {
           <span>Whims of Wonder</span>
         </div>
         <div className="nav-actions">
-          <button className="ghost">데모 보기</button>
+          <Link className="ghost" to="/jjhtest">
+            데모 보기
+          </Link>
           <button className="primary">시작하기</button>
         </div>
       </header>

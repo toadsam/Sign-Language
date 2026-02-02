@@ -143,6 +143,10 @@ input {
   cursor: pointer;
   font-weight: 600;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .primary {
@@ -159,6 +163,10 @@ input {
   background: rgba(255, 255, 255, 0.08);
   color: #f8f5f1;
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.ghost:hover {
+  transform: translateY(-2px);
 }
 
 .status-pill {
@@ -327,5 +335,322 @@ input {
 
   .hero {
     gap: 32px;
+  }
+}
+
+.jjh-page {
+  position: relative;
+  min-height: 100vh;
+  padding: 40px 6vw 80px;
+  display: grid;
+  gap: 32px;
+  overflow: hidden;
+  isolation: isolate;
+  animation: jjhFadeIn 0.7s ease both;
+}
+
+.jjh-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  animation: jjhSlideDown 0.7s ease both;
+}
+
+.jjh-header h1 {
+  margin: 0 0 12px;
+  font-family: "DM Serif Display", serif;
+  font-size: clamp(30px, 4vw, 46px);
+}
+
+.jjh-main {
+  display: grid;
+  gap: 28px;
+}
+
+.jjh-video-card {
+  background: rgba(20, 18, 28, 0.9);
+  border-radius: 26px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 26px 50px rgba(0, 0, 0, 0.35);
+  display: grid;
+  gap: 16px;
+  animation: jjhFloat 6s ease-in-out infinite;
+}
+
+.jjh-video-frame {
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.jjh-video-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent, rgba(103, 232, 249, 0.22), transparent);
+  transform: translateX(-120%);
+  animation: jjhShimmer 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.jjh-video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  background: #0e0b12;
+  animation: jjhZoomIn 0.7s ease both;
+  object-fit: cover;
+}
+
+.jjh-prompt {
+  margin: 0;
+  font-size: 16px;
+  color: rgba(248, 245, 241, 0.75);
+}
+
+.jjh-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  justify-items: center;
+}
+
+.jjh-option {
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8f5f1;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.2s ease, border 0.2s ease, background 0.2s ease;
+  animation: jjhPopIn 0.5s ease both;
+  width: min(100%, 220px);
+  position: relative;
+  overflow: hidden;
+}
+
+.jjh-option::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(circle, rgba(103, 232, 249, 0.35), transparent 60%);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.25s ease, transform 0.35s ease;
+}
+
+.jjh-option:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.jjh-option:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.jjh-option:nth-child(3) {
+  animation-delay: 0.15s;
+}
+
+.jjh-option:nth-child(4) {
+  animation-delay: 0.2s;
+}
+
+.jjh-option:hover {
+  transform: translateY(-4px) scale(1.02);
+  border-color: rgba(103, 232, 249, 0.6);
+  box-shadow: 0 18px 35px rgba(103, 232, 249, 0.2);
+}
+
+.jjh-option:hover::after {
+  opacity: 0.7;
+  transform: scale(1);
+}
+
+.jjh-option.selected {
+  background: rgba(103, 232, 249, 0.18);
+  border-color: rgba(103, 232, 249, 0.7);
+  box-shadow: 0 0 18px rgba(103, 232, 249, 0.4);
+}
+
+.jjh-result {
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 16px;
+  animation: jjhPulse 0.5s ease;
+}
+
+.jjh-result-text.ok {
+  color: #34d399;
+  font-weight: 700;
+  animation: jjhWin 0.5s ease;
+}
+
+.jjh-result-text.wrong {
+  color: #f87171;
+  font-weight: 700;
+  animation: jjhShake 0.35s ease;
+}
+
+.jjh-result.ok {
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(52, 211, 153, 0.08);
+  box-shadow: 0 16px 30px rgba(52, 211, 153, 0.2);
+}
+
+.jjh-result.wrong {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.08);
+  box-shadow: 0 16px 30px rgba(248, 113, 113, 0.2);
+}
+
+.orb-1 {
+  animation: jjhDrift 10s ease-in-out infinite;
+}
+
+.orb-2 {
+  animation: jjhDrift 12s ease-in-out infinite reverse;
+}
+
+@keyframes jjhFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes jjhSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes jjhZoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes jjhPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes jjhFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes jjhPulse {
+  0% {
+    transform: scale(0.98);
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes jjhShake {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+  75% {
+    transform: translateX(-4px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes jjhWin {
+  0% {
+    transform: scale(0.96);
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes jjhShimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  60% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes jjhDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(16px, -12px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jjh-page,
+  .jjh-header,
+  .jjh-video-card,
+  .jjh-video,
+  .jjh-option,
+  .jjh-result,
+  .orb-1,
+  .orb-2,
+  .jjh-video-frame::after,
+  .jjh-result-text.ok,
+  .jjh-result-text.wrong {
+    animation: none !important;
+    transition: none !important;
   }
 }
