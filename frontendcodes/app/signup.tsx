@@ -3,7 +3,7 @@ import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
-export default function LoginScreen() {
+export default function SignupScreen() {
   const router = useRouter();
 
   return (
@@ -17,21 +17,40 @@ export default function LoginScreen() {
             imageStyle={styles.heroImage}
             style={styles.heroCard}>
             <View style={styles.heroOverlay} />
+
+            <Pressable style={styles.backButton} onPress={() => router.back()}>
+              <Ionicons name="chevron-back" size={18} color="#fff" />
+            </Pressable>
+
             <View style={styles.heroContent}>
-              <View style={styles.heroBadge}>
+              <View style={styles.heroIconWrap}>
                 <MaterialCommunityIcons name="sign-language" size={20} color="#137fec" />
               </View>
-              <Text style={styles.heroTitle}>반가워요!{'\n'}수어지교입니다</Text>
-              <Text style={styles.heroSubtitle}>오늘도 수어로 세상을 이어보세요</Text>
+              <Text style={styles.heroTitle}>
+                새로운 만남을{'\n'}환영합니다!
+              </Text>
+              <Text style={styles.heroSubtitle}>수어지교와 함께 소통의 벽을 허물어보세요</Text>
             </View>
           </ImageBackground>
         </View>
 
         <View style={styles.formWrap}>
           <View style={styles.fieldWrap}>
+            <Text style={styles.label}>닉네임</Text>
+            <View style={styles.inputWrap}>
+              <Ionicons name="person" size={20} color="#94a3b8" />
+              <TextInput
+                style={styles.input}
+                placeholder="사용할 닉네임을 입력하세요"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+
+          <View style={styles.fieldWrap}>
             <Text style={styles.label}>이메일</Text>
             <View style={styles.inputWrap}>
-              <Ionicons name="mail" size={19} color="#94a3b8" />
+              <Ionicons name="mail" size={20} color="#94a3b8" />
               <TextInput
                 style={styles.input}
                 placeholder="example@email.com"
@@ -45,35 +64,26 @@ export default function LoginScreen() {
           <View style={styles.fieldWrap}>
             <Text style={styles.label}>비밀번호</Text>
             <View style={styles.inputWrap}>
-              <Ionicons name="lock-closed" size={19} color="#94a3b8" />
+              <Ionicons name="lock-closed" size={20} color="#94a3b8" />
               <TextInput
                 style={styles.input}
-                placeholder="비밀번호를 입력하세요"
+                placeholder="6자리 이상 입력하세요"
                 placeholderTextColor="#94a3b8"
                 secureTextEntry
               />
             </View>
           </View>
 
-          <Pressable style={styles.loginButton} onPress={() => router.push('/home')}>
-            <Text style={styles.loginButtonText}>로그인</Text>
-          </Pressable>
-
-          <View style={styles.dividerWrap}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>SNS 계정으로 간편 로그인</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.socialWrap}>
-            <Pressable style={styles.kakaoButton}>
-              <MaterialCommunityIcons name="chat" size={22} color="#3c1e1e" />
+          <View style={styles.submitArea}>
+            <Pressable style={styles.submitButton}>
+              <Text style={styles.submitText}>회원가입 완료</Text>
             </Pressable>
           </View>
 
-          <View style={styles.footerArea}>
-            <Pressable onPress={() => router.push('/signup')}>
-              <Text style={styles.signupText}>회원가입</Text>
+          <View style={styles.loginRow}>
+            <Text style={styles.loginHint}>이미 계정이 있으신가요?</Text>
+            <Pressable onPress={() => router.back()}>
+              <Text style={styles.loginLink}>로그인</Text>
             </Pressable>
           </View>
         </View>
@@ -94,51 +104,65 @@ const styles = StyleSheet.create({
   heroOuter: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 2,
+    paddingBottom: 0,
   },
   heroCard: {
     minHeight: 260,
     borderRadius: 16,
     overflow: 'hidden',
     justifyContent: 'flex-end',
+    backgroundColor: '#dbeafe',
   },
   heroImage: {
     borderRadius: 16,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 14,
+    top: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
   },
   heroContent: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 24,
     paddingBottom: 20,
+    gap: 2,
   },
-  heroBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  heroIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   heroTitle: {
     color: '#fff',
-    fontSize: 34,
-    lineHeight: 38,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: '800',
     letterSpacing: -0.2,
   },
   heroSubtitle: {
-    marginTop: 6,
+    marginTop: 2,
     color: '#e2e8f0',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
   formWrap: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 18,
+    paddingVertical: 24,
     gap: 14,
   },
   fieldWrap: {
@@ -146,9 +170,9 @@ const styles = StyleSheet.create({
   },
   label: {
     color: '#334155',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-    marginLeft: 4,
+    marginLeft: 2,
   },
   inputWrap: {
     height: 56,
@@ -167,62 +191,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
   },
-  loginButton: {
+  submitArea: {
+    marginTop: 'auto',
+    paddingTop: 8,
+  },
+  submitButton: {
     height: 56,
     borderRadius: 12,
     backgroundColor: '#137fec',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
     shadowColor: '#3b82f6',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 3,
   },
-  loginButtonText: {
+  submitText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.1,
   },
-  dividerWrap: {
-    marginTop: 2,
+  loginRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e2e8f0',
-  },
-  dividerText: {
-    color: '#94a3b8',
-    fontSize: 11,
+  loginHint: {
+    color: '#64748b',
+    fontSize: 13,
     fontWeight: '500',
   },
-  socialWrap: {
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  kakaoButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FEE500',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerArea: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingBottom: 20,
-  },
-  signupText: {
+  loginLink: {
     color: '#137fec',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
   },
 });
