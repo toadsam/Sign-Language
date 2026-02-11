@@ -135,7 +135,7 @@ export default function LearnScreen() {
             <MaterialCommunityIcons name="sign-language" size={18} color="#94a3b8" />
             <Text style={styles.navText}>통역기</Text>
           </Pressable>
-          <Pressable style={styles.navItem}>
+          <Pressable style={styles.navItem} onPress={() => router.push('/mypage')}>
             <Ionicons name="person-outline" size={18} color="#94a3b8" />
             <Text style={styles.navText}>마이페이지</Text>
           </Pressable>
@@ -375,3 +375,4 @@ const styles = StyleSheet.create({
     color: PRIMARY,
   },
 });
+

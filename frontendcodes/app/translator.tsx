@@ -20,9 +20,9 @@ const BOOKMARKS = [
   { date: '2023.10.24', ko: '안녕하세요', en: 'Hello / Hi' },
   { date: '2023.10.24', ko: '고마워요', en: 'Thank you' },
   { date: '2023.10.25', ko: '만나서 반가워요', en: 'Nice to meet you' },
-  { date: '2023.10.25', ko: '잘 지내요?', en: 'How are you?' },
+  { date: '2023.10.25', ko: '잘 지내세요?', en: 'How are you?' },
   { date: '2023.10.26', ko: '좋은 아침이에요', en: 'Good morning' },
-  { date: '2023.10.26', ko: '다음에 봐요', en: 'See you next time' },
+  { date: '2023.10.26', ko: '다음에 또 봐요', en: 'See you next time' },
 ];
 
 export default function TranslatorScreen() {
@@ -178,7 +178,7 @@ export default function TranslatorScreen() {
             <Ionicons name="language" size={18} color={PRIMARY} />
             <Text style={[styles.navText, styles.navTextActive]}>통역기</Text>
           </Pressable>
-          <Pressable style={styles.navItem}>
+          <Pressable style={styles.navItem} onPress={() => router.push('/mypage')}>
             <Ionicons name="person-outline" size={18} color="#94a3b8" />
             <Text style={styles.navText}>마이페이지</Text>
           </Pressable>
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
   translateButton: {
     marginTop: 8,
     height: 50,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
