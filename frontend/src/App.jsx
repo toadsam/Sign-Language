@@ -23,6 +23,9 @@ export default function App() {
           <span>Whims of Wonder</span>
         </div>
         <div className="nav-actions">
+          <Link className="ghost" to="/auth-test">
+            Auth 테스트
+          </Link>
           <Link className="ghost" to="/jjhtest">
             데모 보기
           </Link>

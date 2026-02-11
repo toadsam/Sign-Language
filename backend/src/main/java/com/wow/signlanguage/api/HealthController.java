@@ -1,4 +1,4 @@
-﻿package com.wow.signlanguage.api;
+package com.wow.signlanguage.api;
 
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -1,4 +1,6 @@
 ﻿frontend/node_modules
 frontend/dist
 backend/target
+backend/build
+backend/.gradle
 .env
