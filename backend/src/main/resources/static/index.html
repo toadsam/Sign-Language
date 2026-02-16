@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Mapping MVP Tester</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --line: #d9e2ef;
+      --text: #1f2937;
+      --muted: #5b6472;
+      --primary: #0f766e;
+      --ok: #1d8348;
+      --fail: #b91c1c;
+      --pill: #eef3fb;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at 5% 5%, #d9f2ec 0, transparent 35%), var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Noto Sans KR", sans-serif;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 6px 20px rgba(35, 55, 80, 0.06);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 10px;
+      resize: vertical;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+
+    button.secondary {
+      background: #2f4858;
+      margin: 4px 4px 0 0;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .token-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .token-list li {
+      background: var(--pill);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.92rem;
+    }
+
+    .clip-item {
+      margin-bottom: 10px;
+      line-height: 1.5;
+      word-break: break-all;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .ok { background: #e8f7ef; color: var(--ok); }
+    .fail { background: #fdecec; color: var(--fail); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="card">
+      <h1>문장 매핑 테스트 페이지</h1>
+      <p class="muted">문장 입력 -> /translate 호출 -> 토큰/클립 매핑 결과 + 파일 접근(HTTP 200) 확인</p>
+      <textarea id="inputText" placeholder="예: 화장실 어디 있어?"></textarea>
+      <div class="row">
+        <button id="runBtn">번역/매핑 테스트</button>
+      </div>
+      <div class="row" id="samples"></div>
+    </section>
+
+    <section class="card">
+      <h2>Normalized Tokens</h2>
+      <ul id="normalized" class="token-list"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Matched Clips</h2>
+      <div id="clips"></div>
+    </section>
+
+    <section class="card">
+      <h2>Unknown Tokens</h2>
+      <ul id="unknown" class="token-list"></ul>
+    </section>
+  </div>
+
+  <script>
+    const sampleSentences = [
+      "화장실 어디 있어?",
+      "지하철역은 어디야?",
+      "택시 타고 공항 가요",
+      "지금 출발 가능해?",
+      "왼쪽으로 가서 횡단보도 건너"
+    ];
+
+    const inputEl = document.getElementById("inputText");
+    const runBtn = document.getElementById("runBtn");
+    const normalizedEl = document.getElementById("normalized");
+    const clipsEl = document.getElementById("clips");
+    const unknownEl = document.getElementById("unknown");
+    const samplesEl = document.getElementById("samples");
+
+    function addTokens(target, tokens) {
+      target.innerHTML = "";
+      const list = tokens && tokens.length ? tokens : ["없음"];
+      list.forEach((token) => {
+        const li = document.createElement("li");
+        li.textContent = token;
+        target.appendChild(li);
+      });
+    }
+
+    async function checkClip(url) {
+      try {
+        const headResp = await fetch(url, { method: "HEAD" });
+        if (headResp.ok) {
+          return true;
+        }
+      } catch (e) {
+      }
+
+      try {
+        const getResp = await fetch(url, { method: "GET" });
+        return getResp.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function renderClips(clips) {
+      clipsEl.innerHTML = "";
+      if (!clips || clips.length === 0) {
+        clipsEl.textContent = "매핑된 clip 없음";
+        return;
+      }
+
+      for (const clip of clips) {
+        const ok = await checkClip(clip.url);
+        const item = document.createElement("div");
+        item.className = "clip-item";
+        item.innerHTML = `
+          <strong>${clip.word}</strong> -> id: ${clip.id}, file: ${clip.file}, url: <a href="${clip.url}" target="_blank">${clip.url}</a>
+          <span class="badge ${ok ? "ok" : "fail"}">${ok ? "OK" : "FAIL"}</span>
+        `;
+        clipsEl.appendChild(item);
+      }
+    }
+
+    async function runTest() {
+      const text = inputEl.value.trim();
+      if (!text) {
+        alert("문장을 입력하세요.");
+        return;
+      }
+
+      const resp = await fetch("/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+
+      if (!resp.ok) {
+        alert("/translate 호출 실패: " + resp.status);
+        return;
+      }
+
+      const data = await resp.json();
+      addTokens(normalizedEl, data.normalizedTokens || []);
+      addTokens(unknownEl, data.unknown || []);
+      await renderClips(data.clips || []);
+    }
+
+    sampleSentences.forEach((sentence) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "secondary";
+      btn.textContent = sentence;
+      btn.addEventListener("click", async () => {
+        inputEl.value = sentence;
+        await runTest();
+      });
+      samplesEl.appendChild(btn);
+    });
+
+    runBtn.addEventListener("click", runTest);
+  </script>
+</body>
+</html>
