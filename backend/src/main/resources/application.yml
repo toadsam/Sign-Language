@@ -1,6 +1,14 @@
-﻿server:
+server:
   port: 8080
 
 spring:
   application:
     name: sign-language-backend
+
+google:
+  client-id: ${GOOGLE_WEB_CLIENT_ID:987382520137-r0bo3q42ednnk7rs9ofjm44cnsk5in40.apps.googleusercontent.com}
+
+jwt:
+  secret: ${JWT_SECRET:CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS}
+  access-exp-min: 60
+  refresh-exp-day: 14

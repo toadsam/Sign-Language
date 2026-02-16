@@ -4,10 +4,13 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/context/auth-context';
+
 const PRIMARY = '#137fec';
 
 export default function MyPageScreen() {
   const router = useRouter();
+  const { user, signOut } = useAuth();
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -25,7 +28,9 @@ export default function MyPageScreen() {
             <View style={styles.avatarWrap}>
               <Image
                 source={{
-                  uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9xzg_QHvuUbnQVvId25kc3DxT6xgZYv7hdXVPBleZEWUHktwcMlvQG1wx-vXuT53_Ah-AQVmTIBVym4_hT8xWPSd9Fp9rCWpXdIQWWr4REC3xvNLAjTBVl8BvaBCZCW1WZwNkrA8zFK28kgB3birhCN3AX21RhyN83PJDnB3HbWsnyYI8ZfOJHO7DL3LhPpwUIZoxWLeddmWQP9xoPrqcGe2WLR9OI25acRea0Px0vbWqG8RvtJow0X1bCQXGv6hckv7Zn9rsyA',
+                  uri:
+                    user?.picture ??
+                    'https://lh3.googleusercontent.com/aida-public/AB6AXuA9xzg_QHvuUbnQVvId25kc3DxT6xgZYv7hdXVPBleZEWUHktwcMlvQG1wx-vXuT53_Ah-AQVmTIBVym4_hT8xWPSd9Fp9rCWpXdIQWWr4REC3xvNLAjTBVl8BvaBCZCW1WZwNkrA8zFK28kgB3birhCN3AX21RhyN83PJDnB3HbWsnyYI8ZfOJHO7DL3LhPpwUIZoxWLeddmWQP9xoPrqcGe2WLR9OI25acRea0Px0vbWqG8RvtJow0X1bCQXGv6hckv7Zn9rsyA',
                 }}
                 contentFit="cover"
                 style={styles.avatar}
@@ -34,8 +39,8 @@ export default function MyPageScreen() {
                 <Ionicons name="create" size={13} color="#fff" />
               </Pressable>
             </View>
-            <Text style={styles.name}>김수여</Text>
-            <Text style={styles.subtitle}>열심히 배우고 있어요! 👋</Text>
+            <Text style={styles.name}>{user?.name ?? '사용자'}</Text>
+            <Text style={styles.subtitle}>{user?.email ?? 'Google 계정 연동됨'}</Text>
           </View>
 
           <Text style={styles.sectionTitle}>나의 학습 통계</Text>
@@ -88,7 +93,12 @@ export default function MyPageScreen() {
             </Pressable>
           </View>
 
-          <Pressable style={styles.logoutBtn}>
+          <Pressable
+            style={styles.logoutBtn}
+            onPress={async () => {
+              await signOut();
+              router.replace('/login' as any);
+            }}>
             <Text style={styles.logoutText}>로그아웃</Text>
           </Pressable>
         </ScrollView>
