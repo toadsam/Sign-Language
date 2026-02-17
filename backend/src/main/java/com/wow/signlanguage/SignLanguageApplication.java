@@ -1,4 +1,4 @@
-﻿package com.wow.signlanguage;
+package com.wow.signlanguage;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
