@@ -1,10 +1,20 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import React, { useEffect } from 'react';
 import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function LoginScreen() {
+import { useAuth } from '@/context/auth-context';
+
+export default function LandingScreen() {
   const router = useRouter();
+  const { accessToken } = useAuth();
+
+  useEffect(() => {
+    if (accessToken) {
+      router.replace('/home');
+    }
+  }, [accessToken, router]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -15,8 +25,7 @@ export default function LoginScreen() {
               uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBXn24fQMDcoI3rUzrydUHazyrICj3jYUhTR7ZfzqwcDCPgl-ncgo3DUdv3Ee9q2aDTTEEG8FneqPQiO-pNYOmdjmpuetwsK0Gz2K5T2mXGEuzJU6O7kr6G81w7wUGGKAi_rcZ_q98Tpins_Nj13BbSzIkqaGm4jiDXV8HVQhYkeFioIFYP4Q-8GpH5Pk-Zjz32E-rJJp9QLMD7xVPdQfONgD_OBCvl3l11HlnMYDQOChcqysBFrz9Za3HxtuzlZqlS3doIl2xSYQ',
             }}
             imageStyle={styles.heroImage}
-            style={styles.heroCard}
-          >
+            style={styles.heroCard}>
             <View style={styles.heroOverlay} />
             <View style={styles.heroContent}>
               <View style={styles.heroBadge}>
@@ -34,7 +43,7 @@ export default function LoginScreen() {
             <Text style={styles.kakaoText}>카카오 1초 로그인/회원가입</Text>
           </Pressable>
 
-          <Pressable style={styles.googleButton}>
+          <Pressable style={styles.googleButton} onPress={() => router.push('/login')}>
             <Ionicons name="logo-google" size={20} color="#4285F4" />
             <Text style={styles.googleText}>구글로 간편 로그인/회원가입</Text>
           </Pressable>
@@ -46,7 +55,7 @@ export default function LoginScreen() {
             <Text style={styles.footerDivider}>|</Text>
             <Text style={styles.footerLink}>개인정보처리방침</Text>
           </View>
-          <Text style={styles.footerCopy}>© 2024 수어지교. All rights reserved.</Text>
+          <Text style={styles.footerCopy}>© 2026 수어지교. All rights reserved.</Text>
         </View>
       </View>
     </SafeAreaView>

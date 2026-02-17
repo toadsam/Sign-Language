@@ -1,10 +1,61 @@
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { AuthUser, loginWithGoogleToken } from '@/lib/api/auth';
 
 const ACCESS_TOKEN_KEY = 'auth.accessToken';
 const USER_KEY = 'auth.user';
+
+const storage = {
+  async get(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch {
+      return null;
+    }
+  },
+  async set(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // Ignore storage errors so auth state can still update in memory.
+      }
+      return;
+    }
+
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch {
+      // Ignore storage errors so auth state can still update in memory.
+    }
+  },
+  async remove(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        // Ignore storage errors so auth state can still update in memory.
+      }
+      return;
+    }
+
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {
+      // Ignore storage errors so auth state can still update in memory.
+    }
+  },
+};
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -23,26 +74,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const bootstrap = async () => {
-      try {
-        const [storedToken, storedUser] = await Promise.all([
-          SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
-          SecureStore.getItemAsync(USER_KEY),
-        ]);
-        setAccessToken(storedToken);
-        setUser(storedUser ? (JSON.parse(storedUser) as AuthUser) : null);
-      } finally {
-        setIsLoading(false);
-      }
+      const [storedToken, storedUser] = await Promise.all([
+        storage.get(ACCESS_TOKEN_KEY),
+        storage.get(USER_KEY),
+      ]);
+      setAccessToken(storedToken);
+      setUser(storedUser ? (JSON.parse(storedUser) as AuthUser) : null);
+      setIsLoading(false);
     };
 
-    bootstrap();
+    void bootstrap();
   }, []);
 
   const signInWithGoogleIdToken = async (idToken: string) => {
     const payload = await loginWithGoogleToken(idToken);
     await Promise.all([
-      SecureStore.setItemAsync(ACCESS_TOKEN_KEY, payload.accessToken),
-      SecureStore.setItemAsync(USER_KEY, JSON.stringify(payload.user)),
+      storage.set(ACCESS_TOKEN_KEY, payload.accessToken),
+      storage.set(USER_KEY, JSON.stringify(payload.user)),
     ]);
     setAccessToken(payload.accessToken);
     setUser(payload.user);
@@ -50,8 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await Promise.all([
-      SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
-      SecureStore.deleteItemAsync(USER_KEY),
+      storage.remove(ACCESS_TOKEN_KEY),
+      storage.remove(USER_KEY),
     ]);
     setAccessToken(null);
     setUser(null);
