@@ -4,3 +4,4 @@ backend/target
 backend/.gradle
 backend/build
 .env
+backend/.env

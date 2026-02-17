@@ -1,20 +1,107 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ImageBackground, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
+import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
 
-export default function LandingScreen() {
+export default function LoginScreen() {
   const router = useRouter();
-  const { accessToken } = useAuth();
+  const { signInWithGoogleIdToken, accessToken } = useAuth();
+  const { request, response, promptAsync, isExpoGo, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (accessToken) {
       router.replace('/home');
     }
   }, [accessToken, router]);
+
+  useEffect(() => {
+    const login = async () => {
+      if (!response) {
+        return;
+      }
+
+      if (response.type === 'cancel' || response.type === 'dismiss') {
+        setErrorMessage('Google 로그인 창이 닫혔습니다.');
+        return;
+      }
+
+      if (response.type === 'error') {
+        setErrorMessage('Google 로그인에 실패했습니다. Redirect URI 설정을 확인해 주세요.');
+        return;
+      }
+
+      if (response.type !== 'success') {
+        return;
+      }
+
+      const idToken = response.params?.id_token;
+      if (!idToken) {
+        setErrorMessage('Google id token을 읽지 못했습니다.');
+        return;
+      }
+
+      try {
+        setIsSubmitting(true);
+        setErrorMessage(null);
+        await signInWithGoogleIdToken(idToken);
+        router.replace('/home');
+      } catch (error) {
+        console.error(error);
+        setErrorMessage('로그인에 실패했습니다. 다시 시도해 주세요.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    void login();
+  }, [response, router, signInWithGoogleIdToken]);
+
+  const handleGooglePress = async () => {
+    if (!hasGoogleClientId) {
+      setErrorMessage('frontendcodes/.env의 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID를 확인해 주세요.');
+      return;
+    }
+
+    if (!request) {
+      setErrorMessage('Google 로그인 준비 중입니다. `npx expo start -c`로 다시 실행해 주세요.');
+      return;
+    }
+
+    setErrorMessage(null);
+
+    const result =
+      Platform.OS === 'web'
+        ? await promptAsync({ useProxy: false })
+        : await promptAsync({ useProxy: isExpoGo });
+
+    if (result.type === 'cancel' || result.type === 'dismiss') {
+      setErrorMessage('Google 로그인 창이 닫혔습니다.');
+    }
+
+    if (result.type === 'error') {
+      setErrorMessage('Google 로그인에 실패했습니다. Redirect URI 설정을 확인해 주세요.');
+    }
+  };
+
+  if (accessToken) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loggedInWrap}>
+          <Text style={styles.loggedInTitle}>이미 로그인된 상태입니다.</Text>
+          <Text style={styles.loggedInSubtitle}>홈 화면으로 이동해 주세요.</Text>
+          <Pressable style={styles.goHomeButton} onPress={() => router.replace('/home')}>
+            <Text style={styles.goHomeButtonText}>홈으로 이동</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -38,16 +125,27 @@ export default function LandingScreen() {
         </View>
 
         <View style={styles.loginWrap}>
-          <Pressable style={styles.kakaoButton} onPress={() => router.push('/home')}>
+          <Pressable style={styles.kakaoButton}>
             <MaterialCommunityIcons name="chat" size={20} color="#3c1e1e" />
-            <Text style={styles.kakaoText}>카카오 1초 로그인/회원가입</Text>
+            <Text style={styles.kakaoText}>카카오는 준비 중입니다</Text>
           </Pressable>
 
-          <Pressable style={styles.googleButton} onPress={() => router.push('/login')}>
+          <Pressable
+            disabled={!request || isSubmitting}
+            onPress={handleGooglePress}
+            style={({ pressed }) => [
+              styles.googleButton,
+              (!request || isSubmitting) && styles.buttonDisabled,
+              pressed && styles.buttonPressed,
+            ]}>
             <Ionicons name="logo-google" size={20} color="#4285F4" />
-            <Text style={styles.googleText}>구글로 간편 로그인/회원가입</Text>
+            <Text style={styles.googleText}>
+              {isSubmitting ? '로그인 중...' : '구글로 간편 로그인 / 회원가입'}
+            </Text>
           </Pressable>
         </View>
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         <View style={styles.footer}>
           <View style={styles.footerLinksRow}>
@@ -154,10 +252,22 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonPressed: {
+    opacity: 0.85,
+  },
   googleText: {
     color: '#4b5563',
     fontSize: 16,
     fontWeight: '800',
+  },
+  errorText: {
+    marginTop: 12,
+    color: '#dc2626',
+    fontSize: 13,
+    textAlign: 'center',
   },
   footer: {
     marginTop: 'auto',
@@ -184,5 +294,37 @@ const styles = StyleSheet.create({
     color: '#bcc5d1',
     fontSize: 10,
     fontWeight: '500',
+  },
+  loggedInWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: '#f2f4f7',
+    gap: 10,
+  },
+  loggedInTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1f2937',
+  },
+  loggedInSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  goHomeButton: {
+    marginTop: 8,
+    height: 46,
+    paddingHorizontal: 20,
+    borderRadius: 23,
+    backgroundColor: '#137fec',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goHomeButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });

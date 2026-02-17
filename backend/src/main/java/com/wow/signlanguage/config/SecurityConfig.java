@@ -18,7 +18,7 @@ public class SecurityConfig {
     http
         .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
         .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/api/health", "/oauth2/**", "/login/**", "/error").permitAll()
+            .requestMatchers("/api/health", "/api/auth/**", "/oauth2/**", "/login/**", "/error").permitAll()
             .anyRequest().authenticated())
         .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(oauth2SuccessUrl, true))
         .logout(logout -> logout.logoutUrl("/api/auth/logout").logoutSuccessUrl("/api/health"));
