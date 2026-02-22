@@ -10,7 +10,7 @@ const PRIMARY = '#137fec';
 
 export default function MyPageScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, isGuest, signOut } = useAuth();
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -39,8 +39,10 @@ export default function MyPageScreen() {
                 <Ionicons name="create" size={13} color="#fff" />
               </Pressable>
             </View>
-            <Text style={styles.name}>{user?.name ?? '사용자'}</Text>
-            <Text style={styles.subtitle}>{user?.email ?? 'Google 계정 연동됨'}</Text>
+            <Text style={styles.name}>{user?.name ?? (isGuest ? '비회원' : '사용자')}</Text>
+            <Text style={styles.subtitle}>
+              {isGuest ? '비회원으로 이용 중' : user?.email ?? 'Google 계정 연동됨'}
+            </Text>
           </View>
 
           <Text style={styles.sectionTitle}>나의 학습 통계</Text>
