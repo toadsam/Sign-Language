@@ -6,6 +6,7 @@ import { AuthUser, loginWithGoogleToken } from '@/lib/api/auth';
 
 const ACCESS_TOKEN_KEY = 'auth.accessToken';
 const USER_KEY = 'auth.user';
+const GUEST_MODE_KEY = 'auth.isGuest';
 
 const storage = {
   async get(key: string): Promise<string | null> {
@@ -61,7 +62,9 @@ type AuthContextValue = {
   isLoading: boolean;
   accessToken: string | null;
   user: AuthUser | null;
+  isGuest: boolean;
   signInWithGoogleIdToken: (idToken: string) => Promise<void>;
+  continueAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -71,15 +74,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
     const bootstrap = async () => {
-      const [storedToken, storedUser] = await Promise.all([
+      const [storedToken, storedUser, storedGuest] = await Promise.all([
         storage.get(ACCESS_TOKEN_KEY),
         storage.get(USER_KEY),
+        storage.get(GUEST_MODE_KEY),
       ]);
       setAccessToken(storedToken);
       setUser(storedUser ? (JSON.parse(storedUser) as AuthUser) : null);
+      setIsGuest(!storedToken && storedGuest === 'true');
       setIsLoading(false);
     };
 
@@ -91,18 +97,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([
       storage.set(ACCESS_TOKEN_KEY, payload.accessToken),
       storage.set(USER_KEY, JSON.stringify(payload.user)),
+      storage.remove(GUEST_MODE_KEY),
     ]);
     setAccessToken(payload.accessToken);
     setUser(payload.user);
+    setIsGuest(false);
+  };
+
+  const continueAsGuest = async () => {
+    // Update in-memory auth state first so route guards can react immediately.
+    setAccessToken(null);
+    setUser(null);
+    setIsGuest(true);
+
+    await Promise.all([
+      storage.remove(ACCESS_TOKEN_KEY),
+      storage.remove(USER_KEY),
+      storage.set(GUEST_MODE_KEY, 'true'),
+    ]);
   };
 
   const signOut = async () => {
     await Promise.all([
       storage.remove(ACCESS_TOKEN_KEY),
       storage.remove(USER_KEY),
+      storage.remove(GUEST_MODE_KEY),
     ]);
     setAccessToken(null);
     setUser(null);
+    setIsGuest(false);
   };
 
   const value = useMemo(
@@ -110,10 +133,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       accessToken,
       user,
+      isGuest,
       signInWithGoogleIdToken,
+      continueAsGuest,
       signOut,
     }),
-    [isLoading, accessToken, user]
+    [isLoading, accessToken, user, isGuest]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

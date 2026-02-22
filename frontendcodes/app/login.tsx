@@ -9,16 +9,16 @@ import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signInWithGoogleIdToken, accessToken } = useAuth();
+  const { signInWithGoogleIdToken, continueAsGuest, accessToken, isGuest } = useAuth();
   const { request, response, promptAsync, isExpoGo, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (accessToken) {
+    if (accessToken || isGuest) {
       router.replace('/home');
     }
-  }, [accessToken, router]);
+  }, [accessToken, isGuest, router]);
 
   useEffect(() => {
     const login = async () => {
@@ -89,7 +89,12 @@ export default function LoginScreen() {
     }
   };
 
-  if (accessToken) {
+  const handleGuestStart = async () => {
+    setErrorMessage(null);
+    await continueAsGuest();
+  };
+
+  if (accessToken || isGuest) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loggedInWrap}>
@@ -142,6 +147,10 @@ export default function LoginScreen() {
             <Text style={styles.googleText}>
               {isSubmitting ? '로그인 중...' : '구글로 간편 로그인 / 회원가입'}
             </Text>
+          </Pressable>
+
+          <Pressable onPress={handleGuestStart} style={styles.guestStartButton}>
+            <Text style={styles.guestStartText}>로그인 없이 시작</Text>
           </Pressable>
         </View>
 
@@ -262,6 +271,18 @@ const styles = StyleSheet.create({
     color: '#4b5563',
     fontSize: 16,
     fontWeight: '800',
+  },
+  guestStartButton: {
+    alignSelf: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  guestStartText: {
+    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   errorText: {
     marginTop: 12,

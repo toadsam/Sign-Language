@@ -26,7 +26,7 @@ export default function RootLayout() {
 
 function AuthGate() {
   const segments = useSegments();
-  const { isLoading, accessToken } = useAuth();
+  const { isLoading, accessToken, isGuest } = useAuth();
 
   useEffect(() => {
     if (isLoading) {
@@ -34,16 +34,17 @@ function AuthGate() {
     }
 
     const inLoginScreen = (segments[0] as string | undefined) === 'login';
+    const canUseApp = Boolean(accessToken) || isGuest;
 
-    if (!accessToken && !inLoginScreen) {
+    if (!canUseApp && !inLoginScreen) {
       router.replace('/login' as any);
       return;
     }
 
-    if (accessToken && inLoginScreen) {
-      router.replace('/(tabs)' as any);
+    if (canUseApp && inLoginScreen) {
+      router.replace('/home' as any);
     }
-  }, [accessToken, isLoading, segments]);
+  }, [accessToken, isGuest, isLoading, segments]);
 
   if (isLoading) {
     return null;
