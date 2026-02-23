@@ -24,3 +24,6 @@ jwt:
 app:
   frontend-base-url: http://localhost:8081/home
   oauth2-success-url: ${app.frontend-base-url}/
+
+firebase:
+  service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
