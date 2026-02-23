@@ -1,42 +1,143 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import {
+  ChoiceId,
+  QuizAnswerResponse,
+  QuizSessionQuestion,
+  fetchQuizSession,
+  submitQuizAnswer,
+} from '@/lib/api/quiz';
 
 const PRIMARY = '#1f80e3';
-const CORRECT_ID = 'A';
+const QUIZ_COUNT = 10;
+const CHOICE_IDS: ChoiceId[] = ['A', 'B', 'C', 'D'];
 
 type Option = {
-  id: 'A' | 'B' | 'C' | 'D';
+  id: ChoiceId;
   text: string;
 };
 
-const OPTIONS: Option[] = [
-  { id: 'A', text: '안녕하세요' },
-  { id: 'B', text: '감사합니다' },
-  { id: 'C', text: '미안합니다' },
-  { id: 'D', text: '반갑습니다' },
-];
+function toOptions(question: QuizSessionQuestion | null): Option[] {
+  if (!question) return [];
+  return question.choices.slice(0, 4).map((text, index) => ({
+    id: CHOICE_IDS[index],
+    text,
+  }));
+}
 
 export default function QuizScreen() {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<Option['id'] | null>(null);
+
+  const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedId, setSelectedId] = useState<ChoiceId | null>(null);
+  const [answerResult, setAnswerResult] = useState<QuizAnswerResponse | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isChecking, setIsChecking] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const isAnswered = selectedId !== null;
-  const isCorrect = selectedId === CORRECT_ID;
+  const currentQuestion = questions[currentIndex] ?? null;
+  const options = useMemo(() => toOptions(currentQuestion), [currentQuestion]);
+  const player = useVideoPlayer(currentQuestion?.videoUrl ?? null, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.play();
+  });
 
-  function handleSelect(id: Option['id']) {
-    if (isAnswered) return;
+  const isAnswered = answerResult !== null;
+  const isCorrect = answerResult?.isCorrect ?? false;
+  const progressText = `${Math.min(currentIndex + 1, Math.max(questions.length, 1))} / ${Math.max(questions.length, 1)}`;
+  const progressPercent =
+    questions.length > 0 ? Math.min(((currentIndex + 1) / questions.length) * 100, 100) : 0;
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const session = await fetchQuizSession(QUIZ_COUNT);
+        if (!mounted) return;
+        setQuestions(session.questions ?? []);
+        setCurrentIndex(0);
+      } catch (error) {
+        if (!mounted) return;
+        setErrorMessage(error instanceof Error ? error.message : '퀴즈를 불러오지 못했습니다.');
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function handleSelect(id: ChoiceId) {
+    if (!currentQuestion || isAnswered || isChecking) return;
+
     setSelectedId(id);
     setIsSaved(false);
+    setErrorMessage(null);
+
+    try {
+      setIsChecking(true);
+      const result = await submitQuizAnswer(currentQuestion.quizId, id);
+      setAnswerResult(result);
+    } catch (error) {
+      setSelectedId(null);
+      setErrorMessage(error instanceof Error ? error.message : '정답 확인에 실패했습니다.');
+    } finally {
+      setIsChecking(false);
+    }
   }
 
   function handleNext() {
+    if (currentIndex + 1 >= questions.length) {
+      router.back();
+      return;
+    }
+
+    setCurrentIndex((prev) => prev + 1);
     setSelectedId(null);
+    setAnswerResult(null);
     setIsSaved(false);
+    setErrorMessage(null);
+  }
+
+  function handleReplayVideo() {
+    try {
+      player.replay();
+      player.play();
+    } catch {
+      setErrorMessage('영상을 다시 재생하지 못했습니다.');
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingText}>퀴즈를 불러오는 중...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!currentQuestion) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.loadingText}>출제 가능한 문제가 없습니다.</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -48,10 +149,10 @@ export default function QuizScreen() {
           </Pressable>
           <View style={styles.progressWrap}>
             <View style={styles.progressTrack}>
-              <View style={styles.progressFill} />
+              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
             </View>
           </View>
-          <Text style={styles.progressText}>3 / 10</Text>
+          <Text style={styles.progressText}>{progressText}</Text>
         </View>
 
         <ScrollView
@@ -59,30 +160,29 @@ export default function QuizScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>
           <View style={styles.imageWrap}>
-            <Image
-              source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAvbquIqnIM4VfFf76FFOla9NVkwZB0pnDjiQJrkJ0a6Jah0MPf954olrFBzzop5P2bW-vCo_jN8qcEvdEAgBIgQK5MUgv_KAhxiCc42Is53joiE3uwKxrQ4ln9KzAZ2cfWsqu3DlM8seMjtLiQNkDZb-tP9eU3Aq5gPYzRimsDpJrfzdyBgJspYPTVUzXiJ9rDQoJZlX0yPp0kdIyL9rmh5UI5LC1dwJs8u5tF2EH6sDYVI1_XZ1NpX45zAdhKb8WCIhXRnHRqlA',
-              }}
+            <VideoView
+              style={styles.videoPlayer}
+              player={player}
+              nativeControls
               contentFit="cover"
-              style={styles.avatarImage}
             />
-            <Pressable style={styles.replayButton}>
-              <Ionicons name="refresh" size={14} color="#4b5563" />
-              <Text style={styles.replayText}>다시 보기</Text>
+            <Pressable style={styles.replayButton} onPress={handleReplayVideo}>
+              <Ionicons name="play" size={14} color="#4b5563" />
+              <Text style={styles.replayText}>다시 재생</Text>
             </Pressable>
           </View>
 
           <View style={styles.questionWrap}>
-            <Text style={styles.questionTitle}>이 수어의 의미는 무엇인가요?</Text>
+            <Text style={styles.questionTitle}>{currentQuestion.questionText}</Text>
             <Text style={styles.questionSub}>알맞은 답을 선택해주세요.</Text>
           </View>
 
           <View style={styles.optionsWrap}>
-            {OPTIONS.map((option) => {
+            {options.map((option) => {
               const isPicked = selectedId === option.id;
-              const isWrongPicked = isPicked && !isCorrect;
-              const isCorrectPicked = isPicked && isCorrect;
-              const shouldFade = isAnswered && !isPicked;
+              const isCorrectOption = isAnswered && answerResult?.correctChoiceId === option.id;
+              const isWrongPicked = isAnswered && isPicked && !isCorrect;
+              const shouldFade = isAnswered && !isPicked && !isCorrectOption;
 
               return (
                 <Pressable
@@ -90,20 +190,20 @@ export default function QuizScreen() {
                   style={[
                     styles.optionButton,
                     shouldFade && styles.optionDisabled,
-                    isCorrectPicked && styles.optionCorrect,
+                    isCorrectOption && styles.optionCorrect,
                     isWrongPicked && styles.optionWrong,
                   ]}
                   onPress={() => handleSelect(option.id)}>
                   <View
                     style={[
                       styles.optionBadge,
-                      isCorrectPicked && styles.optionBadgeCorrect,
+                      isCorrectOption && styles.optionBadgeCorrect,
                       isWrongPicked && styles.optionBadgeWrong,
                     ]}>
                     <Text
                       style={[
                         styles.optionBadgeText,
-                        isCorrectPicked && styles.optionBadgeTextCorrect,
+                        isCorrectOption && styles.optionBadgeTextCorrect,
                         isWrongPicked && styles.optionBadgeTextWrong,
                       ]}>
                       {option.id}
@@ -113,20 +213,23 @@ export default function QuizScreen() {
                   <Text
                     style={[
                       styles.optionText,
-                      isCorrectPicked && styles.optionTextCorrect,
+                      isCorrectOption && styles.optionTextCorrect,
                       isWrongPicked && styles.optionTextWrong,
                     ]}>
                     {option.text}
                   </Text>
 
-                  {isCorrectPicked && <Ionicons name="checkmark" size={20} color="#22c55e" />}
+                  {isCorrectOption && <Ionicons name="checkmark" size={20} color="#22c55e" />}
                   {isWrongPicked && <Ionicons name="close" size={20} color="#ef4444" />}
                 </Pressable>
               );
             })}
           </View>
 
-          {isAnswered && (
+          {isChecking && <Text style={styles.helperText}>정답을 확인하는 중...</Text>}
+          {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+
+          {isAnswered && answerResult && (
             <View style={[styles.feedbackWrap, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
               <View style={styles.feedbackTop}>
                 <View style={[styles.feedbackIconWrap, isCorrect ? styles.iconCorrect : styles.iconWrong]}>
@@ -139,11 +242,11 @@ export default function QuizScreen() {
                 <View style={styles.feedbackTextWrap}>
                   <Text
                     style={[styles.feedbackTitle, isCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
-                    {isCorrect ? '정답입니다!' : '오답입니다'}
+                    {isCorrect ? '정답입니다' : '오답입니다'}
                   </Text>
                   <Text
                     style={[styles.feedbackDesc, isCorrect ? styles.feedbackDescCorrect : styles.feedbackDescWrong]}>
-                    {isCorrect ? '의미: 안녕하세요' : '정답: 안녕하세요'}
+                    정답: {answerResult.correctChoiceText}
                   </Text>
                 </View>
               </View>
@@ -153,15 +256,18 @@ export default function QuizScreen() {
                 onPress={() => setIsSaved(true)}>
                 <MaterialCommunityIcons name="bookmark" size={15} color={isCorrect ? '#16a34a' : '#ef4444'} />
                 <Text style={[styles.saveButtonText, isCorrect ? styles.saveTextCorrect : styles.saveTextWrong]}>
-                  내 단어장에 저장
+                  오답노트에 저장
                 </Text>
               </Pressable>
+
               {isSaved && <Text style={styles.savedFeedback}>저장되었습니다</Text>}
 
               <Pressable
                 style={[styles.nextButton, isCorrect ? styles.nextButtonCorrect : styles.nextButtonWrong]}
                 onPress={handleNext}>
-                <Text style={styles.nextButtonText}>다음 문제로</Text>
+                <Text style={styles.nextButtonText}>
+                  {currentIndex + 1 >= questions.length ? '퀴즈 종료' : '다음 문제로'}
+                </Text>
               </Pressable>
             </View>
           )}
@@ -179,6 +285,16 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f3f4f6',
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#334155',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
@@ -203,7 +319,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: {
-    width: '30%',
     height: '100%',
     borderRadius: 999,
     backgroundColor: PRIMARY,
@@ -212,7 +327,7 @@ const styles = StyleSheet.create({
     color: PRIMARY,
     fontSize: 12,
     fontWeight: '700',
-    minWidth: 36,
+    minWidth: 40,
     textAlign: 'right',
   },
   scroll: {
@@ -232,9 +347,10 @@ const styles = StyleSheet.create({
     height: 350,
     position: 'relative',
   },
-  avatarImage: {
+  videoPlayer: {
     width: '100%',
     height: '100%',
+    backgroundColor: '#000',
   },
   replayButton: {
     position: 'absolute',
@@ -264,6 +380,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.2,
+    textAlign: 'center',
   },
   questionSub: {
     marginTop: 4,
@@ -338,6 +455,20 @@ const styles = StyleSheet.create({
   },
   optionTextWrong: {
     color: '#b91c1c',
+  },
+  helperText: {
+    marginTop: 10,
+    textAlign: 'center',
+    color: '#0f766e',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  errorText: {
+    marginTop: 10,
+    textAlign: 'center',
+    color: '#b91c1c',
+    fontSize: 13,
+    fontWeight: '700',
   },
   feedbackWrap: {
     marginTop: 12,
