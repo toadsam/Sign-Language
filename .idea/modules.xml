@@ -4,6 +4,8 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/Sign-Language.iml" filepath="$PROJECT_DIR$/.idea/Sign-Language.iml" />
       <module fileurl="file://$PROJECT_DIR$/frontend/frontend.iml" filepath="$PROJECT_DIR$/frontend/frontend.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/sign-language-backend.main.iml" filepath="$PROJECT_DIR$/.idea/modules/sign-language-backend.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/sign-language-backend.test.iml" filepath="$PROJECT_DIR$/.idea/modules/sign-language-backend.test.iml" />
     </modules>
   </component>
 </project>
