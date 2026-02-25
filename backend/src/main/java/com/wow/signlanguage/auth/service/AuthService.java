@@ -44,7 +44,7 @@ public class AuthService {
 
     String token = tokenService.issueToken();
     usernameByToken.put(token, username);
-    return new AuthResponse(token, account.username(), account.displayName());
+    return createAuthResponse(token, account);
   }
 
   public AuthResponse login(LoginRequest request) {
@@ -67,7 +67,7 @@ public class AuthService {
 
     String token = tokenService.issueToken();
     usernameByToken.put(token, account.username());
-    return new AuthResponse(token, account.username(), account.displayName());
+    return createAuthResponse(token, account);
   }
 
   public MeResponse me(String token) {
@@ -118,5 +118,15 @@ public class AuthService {
     if (value.length() < min) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
+  }
+
+  private AuthResponse createAuthResponse(String token, UserAccount account) {
+    return new AuthResponse(
+        token,
+        token,
+        "Bearer",
+        3600L,
+        new AuthResponse.UserProfile(
+            account.username(), account.username(), account.displayName(), null));
   }
 }

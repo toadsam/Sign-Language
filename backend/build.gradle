@@ -9,6 +9,11 @@ version = '0.0.1-SNAPSHOT'
 
 description = 'Sign language learning API'
 
+def localAppData = System.getenv('LOCALAPPDATA')
+if (localAppData) {
+    buildDir = file("${localAppData}/WhimsOfWonder/sign-language-backend/build")
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)

@@ -1,5 +1,7 @@
 frontend/node_modules
 frontend/dist
+frontendcodes/node_modules
+frontendcodes/.expo
 backend/target
 backend/.gradle
 backend/build
