@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
 
 import { useAuth } from '@/context/auth-context';
 
@@ -11,6 +12,29 @@ const PRIMARY = '#137fec';
 export default function MyPageScreen() {
   const router = useRouter();
   const { user, isGuest, signOut } = useAuth();
+
+  // Firestore에서 유저 정보 가져오기
+  const [userInfo, setUserInfo] = useState<any>(null);
+  useEffect(() => {
+    async function fetchUserInfo() {
+      if (!user?.id) return;
+      try {
+        const response = await fetch(`http://localhost:8080/api/users/${user.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setUserInfo(data);
+        }
+      } catch (e) {
+        setUserInfo(null);
+      }
+    }
+    fetchUserInfo();
+  }, [user?.id]);
+
+  // 평균 정확도 계산
+  const correct = userInfo?.correctQuestionNum ?? 0;
+  const total = userInfo?.totalQuestionNum ?? 0;
+  const accuracy = total === 0 ? 0 : Math.floor((correct / total) * 100);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -67,7 +91,8 @@ export default function MyPageScreen() {
                 <Text style={styles.statLabel}>평균 정확도</Text>
               </View>
               <Text style={styles.statValue}>
-                85<Text style={styles.statUnit}>%</Text>
+                {accuracy}
+                <Text style={styles.statUnit}>%</Text>
               </Text>
             </View>
           </View>

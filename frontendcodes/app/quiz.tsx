@@ -11,6 +11,7 @@ import {
   fetchQuizSession,
   submitQuizAnswer,
 } from '@/lib/api/quiz';
+import { useAuth } from '@/context/auth-context';
 
 const PRIMARY = '#1f80e3';
 const QUIZ_COUNT = 10;
@@ -40,6 +41,8 @@ export default function QuizScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const { user } = useAuth(); // user.uid가 구글 고유 ID(sub)라고 가정
 
   const currentQuestion = questions[currentIndex] ?? null;
   const options = useMemo(() => toOptions(currentQuestion), [currentQuestion]);
@@ -90,9 +93,29 @@ export default function QuizScreen() {
       setIsChecking(true);
       const result = await submitQuizAnswer(currentQuestion.quizId, id);
       setAnswerResult(result);
+
+      console.log('user:', user);
+      console.log('user.id:', user?.id);
+      console.log('currentQuestion:', currentQuestion);
+      console.log('result:', result);
+
+      if (user && user.id) {
+        console.log('PATCH 요청 실행', user.id, currentQuestion.quizId, result.isCorrect);
+        await fetch(`http://localhost:8080/api/users/${user.id}/tryQuestion`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionId: currentQuestion.quizId,
+            isCorrect: result.isCorrect,
+          }),
+        });
+      } else {
+        console.log('user 또는 user.id가 없음, PATCH 요청 실행 안 됨');
+      }
     } catch (error) {
       setSelectedId(null);
       setErrorMessage(error instanceof Error ? error.message : '정답 확인에 실패했습니다.');
+      console.error('handleSelect error:', error);
     } finally {
       setIsChecking(false);
     }
