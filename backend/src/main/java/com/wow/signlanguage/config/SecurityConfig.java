@@ -26,7 +26,8 @@ public class SecurityConfig {
                 "/clips/**",
                 "/oauth2/**",
                 "/login/**",
-                "/error")
+                "/error",
+                "/api/users/**")
             .permitAll()
             .anyRequest().authenticated())
         .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(oauth2SuccessUrl, true))

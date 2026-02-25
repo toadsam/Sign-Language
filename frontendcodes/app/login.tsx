@@ -49,7 +49,13 @@ export default function LoginScreen() {
       try {
         setIsSubmitting(true);
         setErrorMessage(null);
-        await signInWithGoogleIdToken(idToken);
+        const googleResponse = await signInWithGoogleIdToken(idToken);
+        // idToken을 백엔드로 전송하여 Firestore에 유저 생성
+        await fetch('http://localhost:8080/api/users/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
         router.replace('/home');
       } catch (error) {
         console.error(error);
