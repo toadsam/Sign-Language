@@ -1,0 +1,502 @@
+[
+    {
+        "id":  1,
+        "word":  "안녕",
+        "file":  "0001.placeholder"
+    },
+    {
+        "id":  2,
+        "word":  "감사",
+        "file":  "0002.placeholder"
+    },
+    {
+        "id":  3,
+        "word":  "미안",
+        "file":  "0003.placeholder"
+    },
+    {
+        "id":  4,
+        "word":  "괜찮다",
+        "file":  "0004.placeholder"
+    },
+    {
+        "id":  5,
+        "word":  "도와주다",
+        "file":  "0005.placeholder"
+    },
+    {
+        "id":  6,
+        "word":  "부탁",
+        "file":  "0006.placeholder"
+    },
+    {
+        "id":  7,
+        "word":  "질문",
+        "file":  "0007.placeholder"
+    },
+    {
+        "id":  8,
+        "word":  "알다",
+        "file":  "0008.placeholder"
+    },
+    {
+        "id":  9,
+        "word":  "모르다",
+        "file":  "0009.placeholder"
+    },
+    {
+        "id":  10,
+        "word":  "있다",
+        "file":  "0010.placeholder"
+    },
+    {
+        "id":  11,
+        "word":  "없다",
+        "file":  "0011.placeholder"
+    },
+    {
+        "id":  12,
+        "word":  "맞다",
+        "file":  "0012.placeholder"
+    },
+    {
+        "id":  13,
+        "word":  "아니다",
+        "file":  "0013.placeholder"
+    },
+    {
+        "id":  14,
+        "word":  "가능",
+        "file":  "0014.placeholder"
+    },
+    {
+        "id":  15,
+        "word":  "불가능",
+        "file":  "0015.placeholder"
+    },
+    {
+        "id":  16,
+        "word":  "어디",
+        "file":  "0016.placeholder"
+    },
+    {
+        "id":  17,
+        "word":  "무엇",
+        "file":  "0017.placeholder"
+    },
+    {
+        "id":  18,
+        "word":  "언제",
+        "file":  "0018.placeholder"
+    },
+    {
+        "id":  19,
+        "word":  "왜",
+        "file":  "0019.placeholder"
+    },
+    {
+        "id":  20,
+        "word":  "어떻게",
+        "file":  "0020.placeholder"
+    },
+    {
+        "id":  21,
+        "word":  "누구",
+        "file":  "0021.placeholder"
+    },
+    {
+        "id":  22,
+        "word":  "몇",
+        "file":  "0022.placeholder"
+    },
+    {
+        "id":  23,
+        "word":  "얼마",
+        "file":  "0023.placeholder"
+    },
+    {
+        "id":  24,
+        "word":  "여기",
+        "file":  "0024.placeholder"
+    },
+    {
+        "id":  25,
+        "word":  "거기",
+        "file":  "0025.placeholder"
+    },
+    {
+        "id":  26,
+        "word":  "저기",
+        "file":  "0026.placeholder"
+    },
+    {
+        "id":  27,
+        "word":  "이쪽",
+        "file":  "0027.placeholder"
+    },
+    {
+        "id":  28,
+        "word":  "저쪽",
+        "file":  "0028.placeholder"
+    },
+    {
+        "id":  29,
+        "word":  "앞",
+        "file":  "0029.placeholder"
+    },
+    {
+        "id":  30,
+        "word":  "뒤",
+        "file":  "0030.placeholder"
+    },
+    {
+        "id":  31,
+        "word":  "왼쪽",
+        "file":  "0031.placeholder"
+    },
+    {
+        "id":  32,
+        "word":  "오른쪽",
+        "file":  "0032.placeholder"
+    },
+    {
+        "id":  33,
+        "word":  "위",
+        "file":  "0033.placeholder"
+    },
+    {
+        "id":  34,
+        "word":  "아래",
+        "file":  "0034.placeholder"
+    },
+    {
+        "id":  35,
+        "word":  "가운데",
+        "file":  "0035.placeholder"
+    },
+    {
+        "id":  36,
+        "word":  "옆",
+        "file":  "0036.placeholder"
+    },
+    {
+        "id":  37,
+        "word":  "근처",
+        "file":  "0037.placeholder"
+    },
+    {
+        "id":  38,
+        "word":  "가다",
+        "file":  "0038.placeholder"
+    },
+    {
+        "id":  39,
+        "word":  "오다",
+        "file":  "0039.placeholder"
+    },
+    {
+        "id":  40,
+        "word":  "들어가다",
+        "file":  "0040.placeholder"
+    },
+    {
+        "id":  41,
+        "word":  "나가다",
+        "file":  "0041.placeholder"
+    },
+    {
+        "id":  42,
+        "word":  "건너다",
+        "file":  "0042.placeholder"
+    },
+    {
+        "id":  43,
+        "word":  "돌다",
+        "file":  "0043.placeholder"
+    },
+    {
+        "id":  44,
+        "word":  "직진",
+        "file":  "0044.placeholder"
+    },
+    {
+        "id":  45,
+        "word":  "멈추다",
+        "file":  "0045.placeholder"
+    },
+    {
+        "id":  46,
+        "word":  "기다리다",
+        "file":  "0046.placeholder"
+    },
+    {
+        "id":  47,
+        "word":  "찾다",
+        "file":  "0047.placeholder"
+    },
+    {
+        "id":  48,
+        "word":  "보다",
+        "file":  "0048.placeholder"
+    },
+    {
+        "id":  49,
+        "word":  "주다",
+        "file":  "0049.placeholder"
+    },
+    {
+        "id":  50,
+        "word":  "받다",
+        "file":  "0050.placeholder"
+    },
+    {
+        "id":  51,
+        "word":  "타다",
+        "file":  "0051.placeholder"
+    },
+    {
+        "id":  52,
+        "word":  "길",
+        "file":  "0052.placeholder"
+    },
+    {
+        "id":  53,
+        "word":  "거리",
+        "file":  "0053.placeholder"
+    },
+    {
+        "id":  54,
+        "word":  "교차로",
+        "file":  "0054.placeholder"
+    },
+    {
+        "id":  55,
+        "word":  "신호등",
+        "file":  "0055.placeholder"
+    },
+    {
+        "id":  56,
+        "word":  "횡단보도",
+        "file":  "0056.placeholder"
+    },
+    {
+        "id":  57,
+        "word":  "입구",
+        "file":  "0057.placeholder"
+    },
+    {
+        "id":  58,
+        "word":  "출구",
+        "file":  "0058.placeholder"
+    },
+    {
+        "id":  59,
+        "word":  "계단",
+        "file":  "0059.placeholder"
+    },
+    {
+        "id":  60,
+        "word":  "엘리베이터",
+        "file":  "0060.placeholder"
+    },
+    {
+        "id":  61,
+        "word":  "에스컬레이터",
+        "file":  "0061.placeholder"
+    },
+    {
+        "id":  62,
+        "word":  "문",
+        "file":  "0062.placeholder"
+    },
+    {
+        "id":  63,
+        "word":  "안내표지",
+        "file":  "0063.placeholder"
+    },
+    {
+        "id":  64,
+        "word":  "지도",
+        "file":  "0064.placeholder"
+    },
+    {
+        "id":  65,
+        "word":  "화장실",
+        "file":  "0065.placeholder"
+    },
+    {
+        "id":  66,
+        "word":  "매표소",
+        "file":  "0066.placeholder"
+    },
+    {
+        "id":  67,
+        "word":  "안내소",
+        "file":  "0067.placeholder"
+    },
+    {
+        "id":  68,
+        "word":  "지하철역",
+        "file":  "0068.placeholder"
+    },
+    {
+        "id":  69,
+        "word":  "정류장",
+        "file":  "0069.placeholder"
+    },
+    {
+        "id":  70,
+        "word":  "환승",
+        "file":  "0070.placeholder"
+    },
+    {
+        "id":  71,
+        "word":  "표",
+        "file":  "0071.placeholder"
+    },
+    {
+        "id":  72,
+        "word":  "카드",
+        "file":  "0072.placeholder"
+    },
+    {
+        "id":  73,
+        "word":  "현금",
+        "file":  "0073.placeholder"
+    },
+    {
+        "id":  74,
+        "word":  "병원",
+        "file":  "0074.placeholder"
+    },
+    {
+        "id":  75,
+        "word":  "약국",
+        "file":  "0075.placeholder"
+    },
+    {
+        "id":  76,
+        "word":  "경찰서",
+        "file":  "0076.placeholder"
+    },
+    {
+        "id":  77,
+        "word":  "우체국",
+        "file":  "0077.placeholder"
+    },
+    {
+        "id":  78,
+        "word":  "지하철",
+        "file":  "0078.placeholder"
+    },
+    {
+        "id":  79,
+        "word":  "버스",
+        "file":  "0079.placeholder"
+    },
+    {
+        "id":  80,
+        "word":  "택시",
+        "file":  "0080.placeholder"
+    },
+    {
+        "id":  81,
+        "word":  "공항",
+        "file":  "0081.placeholder"
+    },
+    {
+        "id":  82,
+        "word":  "출발",
+        "file":  "0082.placeholder"
+    },
+    {
+        "id":  83,
+        "word":  "도착",
+        "file":  "0083.placeholder"
+    },
+    {
+        "id":  84,
+        "word":  "시간표",
+        "file":  "0084.placeholder"
+    },
+    {
+        "id":  85,
+        "word":  "요금",
+        "file":  "0085.placeholder"
+    },
+    {
+        "id":  86,
+        "word":  "주소",
+        "file":  "0086.placeholder"
+    },
+    {
+        "id":  87,
+        "word":  "도로",
+        "file":  "0087.placeholder"
+    },
+    {
+        "id":  88,
+        "word":  "번지",
+        "file":  "0088.placeholder"
+    },
+    {
+        "id":  89,
+        "word":  "전화",
+        "file":  "0089.placeholder"
+    },
+    {
+        "id":  90,
+        "word":  "번호",
+        "file":  "0090.placeholder"
+    },
+    {
+        "id":  91,
+        "word":  "예약",
+        "file":  "0091.placeholder"
+    },
+    {
+        "id":  92,
+        "word":  "확인",
+        "file":  "0092.placeholder"
+    },
+    {
+        "id":  93,
+        "word":  "오늘",
+        "file":  "0093.placeholder"
+    },
+    {
+        "id":  94,
+        "word":  "내일",
+        "file":  "0094.placeholder"
+    },
+    {
+        "id":  95,
+        "word":  "지금",
+        "file":  "0095.placeholder"
+    },
+    {
+        "id":  96,
+        "word":  "나중",
+        "file":  "0096.placeholder"
+    },
+    {
+        "id":  97,
+        "word":  "시간",
+        "file":  "0097.placeholder"
+    },
+    {
+        "id":  98,
+        "word":  "분",
+        "file":  "0098.placeholder"
+    },
+    {
+        "id":  99,
+        "word":  "몇시",
+        "file":  "0099.placeholder"
+    },
+    {
+        "id":  100,
+        "word":  "다시",
+        "file":  "0100.placeholder"
+    }
+]
