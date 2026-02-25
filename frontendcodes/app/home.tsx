@@ -67,13 +67,13 @@ export default function HomeScreen() {
 
           <View style={styles.quickWrap}>
             <Text style={styles.quickTitle}>빠른 메뉴</Text>
-            <Pressable style={styles.quickCard}>
+            <Pressable style={styles.quickCard} onPress={() => router.push('/mapping')}>
               <View style={styles.quickIconWrap}>
                 <MaterialCommunityIcons name="sign-language" size={22} color={PRIMARY} />
               </View>
               <View style={styles.quickTextWrap}>
-                <Text style={styles.quickMain}>수어 통역</Text>
-                <Text style={styles.quickSub}>실시간으로 텍스트를 수어로 변환하세요</Text>
+                <Text style={styles.quickMain}>매핑 테스트</Text>
+                <Text style={styles.quickSub}>기존 번역/매핑 테스트 화면으로 이동합니다</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
             </Pressable>

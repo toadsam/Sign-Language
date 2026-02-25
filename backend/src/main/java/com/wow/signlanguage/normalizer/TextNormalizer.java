@@ -1,5 +1,6 @@
 package com.wow.signlanguage.normalizer;
 
+import com.wow.signlanguage.dictionary.DictionaryLoader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +11,11 @@ import org.springframework.stereotype.Component;
 public class TextNormalizer {
 
   private static final Map<String, String> REPLACEMENTS = buildReplacements();
+  private final DictionaryLoader dictionaryLoader;
+
+  public TextNormalizer(DictionaryLoader dictionaryLoader) {
+    this.dictionaryLoader = dictionaryLoader;
+  }
 
   public List<String> normalizeTokens(String input) {
     if (input == null || input.isBlank()) {
@@ -44,11 +50,11 @@ public class TextNormalizer {
     }
 
     String mapped = REPLACEMENTS.get(token);
-    if (mapped != null) {
+    if (mapped != null && dictionaryLoader.containsWord(mapped)) {
       return mapped;
     }
 
-    return REPLACEMENTS.getOrDefault(token, token);
+    return token;
   }
 
   private static Map<String, String> buildReplacements() {

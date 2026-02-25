@@ -27,3 +27,17 @@ If Gradle Wrapper exists:
 ```powershell
 .\gradlew.bat bootRun
 ```
+
+## 4) Build Top-300 Dictionary From AI-Hub Morphology JSON
+This command scans AI-Hub morphology JSON files, counts token frequencies, and rewrites
+`src/main/resources/sign_dictionary.json` with top-k words.
+
+```powershell
+node .\scripts\build-top-dictionary.mjs `
+  --data-root "C:\path\to\aihub\morph-json" `
+  --top-k 300 `
+  --output "src\main\resources\sign_dictionary.json"
+```
+
+Optional:
+- `--min-len 1` minimum token length filter.

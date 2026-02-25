@@ -1,0 +1,1502 @@
+[
+  {
+    "id": 1,
+    "word": "곳",
+    "file": "0001.placeholder"
+  },
+  {
+    "id": 2,
+    "word": "다음",
+    "file": "0002.placeholder"
+  },
+  {
+    "id": 3,
+    "word": "내리다",
+    "file": "0003.placeholder"
+  },
+  {
+    "id": 4,
+    "word": "차내리다",
+    "file": "0004.placeholder"
+  },
+  {
+    "id": 5,
+    "word": "도착",
+    "file": "0005.placeholder"
+  },
+  {
+    "id": 6,
+    "word": "저기",
+    "file": "0006.placeholder"
+  },
+  {
+    "id": 7,
+    "word": "가다",
+    "file": "0007.placeholder"
+  },
+  {
+    "id": 8,
+    "word": "맞다",
+    "file": "0008.placeholder"
+  },
+  {
+    "id": 9,
+    "word": "지하철",
+    "file": "0009.placeholder"
+  },
+  {
+    "id": 10,
+    "word": "방법",
+    "file": "0010.placeholder"
+  },
+  {
+    "id": 11,
+    "word": "실종",
+    "file": "0011.placeholder"
+  },
+  {
+    "id": 12,
+    "word": "무엇",
+    "file": "0012.placeholder"
+  },
+  {
+    "id": 13,
+    "word": "전",
+    "file": "0013.placeholder"
+  },
+  {
+    "id": 14,
+    "word": "안되다",
+    "file": "0014.placeholder"
+  },
+  {
+    "id": 15,
+    "word": "길",
+    "file": "0015.placeholder"
+  },
+  {
+    "id": 16,
+    "word": "버스",
+    "file": "0016.placeholder"
+  },
+  {
+    "id": 17,
+    "word": "여기",
+    "file": "0017.placeholder"
+  },
+  {
+    "id": 18,
+    "word": "목적",
+    "file": "0018.placeholder"
+  },
+  {
+    "id": 19,
+    "word": "잃어버리다",
+    "file": "0019.placeholder"
+  },
+  {
+    "id": 20,
+    "word": "찾다",
+    "file": "0020.placeholder"
+  },
+  {
+    "id": 21,
+    "word": "보다",
+    "file": "0021.placeholder"
+  },
+  {
+    "id": 22,
+    "word": "카드",
+    "file": "0022.placeholder"
+  },
+  {
+    "id": 23,
+    "word": "사용",
+    "file": "0023.placeholder"
+  },
+  {
+    "id": 24,
+    "word": "없다",
+    "file": "0024.placeholder"
+  },
+  {
+    "id": 25,
+    "word": "에어컨",
+    "file": "0025.placeholder"
+  },
+  {
+    "id": 26,
+    "word": "고장",
+    "file": "0026.placeholder"
+  },
+  {
+    "id": 27,
+    "word": "오케이",
+    "file": "0027.placeholder"
+  },
+  {
+    "id": 28,
+    "word": "나사렛",
+    "file": "0028.placeholder"
+  },
+  {
+    "id": 29,
+    "word": "샛길",
+    "file": "0029.placeholder"
+  },
+  {
+    "id": 30,
+    "word": "택시",
+    "file": "0030.placeholder"
+  },
+  {
+    "id": 31,
+    "word": "신호등",
+    "file": "0031.placeholder"
+  },
+  {
+    "id": 32,
+    "word": "불량",
+    "file": "0032.placeholder"
+  },
+  {
+    "id": 33,
+    "word": "잘",
+    "file": "0033.placeholder"
+  },
+  {
+    "id": 34,
+    "word": "단말기터치",
+    "file": "0034.placeholder"
+  },
+  {
+    "id": 35,
+    "word": "확인",
+    "file": "0035.placeholder"
+  },
+  {
+    "id": 36,
+    "word": "은행",
+    "file": "0036.placeholder"
+  },
+  {
+    "id": 37,
+    "word": "공항",
+    "file": "0037.placeholder"
+  },
+  {
+    "id": 38,
+    "word": "건너다",
+    "file": "0038.placeholder"
+  },
+  {
+    "id": 39,
+    "word": "우회전",
+    "file": "0039.placeholder"
+  },
+  {
+    "id": 40,
+    "word": "돈",
+    "file": "0040.placeholder"
+  },
+  {
+    "id": 41,
+    "word": "명동",
+    "file": "0041.placeholder"
+  },
+  {
+    "id": 42,
+    "word": "사거리",
+    "file": "0042.placeholder"
+  },
+  {
+    "id": 43,
+    "word": "좌회전",
+    "file": "0043.placeholder"
+  },
+  {
+    "id": 44,
+    "word": "불가능",
+    "file": "0044.placeholder"
+  },
+  {
+    "id": 45,
+    "word": "자판기",
+    "file": "0045.placeholder"
+  },
+  {
+    "id": 46,
+    "word": "경찰",
+    "file": "0046.placeholder"
+  },
+  {
+    "id": 47,
+    "word": "지름길",
+    "file": "0047.placeholder"
+  },
+  {
+    "id": 48,
+    "word": "물품보관",
+    "file": "0048.placeholder"
+  },
+  {
+    "id": 49,
+    "word": "시간",
+    "file": "0049.placeholder"
+  },
+  {
+    "id": 50,
+    "word": "되다",
+    "file": "0050.placeholder"
+  },
+  {
+    "id": 51,
+    "word": "송파",
+    "file": "0051.placeholder"
+  },
+  {
+    "id": 52,
+    "word": "기차",
+    "file": "0052.placeholder"
+  },
+  {
+    "id": 53,
+    "word": "갈아타다",
+    "file": "0053.placeholder"
+  },
+  {
+    "id": 54,
+    "word": "종로",
+    "file": "0054.placeholder"
+  },
+  {
+    "id": 55,
+    "word": "병원",
+    "file": "0055.placeholder"
+  },
+  {
+    "id": 56,
+    "word": "시청",
+    "file": "0056.placeholder"
+  },
+  {
+    "id": 57,
+    "word": "켜다",
+    "file": "0057.placeholder"
+  },
+  {
+    "id": 58,
+    "word": "죽다",
+    "file": "0058.placeholder"
+  },
+  {
+    "id": 59,
+    "word": "학교",
+    "file": "0059.placeholder"
+  },
+  {
+    "id": 60,
+    "word": "119",
+    "file": "0060.placeholder"
+  },
+  {
+    "id": 61,
+    "word": "청음회관",
+    "file": "0061.placeholder"
+  },
+  {
+    "id": 62,
+    "word": "차",
+    "file": "0062.placeholder"
+  },
+  {
+    "id": 63,
+    "word": "손바닥찍다",
+    "file": "0063.placeholder"
+  },
+  {
+    "id": 64,
+    "word": "한국농아인협회",
+    "file": "0064.placeholder"
+  },
+  {
+    "id": 65,
+    "word": "서울농아인협회",
+    "file": "0065.placeholder"
+  },
+  {
+    "id": 66,
+    "word": "서대문농아인복지관",
+    "file": "0066.placeholder"
+  },
+  {
+    "id": 67,
+    "word": "맥도날드",
+    "file": "0067.placeholder"
+  },
+  {
+    "id": 68,
+    "word": "서울대학교",
+    "file": "0068.placeholder"
+  },
+  {
+    "id": 69,
+    "word": "여의도",
+    "file": "0069.placeholder"
+  },
+  {
+    "id": 70,
+    "word": "이화여대",
+    "file": "0070.placeholder"
+  },
+  {
+    "id": 71,
+    "word": "터널",
+    "file": "0071.placeholder"
+  },
+  {
+    "id": 72,
+    "word": "군청",
+    "file": "0072.placeholder"
+  },
+  {
+    "id": 73,
+    "word": "대로",
+    "file": "0073.placeholder"
+  },
+  {
+    "id": 74,
+    "word": "육교",
+    "file": "0074.placeholder"
+  },
+  {
+    "id": 75,
+    "word": "보건소",
+    "file": "0075.placeholder"
+  },
+  {
+    "id": 76,
+    "word": "언덕",
+    "file": "0076.placeholder"
+  },
+  {
+    "id": 77,
+    "word": "편지",
+    "file": "0077.placeholder"
+  },
+  {
+    "id": 78,
+    "word": "가능",
+    "file": "0078.placeholder"
+  },
+  {
+    "id": 79,
+    "word": "곳곳",
+    "file": "0079.placeholder"
+  },
+  {
+    "id": 80,
+    "word": "가방",
+    "file": "0080.placeholder"
+  },
+  {
+    "id": 81,
+    "word": "아이",
+    "file": "0081.placeholder"
+  },
+  {
+    "id": 82,
+    "word": "백화점",
+    "file": "0082.placeholder"
+  },
+  {
+    "id": 83,
+    "word": "파리바게트",
+    "file": "0083.placeholder"
+  },
+  {
+    "id": 84,
+    "word": "끄다",
+    "file": "0084.placeholder"
+  },
+  {
+    "id": 85,
+    "word": "스타벅스",
+    "file": "0085.placeholder"
+  },
+  {
+    "id": 86,
+    "word": "사라지다",
+    "file": "0086.placeholder"
+  },
+  {
+    "id": 87,
+    "word": "이마트",
+    "file": "0087.placeholder"
+  },
+  {
+    "id": 88,
+    "word": "영등포",
+    "file": "0088.placeholder"
+  },
+  {
+    "id": 89,
+    "word": "난방",
+    "file": "0089.placeholder"
+  },
+  {
+    "id": 90,
+    "word": "빨리",
+    "file": "0090.placeholder"
+  },
+  {
+    "id": 91,
+    "word": "안",
+    "file": "0091.placeholder"
+  },
+  {
+    "id": 92,
+    "word": "지갑",
+    "file": "0092.placeholder"
+  },
+  {
+    "id": 93,
+    "word": "아파트",
+    "file": "0093.placeholder"
+  },
+  {
+    "id": 94,
+    "word": "열쇠",
+    "file": "0094.placeholder"
+  },
+  {
+    "id": 95,
+    "word": "우산",
+    "file": "0095.placeholder"
+  },
+  {
+    "id": 96,
+    "word": "3",
+    "file": "0096.placeholder"
+  },
+  {
+    "id": 97,
+    "word": "1호",
+    "file": "0097.placeholder"
+  },
+  {
+    "id": 98,
+    "word": "있다",
+    "file": "0098.placeholder"
+  },
+  {
+    "id": 99,
+    "word": "원하다",
+    "file": "0099.placeholder"
+  },
+  {
+    "id": 100,
+    "word": "영수증",
+    "file": "0100.placeholder"
+  },
+  {
+    "id": 101,
+    "word": "유턴",
+    "file": "0101.placeholder"
+  },
+  {
+    "id": 102,
+    "word": "지금",
+    "file": "0102.placeholder"
+  },
+  {
+    "id": 103,
+    "word": "핸드폰",
+    "file": "0103.placeholder"
+  },
+  {
+    "id": 104,
+    "word": "접근",
+    "file": "0104.placeholder"
+  },
+  {
+    "id": 105,
+    "word": "엘리베이터",
+    "file": "0105.placeholder"
+  },
+  {
+    "id": 106,
+    "word": "트렁크열다",
+    "file": "0106.placeholder"
+  },
+  {
+    "id": 107,
+    "word": "뒤",
+    "file": "0107.placeholder"
+  },
+  {
+    "id": 108,
+    "word": "서울역",
+    "file": "0108.placeholder"
+  },
+  {
+    "id": 109,
+    "word": "유리",
+    "file": "0109.placeholder"
+  },
+  {
+    "id": 110,
+    "word": "다시",
+    "file": "0110.placeholder"
+  },
+  {
+    "id": 111,
+    "word": "번호",
+    "file": "0111.placeholder"
+  },
+  {
+    "id": 112,
+    "word": "물건",
+    "file": "0112.placeholder"
+  },
+  {
+    "id": 113,
+    "word": "올리다",
+    "file": "0113.placeholder"
+  },
+  {
+    "id": 114,
+    "word": "응급실",
+    "file": "0114.placeholder"
+  },
+  {
+    "id": 115,
+    "word": "고속터미널",
+    "file": "0115.placeholder"
+  },
+  {
+    "id": 116,
+    "word": "공기청정기",
+    "file": "0116.placeholder"
+  },
+  {
+    "id": 117,
+    "word": "차밀리다",
+    "file": "0117.placeholder"
+  },
+  {
+    "id": 118,
+    "word": "약",
+    "file": "0118.placeholder"
+  },
+  {
+    "id": 119,
+    "word": "계단",
+    "file": "0119.placeholder"
+  },
+  {
+    "id": 120,
+    "word": "계산",
+    "file": "0120.placeholder"
+  },
+  {
+    "id": 121,
+    "word": "9호",
+    "file": "0121.placeholder"
+  },
+  {
+    "id": 122,
+    "word": "필요",
+    "file": "0122.placeholder"
+  },
+  {
+    "id": 123,
+    "word": "도움받다",
+    "file": "0123.placeholder"
+  },
+  {
+    "id": 124,
+    "word": "떨어지다",
+    "file": "0124.placeholder"
+  },
+  {
+    "id": 125,
+    "word": "주차",
+    "file": "0125.placeholder"
+  },
+  {
+    "id": 126,
+    "word": "편의점",
+    "file": "0126.placeholder"
+  },
+  {
+    "id": 127,
+    "word": "다르다",
+    "file": "0127.placeholder"
+  },
+  {
+    "id": 128,
+    "word": "따뜻하다",
+    "file": "0128.placeholder"
+  },
+  {
+    "id": 129,
+    "word": "사진기",
+    "file": "0129.placeholder"
+  },
+  {
+    "id": 130,
+    "word": "시계",
+    "file": "0130.placeholder"
+  },
+  {
+    "id": 131,
+    "word": "반지",
+    "file": "0131.placeholder"
+  },
+  {
+    "id": 132,
+    "word": "노트북",
+    "file": "0132.placeholder"
+  },
+  {
+    "id": 133,
+    "word": "알려주다",
+    "file": "0133.placeholder"
+  },
+  {
+    "id": 134,
+    "word": "괜찮다",
+    "file": "0134.placeholder"
+  },
+  {
+    "id": 135,
+    "word": "문",
+    "file": "0135.placeholder"
+  },
+  {
+    "id": 136,
+    "word": "알려받다",
+    "file": "0136.placeholder"
+  },
+  {
+    "id": 137,
+    "word": "뼈곳",
+    "file": "0137.placeholder"
+  },
+  {
+    "id": 138,
+    "word": "얼마",
+    "file": "0138.placeholder"
+  },
+  {
+    "id": 139,
+    "word": "고속",
+    "file": "0139.placeholder"
+  },
+  {
+    "id": 140,
+    "word": "사다",
+    "file": "0140.placeholder"
+  },
+  {
+    "id": 141,
+    "word": "짐",
+    "file": "0141.placeholder"
+  },
+  {
+    "id": 142,
+    "word": "가깝다",
+    "file": "0142.placeholder"
+  },
+  {
+    "id": 143,
+    "word": "기다리다",
+    "file": "0143.placeholder"
+  },
+  {
+    "id": 144,
+    "word": "안내하다",
+    "file": "0144.placeholder"
+  },
+  {
+    "id": 145,
+    "word": "화장실",
+    "file": "0145.placeholder"
+  },
+  {
+    "id": 146,
+    "word": "엉덩이",
+    "file": "0146.placeholder"
+  },
+  {
+    "id": 147,
+    "word": "들어올리다",
+    "file": "0147.placeholder"
+  },
+  {
+    "id": 148,
+    "word": "춥다",
+    "file": "0148.placeholder"
+  },
+  {
+    "id": 149,
+    "word": "의자",
+    "file": "0149.placeholder"
+  },
+  {
+    "id": 150,
+    "word": "안내소",
+    "file": "0150.placeholder"
+  },
+  {
+    "id": 151,
+    "word": "돈주다",
+    "file": "0151.placeholder"
+  },
+  {
+    "id": 152,
+    "word": "지연되다",
+    "file": "0152.placeholder"
+  },
+  {
+    "id": 153,
+    "word": "설명",
+    "file": "0153.placeholder"
+  },
+  {
+    "id": 154,
+    "word": "부르다",
+    "file": "0154.placeholder"
+  },
+  {
+    "id": 155,
+    "word": "철로",
+    "file": "0155.placeholder"
+  },
+  {
+    "id": 156,
+    "word": "몇호",
+    "file": "0156.placeholder"
+  },
+  {
+    "id": 157,
+    "word": "몇분",
+    "file": "0157.placeholder"
+  },
+  {
+    "id": 158,
+    "word": "받다",
+    "file": "0158.placeholder"
+  },
+  {
+    "id": 159,
+    "word": "천안아산역",
+    "file": "0159.placeholder"
+  },
+  {
+    "id": 160,
+    "word": "회의실",
+    "file": "0160.placeholder"
+  },
+  {
+    "id": 161,
+    "word": "보청기",
+    "file": "0161.placeholder"
+  },
+  {
+    "id": 162,
+    "word": "급하다",
+    "file": "0162.placeholder"
+  },
+  {
+    "id": 163,
+    "word": "나",
+    "file": "0163.placeholder"
+  },
+  {
+    "id": 164,
+    "word": "만원",
+    "file": "0164.placeholder"
+  },
+  {
+    "id": 165,
+    "word": "기본",
+    "file": "0165.placeholder"
+  },
+  {
+    "id": 166,
+    "word": "충전",
+    "file": "0166.placeholder"
+  },
+  {
+    "id": 167,
+    "word": "표",
+    "file": "0167.placeholder"
+  },
+  {
+    "id": 168,
+    "word": "서울",
+    "file": "0168.placeholder"
+  },
+  {
+    "id": 169,
+    "word": "12",
+    "file": "0169.placeholder"
+  },
+  {
+    "id": 170,
+    "word": "타다",
+    "file": "0170.placeholder"
+  },
+  {
+    "id": 171,
+    "word": "나르다",
+    "file": "0171.placeholder"
+  },
+  {
+    "id": 172,
+    "word": "어린이집",
+    "file": "0172.placeholder"
+  },
+  {
+    "id": 173,
+    "word": "8호",
+    "file": "0173.placeholder"
+  },
+  {
+    "id": 174,
+    "word": "첫차",
+    "file": "0174.placeholder"
+  },
+  {
+    "id": 175,
+    "word": "남다",
+    "file": "0175.placeholder"
+  },
+  {
+    "id": 176,
+    "word": "쓰러지다",
+    "file": "0176.placeholder"
+  },
+  {
+    "id": 177,
+    "word": "정기권",
+    "file": "0177.placeholder"
+  },
+  {
+    "id": 178,
+    "word": "불편하다",
+    "file": "0178.placeholder"
+  },
+  {
+    "id": 179,
+    "word": "10분",
+    "file": "0179.placeholder"
+  },
+  {
+    "id": 180,
+    "word": "문안열리다",
+    "file": "0180.placeholder"
+  },
+  {
+    "id": 181,
+    "word": "안전벨트",
+    "file": "0181.placeholder"
+  },
+  {
+    "id": 182,
+    "word": "교환하다",
+    "file": "0182.placeholder"
+  },
+  {
+    "id": 183,
+    "word": "또",
+    "file": "0183.placeholder"
+  },
+  {
+    "id": 184,
+    "word": "차두다",
+    "file": "0184.placeholder"
+  },
+  {
+    "id": 185,
+    "word": "안경",
+    "file": "0185.placeholder"
+  },
+  {
+    "id": 186,
+    "word": "운전",
+    "file": "0186.placeholder"
+  },
+  {
+    "id": 187,
+    "word": "천천히",
+    "file": "0187.placeholder"
+  },
+  {
+    "id": 188,
+    "word": "오천원",
+    "file": "0188.placeholder"
+  },
+  {
+    "id": 189,
+    "word": "돈받다",
+    "file": "0189.placeholder"
+  },
+  {
+    "id": 190,
+    "word": "잘못하다",
+    "file": "0190.placeholder"
+  },
+  {
+    "id": 191,
+    "word": "틀리다",
+    "file": "0191.placeholder"
+  },
+  {
+    "id": 192,
+    "word": "딱",
+    "file": "0192.placeholder"
+  },
+  {
+    "id": 193,
+    "word": "국립박물관",
+    "file": "0193.placeholder"
+  },
+  {
+    "id": 194,
+    "word": "아직",
+    "file": "0194.placeholder"
+  },
+  {
+    "id": 195,
+    "word": "잠깐",
+    "file": "0195.placeholder"
+  },
+  {
+    "id": 196,
+    "word": "알다",
+    "file": "0196.placeholder"
+  },
+  {
+    "id": 197,
+    "word": "역무원",
+    "file": "0197.placeholder"
+  },
+  {
+    "id": 198,
+    "word": "틈",
+    "file": "0198.placeholder"
+  },
+  {
+    "id": 199,
+    "word": "전화걸다",
+    "file": "0199.placeholder"
+  },
+  {
+    "id": 200,
+    "word": "교통카드",
+    "file": "0200.placeholder"
+  },
+  {
+    "id": 201,
+    "word": "도와주다",
+    "file": "0201.placeholder"
+  },
+  {
+    "id": 202,
+    "word": "꼿다",
+    "file": "0202.placeholder"
+  },
+  {
+    "id": 203,
+    "word": "왼쪽",
+    "file": "0203.placeholder"
+  },
+  {
+    "id": 204,
+    "word": "오른쪽",
+    "file": "0204.placeholder"
+  },
+  {
+    "id": 205,
+    "word": "약속",
+    "file": "0205.placeholder"
+  },
+  {
+    "id": 206,
+    "word": "늦다",
+    "file": "0206.placeholder"
+  },
+  {
+    "id": 207,
+    "word": "당신",
+    "file": "0207.placeholder"
+  },
+  {
+    "id": 208,
+    "word": "그남자",
+    "file": "0208.placeholder"
+  },
+  {
+    "id": 209,
+    "word": "잘못",
+    "file": "0209.placeholder"
+  },
+  {
+    "id": 210,
+    "word": "위험",
+    "file": "0210.placeholder"
+  },
+  {
+    "id": 211,
+    "word": "항상",
+    "file": "0211.placeholder"
+  },
+  {
+    "id": 212,
+    "word": "원래",
+    "file": "0212.placeholder"
+  },
+  {
+    "id": 213,
+    "word": "밤",
+    "file": "0213.placeholder"
+  },
+  {
+    "id": 214,
+    "word": "12시",
+    "file": "0214.placeholder"
+  },
+  {
+    "id": 215,
+    "word": "후",
+    "file": "0215.placeholder"
+  },
+  {
+    "id": 216,
+    "word": "추가",
+    "file": "0216.placeholder"
+  },
+  {
+    "id": 217,
+    "word": "장애인복지카드",
+    "file": "0217.placeholder"
+  },
+  {
+    "id": 218,
+    "word": "어린이교통카드",
+    "file": "0218.placeholder"
+  },
+  {
+    "id": 219,
+    "word": "1회",
+    "file": "0219.placeholder"
+  },
+  {
+    "id": 220,
+    "word": "끝",
+    "file": "0220.placeholder"
+  },
+  {
+    "id": 221,
+    "word": "사람",
+    "file": "0221.placeholder"
+  },
+  {
+    "id": 222,
+    "word": "2호",
+    "file": "0222.placeholder"
+  },
+  {
+    "id": 223,
+    "word": "신촌",
+    "file": "0223.placeholder"
+  },
+  {
+    "id": 224,
+    "word": "하나",
+    "file": "0224.placeholder"
+  },
+  {
+    "id": 225,
+    "word": "오다오다",
+    "file": "0225.placeholder"
+  },
+  {
+    "id": 226,
+    "word": "지하철오다",
+    "file": "0226.placeholder"
+  },
+  {
+    "id": 227,
+    "word": "4사람",
+    "file": "0227.placeholder"
+  },
+  {
+    "id": 228,
+    "word": "1",
+    "file": "0228.placeholder"
+  },
+  {
+    "id": 229,
+    "word": "신분당",
+    "file": "0229.placeholder"
+  },
+  {
+    "id": 230,
+    "word": "5분",
+    "file": "0230.placeholder"
+  },
+  {
+    "id": 231,
+    "word": "자전거",
+    "file": "0231.placeholder"
+  },
+  {
+    "id": 232,
+    "word": "트렁크닫다",
+    "file": "0232.placeholder"
+  },
+  {
+    "id": 233,
+    "word": "어렵다",
+    "file": "0233.placeholder"
+  },
+  {
+    "id": 234,
+    "word": "힘들다",
+    "file": "0234.placeholder"
+  },
+  {
+    "id": 235,
+    "word": "신분증",
+    "file": "0235.placeholder"
+  },
+  {
+    "id": 236,
+    "word": "바꾸다",
+    "file": "0236.placeholder"
+  },
+  {
+    "id": 237,
+    "word": "한달",
+    "file": "0237.placeholder"
+  },
+  {
+    "id": 238,
+    "word": "누적사용",
+    "file": "0238.placeholder"
+  },
+  {
+    "id": 239,
+    "word": "내역",
+    "file": "0239.placeholder"
+  },
+  {
+    "id": 240,
+    "word": "실수하다",
+    "file": "0240.placeholder"
+  },
+  {
+    "id": 241,
+    "word": "발생하다",
+    "file": "0241.placeholder"
+  },
+  {
+    "id": 242,
+    "word": "좋다",
+    "file": "0242.placeholder"
+  },
+  {
+    "id": 243,
+    "word": "충분하다",
+    "file": "0243.placeholder"
+  },
+  {
+    "id": 244,
+    "word": "문자보내다",
+    "file": "0244.placeholder"
+  },
+  {
+    "id": 245,
+    "word": "문자받다",
+    "file": "0245.placeholder"
+  },
+  {
+    "id": 246,
+    "word": "마포대교",
+    "file": "0246.placeholder"
+  },
+  {
+    "id": 247,
+    "word": "잠실대교",
+    "file": "0247.placeholder"
+  },
+  {
+    "id": 248,
+    "word": "횡단보도",
+    "file": "0248.placeholder"
+  },
+  {
+    "id": 249,
+    "word": "막차",
+    "file": "0249.placeholder"
+  },
+  {
+    "id": 250,
+    "word": "수고",
+    "file": "0250.placeholder"
+  },
+  {
+    "id": 251,
+    "word": "40분",
+    "file": "0251.placeholder"
+  },
+  {
+    "id": 252,
+    "word": "용산역",
+    "file": "0252.placeholder"
+  },
+  {
+    "id": 253,
+    "word": "반대",
+    "file": "0253.placeholder"
+  },
+  {
+    "id": 254,
+    "word": "어지럽다",
+    "file": "0254.placeholder"
+  },
+  {
+    "id": 255,
+    "word": "배",
+    "file": "0255.placeholder"
+  },
+  {
+    "id": 256,
+    "word": "아프다",
+    "file": "0256.placeholder"
+  },
+  {
+    "id": 257,
+    "word": "차따라가다",
+    "file": "0257.placeholder"
+  },
+  {
+    "id": 258,
+    "word": "미리",
+    "file": "0258.placeholder"
+  },
+  {
+    "id": 259,
+    "word": "천호",
+    "file": "0259.placeholder"
+  },
+  {
+    "id": 260,
+    "word": "약수",
+    "file": "0260.placeholder"
+  },
+  {
+    "id": 261,
+    "word": "3호",
+    "file": "0261.placeholder"
+  },
+  {
+    "id": 262,
+    "word": "카페",
+    "file": "0262.placeholder"
+  },
+  {
+    "id": 263,
+    "word": "옷가게",
+    "file": "0263.placeholder"
+  },
+  {
+    "id": 264,
+    "word": "냄새",
+    "file": "0264.placeholder"
+  },
+  {
+    "id": 265,
+    "word": "신고",
+    "file": "0265.placeholder"
+  },
+  {
+    "id": 266,
+    "word": "1시",
+    "file": "0266.placeholder"
+  },
+  {
+    "id": 267,
+    "word": "1시간",
+    "file": "0267.placeholder"
+  },
+  {
+    "id": 268,
+    "word": "3시",
+    "file": "0268.placeholder"
+  },
+  {
+    "id": 269,
+    "word": "5호",
+    "file": "0269.placeholder"
+  },
+  {
+    "id": 270,
+    "word": "카톡보내다",
+    "file": "0270.placeholder"
+  },
+  {
+    "id": 271,
+    "word": "해보다",
+    "file": "0271.placeholder"
+  },
+  {
+    "id": 272,
+    "word": "주세요",
+    "file": "0272.placeholder"
+  },
+  {
+    "id": 273,
+    "word": "그만",
+    "file": "0273.placeholder"
+  },
+  {
+    "id": 274,
+    "word": "돈얼마",
+    "file": "0274.placeholder"
+  },
+  {
+    "id": 275,
+    "word": "아니다",
+    "file": "0275.placeholder"
+  },
+  {
+    "id": 276,
+    "word": "필요없다",
+    "file": "0276.placeholder"
+  },
+  {
+    "id": 277,
+    "word": "심하다",
+    "file": "0277.placeholder"
+  },
+  {
+    "id": 278,
+    "word": "화나다",
+    "file": "0278.placeholder"
+  },
+  {
+    "id": 279,
+    "word": "말하다",
+    "file": "0279.placeholder"
+  },
+  {
+    "id": 280,
+    "word": "말해주다",
+    "file": "0280.placeholder"
+  },
+  {
+    "id": 281,
+    "word": "일정하다",
+    "file": "0281.placeholder"
+  },
+  {
+    "id": 282,
+    "word": "위아래",
+    "file": "0282.placeholder"
+  },
+  {
+    "id": 283,
+    "word": "중",
+    "file": "0283.placeholder"
+  },
+  {
+    "id": 284,
+    "word": "지하위",
+    "file": "0284.placeholder"
+  },
+  {
+    "id": 285,
+    "word": "보여주다",
+    "file": "0285.placeholder"
+  },
+  {
+    "id": 286,
+    "word": "모르다",
+    "file": "0286.placeholder"
+  },
+  {
+    "id": 287,
+    "word": "롯데월드",
+    "file": "0287.placeholder"
+  },
+  {
+    "id": 288,
+    "word": "강남",
+    "file": "0288.placeholder"
+  },
+  {
+    "id": 289,
+    "word": "오늘",
+    "file": "0289.placeholder"
+  },
+  {
+    "id": 290,
+    "word": "하루",
+    "file": "0290.placeholder"
+  },
+  {
+    "id": 291,
+    "word": "만나다",
+    "file": "0291.placeholder"
+  },
+  {
+    "id": 292,
+    "word": "반갑다",
+    "file": "0292.placeholder"
+  },
+  {
+    "id": 293,
+    "word": "50분",
+    "file": "0293.placeholder"
+  },
+  {
+    "id": 294,
+    "word": "정도",
+    "file": "0294.placeholder"
+  },
+  {
+    "id": 295,
+    "word": "대략",
+    "file": "0295.placeholder"
+  },
+  {
+    "id": 296,
+    "word": "표지판",
+    "file": "0296.placeholder"
+  },
+  {
+    "id": 297,
+    "word": "지도",
+    "file": "0297.placeholder"
+  },
+  {
+    "id": 298,
+    "word": "위로올리다",
+    "file": "0298.placeholder"
+  },
+  {
+    "id": 299,
+    "word": "까먹다",
+    "file": "0299.placeholder"
+  },
+  {
+    "id": 300,
+    "word": "위쪼이다",
+    "file": "0300.placeholder"
+  }
+]

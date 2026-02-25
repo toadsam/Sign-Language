@@ -50,6 +50,10 @@ public class DictionaryLoader {
     return Optional.ofNullable(byWord.get(word));
   }
 
+  public boolean containsWord(String word) {
+    return byWord.containsKey(word);
+  }
+
   public List<SignDictionaryEntry> entries() {
     return entries;
   }
