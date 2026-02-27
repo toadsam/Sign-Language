@@ -7,15 +7,23 @@ import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.FieldValue;
 import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.Query;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
 import com.google.firebase.cloud.FirestoreClient;
+import com.wow.signlanguage.user.dto.BookmarkResponse;
+import com.wow.signlanguage.user.dto.WrongNoteResponse;
+import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
 import com.wow.signlanguage.user.model.UserInfo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +33,9 @@ import java.util.concurrent.ExecutionException;
 public class UserService {
 
     private static final String COLLECTION_NAME = "users";
+    private static final String QUIZ_COLLECTION_NAME = "quiz_items";
+    private static final String TRANSLATOR_BOOKMARKS_COLLECTION_NAME = "translator_bookmarks";
+    private static final String WRONG_NOTE_SAVED_COLLECTION_NAME = "wrong_note_saved";
     private static final String COUNTER_DOC = "userCounter";
     private static final String COUNTER_FIELD = "lastUserId";
 
@@ -194,6 +205,7 @@ public class UserService {
 
         List<String> totalQuestions = user.getTotalQuestions() != null ? new ArrayList<>(user.getTotalQuestions()) : new ArrayList<>();
         List<String> incorrectQuestions = user.getIncorrectQuestions() != null ? new ArrayList<>(user.getIncorrectQuestions()) : new ArrayList<>();
+        Map<String, Object> incorrectQuestionDates = toStringObjectMap(document.get("incorrectQuestionDates"));
         int totalQuestionNum = user.getTotalQuestionNum();
         int correctQuestionNum = user.getCorrectQuestionNum();
 
@@ -212,6 +224,8 @@ public class UserService {
             if (!incorrectQuestions.contains(questionId)) {
                 incorrectQuestions.add(questionId);
                 updateData.put("incorrectQuestions", incorrectQuestions);
+                incorrectQuestionDates.put(questionId, new Date());
+                updateData.put("incorrectQuestionDates", incorrectQuestionDates);
             }
         } else {
             correctQuestionNum++;
@@ -236,5 +250,274 @@ public class UserService {
         String googleUserId = payload.getSubject(); // 구글 고유 ID
         System.out.println("구글 로그인 성공, googleUserId: " + googleUserId);
         return createUserIfNotExists(googleUserId);
+    }
+
+    public BookmarkResponse saveBookmark(String uid, String quizId) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank() || quizId == null || quizId.isBlank()) {
+            throw new IllegalArgumentException("uid and quizId are required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentReference userRef = db.collection(COLLECTION_NAME).document(uid);
+        DocumentSnapshot userDoc = userRef.get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        DocumentSnapshot quizDoc = db.collection(QUIZ_COLLECTION_NAME).document(quizId).get().get();
+        if (!quizDoc.exists()) {
+            throw new RuntimeException("Quiz not found");
+        }
+
+        String questionText = safeString(quizDoc.getString("questionText"));
+        String videoUrl = safeString(quizDoc.getString("videoUrl"));
+        String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
+        String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+
+        Map<String, Object> bookmarkData = new HashMap<>();
+        bookmarkData.put("quizId", quizId);
+        bookmarkData.put("questionText", questionText);
+        bookmarkData.put("word", word);
+        bookmarkData.put("videoUrl", videoUrl);
+        bookmarkData.put("savedAt", FieldValue.serverTimestamp());
+
+        DocumentReference bookmarkRef = userRef.collection(TRANSLATOR_BOOKMARKS_COLLECTION_NAME).document(quizId);
+        bookmarkRef.set(bookmarkData).get();
+
+        DocumentSnapshot saved = bookmarkRef.get().get();
+        return toBookmarkResponse(saved);
+    }
+
+    public List<BookmarkResponse> getBookmarks(String uid) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        QuerySnapshot snapshot = db.collection(COLLECTION_NAME)
+                .document(uid)
+                .collection(TRANSLATOR_BOOKMARKS_COLLECTION_NAME)
+                .orderBy("savedAt", Query.Direction.DESCENDING)
+                .get()
+                .get();
+
+        List<BookmarkResponse> result = new ArrayList<>();
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            result.add(toBookmarkResponse(doc));
+        }
+        return result;
+    }
+
+    public void deleteBookmark(String uid, String quizId) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank() || quizId == null || quizId.isBlank()) {
+            throw new IllegalArgumentException("uid and quizId are required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        db.collection(COLLECTION_NAME)
+                .document(uid)
+                .collection(TRANSLATOR_BOOKMARKS_COLLECTION_NAME)
+                .document(quizId)
+                .delete()
+                .get();
+    }
+
+    public List<WrongNoteResponse> getWrongNotes(String uid) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        List<String> incorrectQuestions = toStringList(userDoc.get("incorrectQuestions"));
+        Map<String, Object> incorrectQuestionDates = toStringObjectMap(userDoc.get("incorrectQuestionDates"));
+        List<WrongNoteResponse> result = new ArrayList<>();
+        for (String quizId : incorrectQuestions) {
+            DocumentSnapshot quizDoc = db.collection(QUIZ_COLLECTION_NAME).document(quizId).get().get();
+            if (!quizDoc.exists()) {
+                continue;
+            }
+            String questionText = safeString(quizDoc.getString("questionText"));
+            String videoUrl = safeString(quizDoc.getString("videoUrl"));
+            String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
+            String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+            Object wrongAt = incorrectQuestionDates.get(quizId);
+            result.add(new WrongNoteResponse(quizId, questionText, word, videoUrl, wrongAt));
+        }
+        return result;
+    }
+
+    public WrongNoteSavedResponse saveWrongNote(String uid, String quizId) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank() || quizId == null || quizId.isBlank()) {
+            throw new IllegalArgumentException("uid and quizId are required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentReference userRef = db.collection(COLLECTION_NAME).document(uid);
+        DocumentSnapshot userDoc = userRef.get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        List<String> incorrectQuestions = toStringList(userDoc.get("incorrectQuestions"));
+        if (!incorrectQuestions.contains(quizId)) {
+            throw new IllegalArgumentException("Only wrong questions can be saved.");
+        }
+
+        DocumentSnapshot quizDoc = db.collection(QUIZ_COLLECTION_NAME).document(quizId).get().get();
+        if (!quizDoc.exists()) {
+            throw new RuntimeException("Quiz not found");
+        }
+
+        Map<String, Object> incorrectQuestionDates = toStringObjectMap(userDoc.get("incorrectQuestionDates"));
+        Object wrongAt = incorrectQuestionDates.get(quizId);
+
+        String questionText = safeString(quizDoc.getString("questionText"));
+        String videoUrl = safeString(quizDoc.getString("videoUrl"));
+        String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
+        String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("quizId", quizId);
+        data.put("questionText", questionText);
+        data.put("word", word);
+        data.put("videoUrl", videoUrl);
+        data.put("wrongAt", wrongAt);
+        data.put("savedAt", FieldValue.serverTimestamp());
+
+        DocumentReference savedRef = userRef.collection(WRONG_NOTE_SAVED_COLLECTION_NAME).document(quizId);
+        savedRef.set(data).get();
+
+        DocumentSnapshot savedDoc = savedRef.get().get();
+        return toWrongNoteSavedResponse(savedDoc);
+    }
+
+    public List<WrongNoteSavedResponse> getSavedWrongNotes(String uid) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        QuerySnapshot snapshot = db.collection(COLLECTION_NAME)
+                .document(uid)
+                .collection(WRONG_NOTE_SAVED_COLLECTION_NAME)
+                .orderBy("savedAt", Query.Direction.DESCENDING)
+                .get()
+                .get();
+
+        List<WrongNoteSavedResponse> result = new ArrayList<>();
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            result.add(toWrongNoteSavedResponse(doc));
+        }
+        return result;
+    }
+
+    public void deleteSavedWrongNote(String uid, String quizId) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank() || quizId == null || quizId.isBlank()) {
+            throw new IllegalArgumentException("uid and quizId are required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        db.collection(COLLECTION_NAME)
+                .document(uid)
+                .collection(WRONG_NOTE_SAVED_COLLECTION_NAME)
+                .document(quizId)
+                .delete()
+                .get();
+    }
+
+    private BookmarkResponse toBookmarkResponse(DocumentSnapshot doc) {
+        return new BookmarkResponse(
+                doc.getId(),
+                safeString(doc.getString("questionText")),
+                safeString(doc.getString("word")),
+                safeString(doc.getString("videoUrl")),
+                doc.get("savedAt"));
+    }
+
+    private WrongNoteSavedResponse toWrongNoteSavedResponse(DocumentSnapshot doc) {
+        return new WrongNoteSavedResponse(
+                doc.getId(),
+                safeString(doc.getString("questionText")),
+                safeString(doc.getString("word")),
+                safeString(doc.getString("videoUrl")),
+                doc.get("wrongAt"),
+                doc.get("savedAt"));
+    }
+
+    private String safeString(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String normalizeChoiceId(String value) {
+        return value == null ? "" : value.trim().toUpperCase();
+    }
+
+    private String resolveCorrectChoiceText(Object rawChoices, String correctChoiceId) {
+        if (!(rawChoices instanceof List<?> choices)) {
+            return "";
+        }
+        int index = switch (correctChoiceId) {
+            case "A" -> 0;
+            case "B" -> 1;
+            case "C" -> 2;
+            case "D" -> 3;
+            default -> -1;
+        };
+        if (index < 0 || index >= choices.size()) {
+            return "";
+        }
+        Object value = choices.get(index);
+        return value instanceof String ? (String) value : "";
+    }
+
+    private List<String> toStringList(Object value) {
+        if (!(value instanceof List<?> raw)) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : raw) {
+            if (item instanceof String text && !text.isBlank()) {
+                result.add(text);
+            }
+        }
+        return result;
+    }
+
+    private Map<String, Object> toStringObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) {
+            return new HashMap<>();
+        }
+        Map<String, Object> result = new HashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() instanceof String key) {
+                result.put(key, entry.getValue());
+            }
+        }
+        return result;
     }
 }

@@ -1,5 +1,10 @@
 package com.wow.signlanguage.user.controller;
 
+import com.wow.signlanguage.user.dto.BookmarkRequest;
+import com.wow.signlanguage.user.dto.BookmarkResponse;
+import com.wow.signlanguage.user.dto.WrongNoteResponse;
+import com.wow.signlanguage.user.dto.WrongNoteSaveRequest;
+import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
 import com.wow.signlanguage.user.model.UserInfo;
 import com.wow.signlanguage.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
@@ -119,6 +125,110 @@ public class UserController {
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/{uid}/bookmarks")
+    public ResponseEntity<?> saveBookmark(@PathVariable String uid, @RequestBody BookmarkRequest request) {
+        if (request == null || request.quizId() == null || request.quizId().isBlank()) {
+            return ResponseEntity.badRequest().body("quizId를 입력하세요.");
+        }
+        try {
+            BookmarkResponse response = userService.saveBookmark(uid, request.quizId());
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{uid}/bookmarks")
+    public ResponseEntity<?> getBookmarks(@PathVariable String uid) {
+        try {
+            List<BookmarkResponse> response = userService.getBookmarks(uid);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/{uid}/bookmarks/{quizId}")
+    public ResponseEntity<?> deleteBookmark(@PathVariable String uid, @PathVariable String quizId) {
+        try {
+            userService.deleteBookmark(uid, quizId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{uid}/wrong-notes")
+    public ResponseEntity<?> getWrongNotes(@PathVariable String uid) {
+        try {
+            List<WrongNoteResponse> response = userService.getWrongNotes(uid);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/{uid}/wrong-note-saved")
+    public ResponseEntity<?> saveWrongNote(@PathVariable String uid, @RequestBody WrongNoteSaveRequest request) {
+        if (request == null || request.quizId() == null || request.quizId().isBlank()) {
+            return ResponseEntity.badRequest().body("quizId를 입력하세요.");
+        }
+        try {
+            WrongNoteSavedResponse response = userService.saveWrongNote(uid, request.quizId());
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{uid}/wrong-note-saved")
+    public ResponseEntity<?> getSavedWrongNotes(@PathVariable String uid) {
+        try {
+            List<WrongNoteSavedResponse> response = userService.getSavedWrongNotes(uid);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/{uid}/wrong-note-saved/{quizId}")
+    public ResponseEntity<?> deleteSavedWrongNote(@PathVariable String uid, @PathVariable String quizId) {
+        try {
+            userService.deleteSavedWrongNote(uid, quizId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 }
