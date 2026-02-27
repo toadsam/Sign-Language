@@ -1,9 +1,10 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
+
 import {
   ChoiceId,
   QuizAnswerResponse,
@@ -11,6 +12,7 @@ import {
   fetchQuizSession,
   submitQuizAnswer,
 } from '@/lib/api/quiz';
+import { saveWrongNote } from '@/lib/api/wrong-note-saved';
 import { useAuth } from '@/context/auth-context';
 
 const PRIMARY = '#1f80e3';
@@ -32,17 +34,17 @@ function toOptions(question: QuizSessionQuestion | null): Option[] {
 
 export default function QuizScreen() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<ChoiceId | null>(null);
   const [answerResult, setAnswerResult] = useState<QuizAnswerResponse | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const { user } = useAuth(); // user.uid가 구글 고유 ID(sub)라고 가정
 
   const currentQuestion = questions[currentIndex] ?? null;
   const options = useMemo(() => toOptions(currentQuestion), [currentQuestion]);
@@ -59,6 +61,7 @@ export default function QuizScreen() {
 
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       try {
         setIsLoading(true);
@@ -71,9 +74,7 @@ export default function QuizScreen() {
         if (!mounted) return;
         setErrorMessage(error instanceof Error ? error.message : '퀴즈를 불러오지 못했습니다.');
       } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
+        if (mounted) setIsLoading(false);
       }
     })();
 
@@ -94,13 +95,7 @@ export default function QuizScreen() {
       const result = await submitQuizAnswer(currentQuestion.quizId, id);
       setAnswerResult(result);
 
-      console.log('user:', user);
-      console.log('user.id:', user?.id);
-      console.log('currentQuestion:', currentQuestion);
-      console.log('result:', result);
-
-      if (user && user.id) {
-        console.log('PATCH 요청 실행', user.id, currentQuestion.quizId, result.isCorrect);
+      if (user?.id) {
         await fetch(`http://localhost:8080/api/users/${user.id}/tryQuestion`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -109,13 +104,10 @@ export default function QuizScreen() {
             isCorrect: result.isCorrect,
           }),
         });
-      } else {
-        console.log('user 또는 user.id가 없음, PATCH 요청 실행 안 됨');
       }
     } catch (error) {
       setSelectedId(null);
       setErrorMessage(error instanceof Error ? error.message : '정답 확인에 실패했습니다.');
-      console.error('handleSelect error:', error);
     } finally {
       setIsChecking(false);
     }
@@ -132,6 +124,19 @@ export default function QuizScreen() {
     setAnswerResult(null);
     setIsSaved(false);
     setErrorMessage(null);
+  }
+
+  function handleSaveFeedback() {
+    if (!isAnswered || isCorrect || !user?.id || !currentQuestion) return;
+    if (isSaving || isSaved) return;
+    setErrorMessage(null);
+    setIsSaving(true);
+    void saveWrongNote(user.id, currentQuestion.quizId)
+      .then(() => setIsSaved(true))
+      .catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : '오답노트 저장에 실패했습니다.');
+      })
+      .finally(() => setIsSaving(false));
   }
 
   function handleReplayVideo() {
@@ -178,17 +183,9 @@ export default function QuizScreen() {
           <Text style={styles.progressText}>{progressText}</Text>
         </View>
 
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.imageWrap}>
-            <VideoView
-              style={styles.videoPlayer}
-              player={player}
-              nativeControls
-              contentFit="cover"
-            />
+            <VideoView style={styles.videoPlayer} player={player} nativeControls contentFit="cover" />
             <Pressable style={styles.replayButton} onPress={handleReplayVideo}>
               <Ionicons name="play" size={14} color="#4b5563" />
               <Text style={styles.replayText}>다시 재생</Text>
@@ -263,12 +260,10 @@ export default function QuizScreen() {
                   />
                 </View>
                 <View style={styles.feedbackTextWrap}>
-                  <Text
-                    style={[styles.feedbackTitle, isCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
+                  <Text style={[styles.feedbackTitle, isCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
                     {isCorrect ? '정답입니다' : '오답입니다'}
                   </Text>
-                  <Text
-                    style={[styles.feedbackDesc, isCorrect ? styles.feedbackDescCorrect : styles.feedbackDescWrong]}>
+                  <Text style={[styles.feedbackDesc, isCorrect ? styles.feedbackDescCorrect : styles.feedbackDescWrong]}>
                     정답: {answerResult.correctChoiceText}
                   </Text>
                 </View>
@@ -276,10 +271,17 @@ export default function QuizScreen() {
 
               <Pressable
                 style={[styles.saveButton, isCorrect ? styles.saveButtonCorrect : styles.saveButtonWrong]}
-                onPress={() => setIsSaved(true)}>
+                onPress={handleSaveFeedback}
+                disabled={isCorrect || isSaving || isSaved}>
                 <MaterialCommunityIcons name="bookmark" size={15} color={isCorrect ? '#16a34a' : '#ef4444'} />
                 <Text style={[styles.saveButtonText, isCorrect ? styles.saveTextCorrect : styles.saveTextWrong]}>
-                  오답노트에 저장
+                  {isCorrect
+                    ? '정답은 저장되지 않습니다'
+                    : isSaved
+                      ? '저장됨'
+                      : isSaving
+                        ? '저장 중...'
+                        : '오답노트에 저장'}
                 </Text>
               </Pressable>
 
@@ -575,18 +577,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  saveTextCorrect: {
+    color: '#16a34a',
+  },
+  saveTextWrong: {
+    color: '#dc2626',
+  },
   savedFeedback: {
     marginTop: 8,
     textAlign: 'center',
     color: '#374151',
     fontSize: 13,
     fontWeight: '600',
-  },
-  saveTextCorrect: {
-    color: '#16a34a',
-  },
-  saveTextWrong: {
-    color: '#dc2626',
   },
   nextButton: {
     marginTop: 10,
