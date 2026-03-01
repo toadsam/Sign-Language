@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -69,6 +71,7 @@ public class UserService {
                 userData.put("totalQuestionNum", newUser.getTotalQuestionNum());
                 userData.put("userLevel", newUser.getUserLevel());
                 userData.put("totalQuestions", newUser.getTotalQuestions());
+                userData.put("dailySolvedCounts", newUser.getDailySolvedCounts());
                 docRef.set(userData).get();
                 return newUser;
             } else {
@@ -108,6 +111,7 @@ public class UserService {
         updateData.put("userId", userInfo.getUserId());
         updateData.put("totalQuestionNum", userInfo.getTotalQuestionNum());
         updateData.put("userLevel", userInfo.getUserLevel());
+        updateData.put("dailySolvedCounts", userInfo.getDailySolvedCounts());
 
         ApiFuture<WriteResult> updateFuture = docRef.update(updateData);
         updateFuture.get();
@@ -206,19 +210,22 @@ public class UserService {
         List<String> totalQuestions = user.getTotalQuestions() != null ? new ArrayList<>(user.getTotalQuestions()) : new ArrayList<>();
         List<String> incorrectQuestions = user.getIncorrectQuestions() != null ? new ArrayList<>(user.getIncorrectQuestions()) : new ArrayList<>();
         Map<String, Object> incorrectQuestionDates = toStringObjectMap(document.get("incorrectQuestionDates"));
+        Map<String, Integer> dailySolvedCounts = toStringIntegerMap(document.get("dailySolvedCounts"));
         int totalQuestionNum = user.getTotalQuestionNum();
         int correctQuestionNum = user.getCorrectQuestionNum();
-
-        if (totalQuestions.contains(questionId)) {
-            return user;
+        totalQuestionNum++;
+        if (!totalQuestions.contains(questionId)) {
+            totalQuestions.add(questionId);
         }
 
-        totalQuestions.add(questionId);
-        totalQuestionNum++;
+        String todayKst = LocalDate.now(ZoneId.of("Asia/Seoul")).toString();
+        int solvedToday = dailySolvedCounts.getOrDefault(todayKst, 0) + 1;
+        dailySolvedCounts.put(todayKst, solvedToday);
 
         Map<String, Object> updateData = new HashMap<>();
         updateData.put("totalQuestions", totalQuestions);
         updateData.put("totalQuestionNum", totalQuestionNum);
+        updateData.put("dailySolvedCounts", dailySolvedCounts);
 
         if (!isCorrect) {
             if (!incorrectQuestions.contains(questionId)) {
@@ -516,6 +523,23 @@ public class UserService {
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
             if (entry.getKey() instanceof String key) {
                 result.put(key, entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private Map<String, Integer> toStringIntegerMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) {
+            return new HashMap<>();
+        }
+        Map<String, Integer> result = new HashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                continue;
+            }
+            Object rawValue = entry.getValue();
+            if (rawValue instanceof Number number) {
+                result.put(key, number.intValue());
             }
         }
         return result;

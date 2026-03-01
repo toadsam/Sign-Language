@@ -13,6 +13,7 @@ import {
   submitQuizAnswer,
 } from '@/lib/api/quiz';
 import { saveWrongNote } from '@/lib/api/wrong-note-saved';
+import { recordQuizAttempt } from '@/lib/api/users';
 import { useAuth } from '@/context/auth-context';
 
 const PRIMARY = '#1f80e3';
@@ -96,14 +97,7 @@ export default function QuizScreen() {
       setAnswerResult(result);
 
       if (user?.id) {
-        await fetch(`http://localhost:8080/api/users/${user.id}/tryQuestion`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            questionId: currentQuestion.quizId,
-            isCorrect: result.isCorrect,
-          }),
-        });
+        await recordQuizAttempt(user.id, currentQuestion.quizId, result.isCorrect);
       }
     } catch (error) {
       setSelectedId(null);

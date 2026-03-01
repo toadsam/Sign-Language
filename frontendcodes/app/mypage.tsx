@@ -3,9 +3,12 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '@/context/auth-context';
+import { DAILY_GOAL_TARGET, getConsecutiveGoalDays, normalizeDailySolvedCounts } from '@/lib/daily-goal';
+import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 
 const PRIMARY = '#137fec';
 
@@ -13,28 +16,37 @@ export default function MyPageScreen() {
   const router = useRouter();
   const { user, isGuest, signOut } = useAuth();
 
-  // Firestore에서 유저 정보 가져오기
-  const [userInfo, setUserInfo] = useState<any>(null);
-  useEffect(() => {
-    async function fetchUserInfo() {
-      if (!user?.id) return;
-      try {
-        const response = await fetch(`http://localhost:8080/api/users/${user.id}`);
-        if (response.ok) {
-          const data = await response.json();
-          setUserInfo(data);
-        }
-      } catch (e) {
-        setUserInfo(null);
-      }
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const loadUserInfo = useCallback(async () => {
+    if (!user?.id) {
+      setUserInfo(null);
+      return;
     }
-    fetchUserInfo();
+    try {
+      const data = await fetchUserInfo(user.id);
+      setUserInfo(data);
+    } catch {
+      setUserInfo(null);
+    }
   }, [user?.id]);
 
-  // 평균 정확도 계산
+  useEffect(() => {
+    void loadUserInfo();
+  }, [loadUserInfo]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadUserInfo();
+    }, [loadUserInfo])
+  );
+
   const correct = userInfo?.correctQuestionNum ?? 0;
   const total = userInfo?.totalQuestionNum ?? 0;
   const accuracy = total === 0 ? 0 : Math.floor((correct / total) * 100);
+  const dailySolvedCounts = normalizeDailySolvedCounts(
+    (userInfo?.dailySolvedCounts ?? null) as Record<string, unknown> | null
+  );
+  const goalStreakDays = getConsecutiveGoalDays(dailySolvedCounts, DAILY_GOAL_TARGET);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -76,10 +88,11 @@ export default function MyPageScreen() {
                 <View style={[styles.statIconWrap, { backgroundColor: '#fff7ed' }]}>
                   <Ionicons name="flame" size={18} color="#f97316" />
                 </View>
-                <Text style={styles.statLabel}>연속 학습일</Text>
+                <Text style={styles.statLabel}>연속 목표 달성</Text>
               </View>
               <Text style={styles.statValue}>
-                12<Text style={styles.statUnit}>일</Text>
+                {goalStreakDays}
+                <Text style={styles.statUnit}>일</Text>
               </Text>
             </View>
 
