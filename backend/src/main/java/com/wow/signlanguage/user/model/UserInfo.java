@@ -1,7 +1,9 @@
 package com.wow.signlanguage.user.model;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class UserInfo {
     private int correctQuestionNum;
@@ -10,10 +12,12 @@ public class UserInfo {
     private int totalQuestionNum;
     private int userLevel;
     private List<String> totalQuestions;
+    private Map<String, Integer> dailySolvedCounts;
 
     public UserInfo() {
         this.incorrectQuestions = new ArrayList<>();
         this.totalQuestions = new ArrayList<>();
+        this.dailySolvedCounts = new HashMap<>();
     }
 
     public UserInfo(int userId, int correctQuestionNum, int totalQuestionNum, int userLevel) {
@@ -23,6 +27,7 @@ public class UserInfo {
         this.userLevel = userLevel;
         this.incorrectQuestions = new ArrayList<>();
         this.totalQuestions = new ArrayList<>();
+        this.dailySolvedCounts = new HashMap<>();
     }
 
     public int getCorrectQuestionNum() {
@@ -71,5 +76,13 @@ public class UserInfo {
 
     public void setTotalQuestions(List<String> totalQuestions) {
         this.totalQuestions = totalQuestions;
+    }
+
+    public Map<String, Integer> getDailySolvedCounts() {
+        return dailySolvedCounts;
+    }
+
+    public void setDailySolvedCounts(Map<String, Integer> dailySolvedCounts) {
+        this.dailySolvedCounts = dailySolvedCounts;
     }
 }
