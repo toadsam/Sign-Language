@@ -231,4 +231,20 @@ public class UserController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @PatchMapping("/{uid}/profile-image")
+    public ResponseEntity<?> updateProfileImage(@PathVariable String uid, @RequestBody Map<String, String> body) {
+        String profileImageUrl = body.get("profileImageUrl");
+        if (profileImageUrl == null || profileImageUrl.isBlank()) {
+            return ResponseEntity.badRequest().body("profileImageUrl을 입력하세요.");
+        }
+        try {
+            UserInfo updated = userService.updateProfileImage(uid, profileImageUrl);
+            return ResponseEntity.ok(updated);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 }

@@ -544,4 +544,130 @@ public class UserService {
         }
         return result;
     }
+
+    // 구글 ID로 유저 존재 여부 확인
+    public boolean existsByGoogleId(String googleId) {
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentReference docRef = db.collection(COLLECTION_NAME).document(googleId);
+            DocumentSnapshot document = docRef.get().get();
+            return document.exists();
+        } catch (Exception e) {
+            System.out.println("existsByGoogleId 에러: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // 새 유저 생성 (회원가입 미완료 상태)
+    public UserInfo createUser(String googleId, String email) {
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentReference docRef = db.collection(COLLECTION_NAME).document(googleId);
+
+            // 새로운 userId 생성
+            int newUserId = getNextUserId(db);
+
+            // 기본 UserInfo 생성 (회원가입 미완료 상태)
+            UserInfo newUser = new UserInfo(newUserId, 0, 0, 1);
+            newUser.setEmail(email);
+            newUser.setRegistered(false); // 아직 추가 정보 입력 안함
+
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("userId", newUser.getUserId());
+            userData.put("correctQuestionNum", newUser.getCorrectQuestionNum());
+            userData.put("incorrectQuestions", newUser.getIncorrectQuestions());
+            userData.put("totalQuestionNum", newUser.getTotalQuestionNum());
+            userData.put("userLevel", newUser.getUserLevel());
+            userData.put("totalQuestions", newUser.getTotalQuestions());
+            userData.put("dailySolvedCounts", newUser.getDailySolvedCounts());
+            userData.put("email", newUser.getEmail());
+            userData.put("isRegistered", newUser.isRegistered());
+
+            docRef.set(userData).get();
+            return newUser;
+        } catch (Exception e) {
+            System.out.println("createUser 에러: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to create user", e);
+        }
+    }
+
+    // 구글 ID로 유저 정보 조회
+    public UserInfo getUserByGoogleId(String googleId) {
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentReference docRef = db.collection(COLLECTION_NAME).document(googleId);
+            DocumentSnapshot document = docRef.get().get();
+
+            if (document.exists()) {
+                UserInfo userInfo = document.toObject(UserInfo.class);
+
+                // isRegistered 필드가 Firestore에 없는 경우 false로 설정
+                Boolean isRegisteredField = document.getBoolean("isRegistered");
+                if (isRegisteredField == null) {
+                    System.out.println("getUserByGoogleId - isRegistered 필드 없음, false로 설정");
+                    userInfo.setRegistered(false);
+                } else {
+                    userInfo.setRegistered(isRegisteredField);
+                }
+
+                System.out.println("getUserByGoogleId - googleId: " + googleId);
+                System.out.println("getUserByGoogleId - isRegistered 필드값: " + isRegisteredField);
+                System.out.println("getUserByGoogleId - UserInfo.isRegistered(): " + userInfo.isRegistered());
+
+                return userInfo;
+            }
+            return null;
+        } catch (Exception e) {
+            System.out.println("getUserByGoogleId 에러: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to get user", e);
+        }
+    }
+
+    // 회원가입 완료 (추가 정보 입력)
+    public UserInfo completeUserRegistration(String googleId, String name, String phoneNumber, String organization) {
+        try {
+            Firestore db = FirestoreClient.getFirestore();
+            DocumentReference docRef = db.collection(COLLECTION_NAME).document(googleId);
+            DocumentSnapshot document = docRef.get().get();
+
+            if (!document.exists()) {
+                throw new RuntimeException("User not found");
+            }
+
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("name", name);
+            updates.put("phoneNumber", phoneNumber);
+            updates.put("organization", organization);
+            updates.put("isRegistered", true);
+
+            docRef.update(updates).get();
+
+            DocumentSnapshot updatedDoc = docRef.get().get();
+            return updatedDoc.toObject(UserInfo.class);
+        } catch (Exception e) {
+            System.out.println("completeUserRegistration 에러: " + e.getMessage());
+            throw new RuntimeException("Failed to complete registration", e);
+        }
+    }
+
+    // 프로필 이미지 업데이트
+    public UserInfo updateProfileImage(String uid, String profileImageUrl) throws ExecutionException, InterruptedException {
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentReference docRef = db.collection(COLLECTION_NAME).document(uid);
+        DocumentSnapshot document = docRef.get().get();
+
+        if (!document.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("profileImageUrl", profileImageUrl);
+
+        docRef.update(updates).get();
+
+        DocumentSnapshot updatedDoc = docRef.get().get();
+        return updatedDoc.toObject(UserInfo.class);
+    }
 }
