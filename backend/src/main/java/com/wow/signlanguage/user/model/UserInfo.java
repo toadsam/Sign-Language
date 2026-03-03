@@ -14,10 +14,19 @@ public class UserInfo {
     private List<String> totalQuestions;
     private Map<String, Integer> dailySolvedCounts;
 
+    // 추가 필드: 회원가입 시 입력받는 정보
+    private String name;
+    private String email;
+    private String phoneNumber;
+    private String organization; // 학교/직장
+    private boolean isRegistered; // 회원가입 완료 여부
+    private String profileImageUrl; // 프로필 이미지 URL (base64 또는 URL)
+
     public UserInfo() {
         this.incorrectQuestions = new ArrayList<>();
         this.totalQuestions = new ArrayList<>();
         this.dailySolvedCounts = new HashMap<>();
+        this.isRegistered = false;
     }
 
     public UserInfo(int userId, int correctQuestionNum, int totalQuestionNum, int userLevel) {
@@ -28,6 +37,7 @@ public class UserInfo {
         this.incorrectQuestions = new ArrayList<>();
         this.totalQuestions = new ArrayList<>();
         this.dailySolvedCounts = new HashMap<>();
+        this.isRegistered = false;
     }
 
     public int getCorrectQuestionNum() {
@@ -84,5 +94,53 @@ public class UserInfo {
 
     public void setDailySolvedCounts(Map<String, Integer> dailySolvedCounts) {
         this.dailySolvedCounts = dailySolvedCounts;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public String getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(String organization) {
+        this.organization = organization;
+    }
+
+    public boolean isRegistered() {
+        return isRegistered;
+    }
+
+    public void setRegistered(boolean registered) {
+        isRegistered = registered;
+    }
+
+    public String getProfileImageUrl() {
+        return profileImageUrl;
+    }
+
+    public void setProfileImageUrl(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
     }
 }

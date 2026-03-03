@@ -1,7 +1,8 @@
-﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+﻿﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,9 +15,11 @@ const PRIMARY = '#137fec';
 
 export default function MyPageScreen() {
   const router = useRouter();
-  const { user, isGuest, signOut } = useAuth();
+  const { user, isGuest, signOut, updateUser } = useAuth();
 
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   const loadUserInfo = useCallback(async () => {
     if (!user?.id) {
       setUserInfo(null);
@@ -39,6 +42,63 @@ export default function MyPageScreen() {
       void loadUserInfo();
     }, [loadUserInfo])
   );
+
+  const handleProfileImageEdit = async () => {
+    if (!user?.id) {
+      Alert.alert('오류', '로그인이 필요합니다.');
+      return;
+    }
+
+    try {
+      // 권한 요청
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('권한 필요', '갤러리 접근 권한이 필요합니다.');
+        return;
+      }
+
+      // 이미지 선택
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setIsUploadingImage(true);
+        const asset = result.assets[0];
+
+        // base64 이미지 데이터 생성
+        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+
+        // 백엔드에 프로필 이미지 업데이트 요청
+        const response = await fetch(`http://localhost:8080/api/users/${user.id}/profile-image`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profileImageUrl: base64Image }),
+        });
+
+        if (response.ok) {
+          // AuthContext 업데이트
+          await updateUser({ picture: base64Image });
+
+          // UserInfo 새로고침
+          await loadUserInfo();
+
+          Alert.alert('성공', '프로필 이미지가 업데이트되었습니다.');
+        } else {
+          Alert.alert('오류', '프로필 이미지 업데이트에 실패했습니다.');
+        }
+      }
+    } catch (error) {
+      console.error('프로필 이미지 업데이트 에러:', error);
+      Alert.alert('오류', '이미지 업로드 중 문제가 발생했습니다.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const correct = userInfo?.correctQuestionNum ?? 0;
   const total = userInfo?.totalQuestionNum ?? 0;
@@ -65,14 +125,23 @@ export default function MyPageScreen() {
               <Image
                 source={{
                   uri:
-                    user?.picture ??
+                    (userInfo as any)?.profileImageUrl ||
+                    user?.picture ||
                     'https://lh3.googleusercontent.com/aida-public/AB6AXuA9xzg_QHvuUbnQVvId25kc3DxT6xgZYv7hdXVPBleZEWUHktwcMlvQG1wx-vXuT53_Ah-AQVmTIBVym4_hT8xWPSd9Fp9rCWpXdIQWWr4REC3xvNLAjTBVl8BvaBCZCW1WZwNkrA8zFK28kgB3birhCN3AX21RhyN83PJDnB3HbWsnyYI8ZfOJHO7DL3LhPpwUIZoxWLeddmWQP9xoPrqcGe2WLR9OI25acRea0Px0vbWqG8RvtJow0X1bCQXGv6hckv7Zn9rsyA',
                 }}
                 contentFit="cover"
                 style={styles.avatar}
               />
-              <Pressable style={styles.editBadge}>
-                <Ionicons name="create" size={13} color="#fff" />
+              <Pressable
+                style={styles.editBadge}
+                onPress={handleProfileImageEdit}
+                disabled={isUploadingImage || isGuest}
+              >
+                <Ionicons
+                  name={isUploadingImage ? "hourglass" : "create"}
+                  size={13}
+                  color="#fff"
+                />
               </Pressable>
             </View>
             <Text style={styles.name}>{user?.name ?? (isGuest ? '비회원' : '사용자')}</Text>
