@@ -21,11 +21,27 @@ public class SecurityConfig {
             .requestMatchers(
                 "/api/health",
                 "/api/auth/**",
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
                 "/oauth2/**",
                 "/login/**",
                 "/error",
                 "/translate",
                 "/clips/**")
+<<<<<<< HEAD
+=======
+=======
+                "/api/quiz/**",
+                "/choicemp4/**",
+                "/clips/**",
+                "/oauth2/**",
+                "/login/**",
+                "/error",
+                "/api/users/**")
+>>>>>>> main
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
             .permitAll()
             .anyRequest().authenticated())
         .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(oauth2SuccessUrl, true))

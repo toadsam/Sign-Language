@@ -67,7 +67,15 @@ export default function HomeScreen() {
 
           <View style={styles.quickWrap}>
             <Text style={styles.quickTitle}>빠른 메뉴</Text>
+<<<<<<< HEAD
             <Pressable style={styles.quickCard} onPress={() => router.push('/mapping')}>
+=======
+<<<<<<< HEAD
+            <Pressable style={styles.quickCard} onPress={() => router.push('/mapping')}>
+=======
+            <Pressable style={styles.quickCard} onPress={() => router.push('/translator')}>
+>>>>>>> main
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
               <View style={styles.quickIconWrap}>
                 <MaterialCommunityIcons name="sign-language" size={22} color={PRIMARY} />
               </View>

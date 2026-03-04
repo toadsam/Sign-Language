@@ -1,0 +1,128 @@
+Project SignLanguage {
+  database_type: "PostgreSQL"
+  Note: "As-is Firestore mapping + quiz analytics extensions (attempts, wrong-rate, difficulty)."
+}
+
+Table users {
+  uid varchar [pk, note: "Firestore users document ID (Google sub or username)"]
+  user_id int [not null, unique, note: "Generated from counter lastUserId"]
+
+  correct_question_num int [not null, default: 0]
+  total_question_num int [not null, default: 0]
+  user_level int [not null, default: 1]
+
+  incorrect_questions jsonb [note: "Firestore array<string>"]
+  total_questions jsonb [note: "Firestore array<string>"]
+  daily_solved_counts jsonb [note: "Firestore map<string(date), number>"]
+  incorrect_question_dates jsonb [note: "Firestore map<quizId, timestamp>"]
+
+  name varchar
+  email varchar
+  phone_number varchar
+  organization varchar
+  is_registered boolean [not null, default: false]
+  profile_image_url text
+
+  Note: "Fields reflect UserService read/write paths."
+}
+
+Table quiz_items {
+  quiz_id varchar [pk, note: "Firestore quiz_items document ID"]
+  question_text varchar [not null]
+  choices jsonb [not null, note: "Expected 4 strings: A, B, C, D order"]
+  correct_choice_id varchar [not null, note: "A|B|C|D"]
+  video_url text [not null]
+  level int [not null, default: 1]
+  is_active boolean [not null, default: true]
+
+  // Aggregated stats (new)
+  attempt_count int [not null, default: 0]
+  correct_count int [not null, default: 0]
+  wrong_count int [not null, default: 0]
+  wrong_rate decimal(5,4) [not null, default: 0]
+  difficulty_score decimal(6,4) [not null, default: 0]
+  difficulty_level varchar [not null, default: 'provisional', note: "provisional|easy|medium|hard"]
+  last_stats_updated_at timestamp [note: "When aggregated stats were last updated"]
+
+  Note: "Difficulty rule: keep difficulty_level='provisional' while attempt_count < N (minimum sample threshold)."
+}
+
+Table translator_bookmarks {
+  uid varchar [not null]
+  quiz_id varchar [not null]
+  question_text varchar [not null]
+  word varchar [not null]
+  video_url text [not null]
+  saved_at timestamp [note: "Firestore serverTimestamp"]
+
+  indexes {
+    (uid, quiz_id) [pk]
+    (uid, saved_at)
+  }
+
+  Note: "Firestore path: users/{uid}/translator_bookmarks/{quizId}"
+}
+
+Table wrong_note_saved {
+  uid varchar [not null]
+  quiz_id varchar [not null]
+  question_text varchar [not null]
+  word varchar [not null]
+  video_url text [not null]
+  wrong_at timestamp
+  saved_at timestamp [note: "Firestore serverTimestamp"]
+
+  indexes {
+    (uid, quiz_id) [pk]
+    (uid, saved_at)
+  }
+
+  Note: "Firestore path: users/{uid}/wrong_note_saved/{quizId}"
+}
+
+Table quiz_attempt_logs {
+  attempt_id bigserial [pk]
+  quiz_id varchar [not null]
+  selected_choice_id varchar [note: "Selected option id (A|B|C|D)"]
+  is_correct boolean [not null]
+  answered_at timestamp [not null, default: `now()`]
+  session_id varchar
+  client_ms int [note: "Client-side elapsed time (ms), optional"]
+
+  indexes {
+    (quiz_id, answered_at)
+  }
+
+  Note: "Append-only attempt event log focused on quiz-level analytics (no user tracking)."
+}
+
+Table quiz_daily_stats {
+  quiz_id varchar [not null]
+  stat_date date [not null]
+  attempt_count int [not null, default: 0]
+  correct_count int [not null, default: 0]
+  wrong_count int [not null, default: 0]
+  wrong_rate decimal(5,4) [not null, default: 0]
+  correct_rate decimal(5,4) [not null, default: 0]
+
+  indexes {
+    (quiz_id, stat_date) [pk]
+    (stat_date)
+  }
+
+  Note: "Daily aggregated stats per quiz for trend/ranking screens."
+}
+
+Table app_counters {
+  counter_key varchar [pk, note: "userCounter"]
+  last_user_id int [not null, note: "Field name in Firestore: lastUserId"]
+
+  Note: "In Firestore this is stored as users/userCounter document."
+}
+
+Ref: translator_bookmarks.uid > users.uid
+Ref: translator_bookmarks.quiz_id > quiz_items.quiz_id
+Ref: wrong_note_saved.uid > users.uid
+Ref: wrong_note_saved.quiz_id > quiz_items.quiz_id
+Ref: quiz_attempt_logs.quiz_id > quiz_items.quiz_id
+Ref: quiz_daily_stats.quiz_id > quiz_items.quiz_id

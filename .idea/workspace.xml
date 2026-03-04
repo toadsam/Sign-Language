@@ -5,7 +5,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="693a4928-a697-406a-8c43-5d8e6496dcb1" name="변경" comment="">
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/dto/IdTokenRequest.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/dto/SignupCompleteRequest.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserAlreadyExistsException.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserNotFoundException.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+<<<<<<< HEAD
+=======
+      <change beforePath="$PROJECT_DIR$/backend/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/backend/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/.gradle/file-system.probe" beforeDir="false" afterPath="$PROJECT_DIR$/backend/.gradle/file-system.probe" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/build/tmp/compileJava/previous-compilation-data.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/build/tmp/compileJava/previous-compilation-data.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/AuthController.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/AuthController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/GoogleAuthService.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/GoogleAuthService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/controller/UserController.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/controller/UserController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/model/UserInfo.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/model/UserInfo.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserService.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserService.java" afterDir="false" />
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -19,8 +34,13 @@
   </component>
   <component name="CopilotUserSelectedModel">
     <selectedModels>
+<<<<<<< HEAD
       <entry key="chat-panel" value="GPT-5.2" />
       <entry key="agent-panel" value="GPT-5.2" />
+=======
+      <entry key="chat-panel" value="Claude Sonnet 4.5" />
+      <entry key="agent-panel" value="Claude Sonnet 4.5" />
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
     </selectedModels>
   </component>
   <component name="Git.Settings">
@@ -115,6 +135,12 @@
       <workItem from="1771320380284" duration="238000" />
       <workItem from="1771741077238" duration="170000" />
       <workItem from="1771742807135" duration="120000" />
+<<<<<<< HEAD
+=======
+      <workItem from="1771983445463" duration="9038000" />
+      <workItem from="1772465575029" duration="2123000" />
+      <workItem from="1772504830241" duration="17887000" />
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
     </task>
     <servers />
   </component>

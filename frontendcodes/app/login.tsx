@@ -1,4 +1,4 @@
-﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+﻿﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ImageBackground, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -9,16 +9,18 @@ import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signInWithGoogleIdToken, continueAsGuest, accessToken, isGuest } = useAuth();
+  const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
   const { request, response, promptAsync, isExpoGo, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (accessToken || isGuest) {
-      router.replace('/home');
-    }
-  }, [accessToken, isGuest, router]);
+  // accessToken이나 isGuest가 이미 있으면 홈으로 이동하는 로직을 제거
+  // (회원가입 미완료 시 signup으로 이동해야 하므로)
+  // useEffect(() => {
+  //   if (accessToken || isGuest) {
+  //     router.replace('/home');
+  //   }
+  // }, [accessToken, isGuest, router]);
 
   useEffect(() => {
     const login = async () => {
@@ -49,8 +51,88 @@ export default function LoginScreen() {
       try {
         setIsSubmitting(true);
         setErrorMessage(null);
+<<<<<<< HEAD
         await signInWithGoogleIdToken(idToken);
         router.replace('/home');
+=======
+
+        // 1. 먼저 로그인 시도
+        const loginResponse = await fetch('http://localhost:8080/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+
+        const loginData = await loginResponse.json();
+        console.log('로그인 응답:', loginData);
+        console.log('isRegistered 값:', loginData.isRegistered);
+        console.log('user.isRegistered 값:', loginData.user?.isRegistered);
+
+        if (loginResponse.ok && loginData.success) {
+          // 로그인 성공
+          console.log('로그인 성공, 백엔드 응답:', loginData);
+
+          if (loginData.isRegistered === true) {
+            // 회원가입 완료된 유저 -> 백엔드 유저 정보로 AuthContext 업데이트 후 홈으로
+            console.log('회원가입 완료 유저 -> 백엔드 유저 정보로 로그인, 홈으로 이동');
+            console.log('백엔드 유저 정보:', loginData.user);
+
+            await signInWithBackendUser(loginData.accessToken, loginData.user);
+            router.replace('/home');
+          } else {
+            // 회원가입 미완료 유저 -> 회원가입 화면으로
+            console.log('회원가입 미완료 유저 -> 회원가입 화면으로 이동');
+
+            // 임시로 토큰만 저장 (회원가입 완료 후 다시 업데이트됨)
+            await signInWithBackendUser(loginData.accessToken, loginData.user);
+
+            const googleId = loginData.user.id;
+            const email = loginData.user.email || '';
+
+            console.log('이동할 경로:', '/signup', '파라미터:', { googleId, email });
+
+            router.push({
+              pathname: '/signup' as any,
+              params: {
+                googleId,
+                email,
+              },
+            } as any);
+          }
+        } else if (loginResponse.status === 404 && loginData.needsSignup) {
+          // 2. 유저가 없으면 회원가입 시도
+          console.log('유저 없음 -> 회원가입 시도');
+          const signupResponse = await fetch('http://localhost:8080/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken }),
+          });
+
+          const signupData = await signupResponse.json();
+          console.log('회원가입 응답:', signupData);
+
+          if (signupResponse.ok && signupData.success) {
+            // 회원가입 성공 -> 백엔드 유저 정보로 AuthContext 업데이트 후 회원가입 화면으로
+            await signInWithBackendUser(signupData.accessToken, signupData.user);
+
+            const googleId = signupData.user.id;
+            const email = signupData.user.email || '';
+
+            console.log('회원가입 성공 -> 회원가입 화면으로 이동, googleId:', googleId);
+            router.push({
+              pathname: '/signup' as any,
+              params: {
+                googleId,
+                email,
+              },
+            } as any);
+          } else {
+            setErrorMessage(signupData.message || '회원가입에 실패했습니다.');
+          }
+        } else {
+          setErrorMessage(loginData.message || '로그인에 실패했습니다.');
+        }
+>>>>>>> 5822cc4279c14711c9be9faba5acf1d44fb72d1d
       } catch (error) {
         console.error(error);
         setErrorMessage('로그인에 실패했습니다. 다시 시도해 주세요.');
@@ -60,7 +142,7 @@ export default function LoginScreen() {
     };
 
     void login();
-  }, [response, router, signInWithGoogleIdToken]);
+  }, [response, router, signInWithBackendUser]);
 
   const handleGooglePress = async () => {
     if (!hasGoogleClientId) {
@@ -92,21 +174,11 @@ export default function LoginScreen() {
   const handleGuestStart = async () => {
     setErrorMessage(null);
     await continueAsGuest();
+    router.replace('/home');
   };
 
-  if (accessToken || isGuest) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loggedInWrap}>
-          <Text style={styles.loggedInTitle}>이미 로그인된 상태입니다.</Text>
-          <Text style={styles.loggedInSubtitle}>홈 화면으로 이동해 주세요.</Text>
-          <Pressable style={styles.goHomeButton} onPress={() => router.replace('/home')}>
-            <Text style={styles.goHomeButtonText}>홈으로 이동</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // "이미 로그인된 상태입니다" UI 제거
+  // (회원가입 미완료 유저가 signup으로 이동해야 하는데 방해됨)
 
   return (
     <SafeAreaView style={styles.safeArea}>

@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 
 import { AuthUser, loginWithGoogleToken } from '@/lib/api/auth';
@@ -64,8 +64,10 @@ type AuthContextValue = {
   user: AuthUser | null;
   isGuest: boolean;
   signInWithGoogleIdToken: (idToken: string) => Promise<void>;
+  signInWithBackendUser: (accessToken: string, user: AuthUser) => Promise<void>;
   continueAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
+  updateUser: (userData: Partial<AuthUser>) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -94,13 +96,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogleIdToken = async (idToken: string) => {
     const payload = await loginWithGoogleToken(idToken);
+
+    // idToken에서 googleId(sub) 추출
+    const tokenPayload = JSON.parse(atob(idToken.split('.')[1]));
+    const googleId = tokenPayload.sub;
+
+    // user 객체에 googleId 추가
+    const userWithGoogleId = { ...payload.user, id: googleId };
+
     await Promise.all([
       storage.set(ACCESS_TOKEN_KEY, payload.accessToken),
-      storage.set(USER_KEY, JSON.stringify(payload.user)),
+      storage.set(USER_KEY, JSON.stringify(userWithGoogleId)),
       storage.remove(GUEST_MODE_KEY),
     ]);
     setAccessToken(payload.accessToken);
-    setUser(payload.user);
+    setUser(userWithGoogleId);
+    setIsGuest(false);
+  };
+
+  const signInWithBackendUser = async (token: string, backendUser: AuthUser) => {
+    await Promise.all([
+      storage.set(ACCESS_TOKEN_KEY, token),
+      storage.set(USER_KEY, JSON.stringify(backendUser)),
+      storage.remove(GUEST_MODE_KEY),
+    ]);
+    setAccessToken(token);
+    setUser(backendUser);
     setIsGuest(false);
   };
 
@@ -128,6 +149,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsGuest(false);
   };
 
+  const updateUser = useCallback(async (userData: Partial<AuthUser>) => {
+    if (!user) {
+      return;
+    }
+    const updatedUser = { ...user, ...userData };
+    await storage.set(USER_KEY, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  }, [user]);
+
   const value = useMemo(
     () => ({
       isLoading,
@@ -135,10 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       isGuest,
       signInWithGoogleIdToken,
+      signInWithBackendUser,
       continueAsGuest,
       signOut,
+      updateUser,
     }),
-    [isLoading, accessToken, user, isGuest]
+    [isLoading, accessToken, user, isGuest, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
