@@ -1,31 +1,73 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+﻿import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+
+import { useAuth } from '@/context/auth-context';
+import { BookmarkItem, fetchBookmarks } from '@/lib/api/bookmarks';
 
 const PRIMARY = '#137fec';
 
-const bookmarkWords = [
-  { date: '2023.10.24', word: '안녕하세요', meaning: 'Hello / Hi' },
-  { date: '2023.10.24', word: '고마워요', meaning: 'Thank you' },
-  { date: '2023.10.23', word: '만나서 반가워요', meaning: 'Nice to meet you' },
-  { date: '2023.10.21', word: '도와주세요', meaning: 'Please help me' },
-  { date: '2023.10.20', word: '죄송합니다', meaning: "I'm sorry" },
-  { date: '2023.10.15', word: '어디에요?', meaning: 'Where is it?' },
-];
-
 export default function BookmarkScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+
   const [query, setQuery] = useState('');
+  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadBookmarks() {
+      if (!user?.id) {
+        setBookmarks([]);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const data = await fetchBookmarks(user.id);
+        if (!mounted) return;
+        setBookmarks(data ?? []);
+      } catch (error) {
+        if (!mounted) return;
+        setErrorMessage(error instanceof Error ? error.message : '북마크를 불러오지 못했습니다.');
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadBookmarks();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  function formatSavedDate(value: unknown): string {
+    if (value && typeof value === 'object' && 'seconds' in value && typeof (value as { seconds?: unknown }).seconds === 'number') {
+      const date = new Date(((value as { seconds: number }).seconds ?? 0) * 1000);
+      return date.toISOString().slice(0, 10).replace(/-/g, '.');
+    }
+    return '-';
+  }
 
   const filteredWords = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
-    if (!trimmed) return bookmarkWords;
-    return bookmarkWords.filter(
-      (item) => item.word.includes(trimmed) || item.meaning.toLowerCase().includes(trimmed),
-    );
-  }, [query]);
+    if (!trimmed) return bookmarks;
+
+    return bookmarks.filter((item) => {
+      const word = item.word?.toLowerCase?.() ?? '';
+      const questionText = item.questionText?.toLowerCase?.() ?? '';
+      return word.includes(trimmed) || questionText.includes(trimmed);
+    });
+  }, [bookmarks, query]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -35,9 +77,7 @@ export default function BookmarkScreen() {
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </Pressable>
           <Text style={styles.headerTitle}>북마크</Text>
-          <Pressable style={styles.headerButton}>
-            <Ionicons name="create-outline" size={21} color="#111827" />
-          </Pressable>
+          <View style={styles.headerButton} />
         </View>
 
         <View style={styles.searchWrap}>
@@ -45,23 +85,29 @@ export default function BookmarkScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="단어 검색 (Search words)"
+            placeholder="단어 검색"
             placeholderTextColor="#9ca3af"
             style={styles.searchInput}
           />
         </View>
 
         <ScrollView contentContainerStyle={styles.listWrap} showsVerticalScrollIndicator={false}>
+          {isLoading ? <Text style={styles.wordMeaning}>불러오는 중...</Text> : null}
+          {!isLoading && errorMessage ? <Text style={styles.wordMeaning}>{errorMessage}</Text> : null}
+          {!isLoading && !errorMessage && filteredWords.length === 0 ? (
+            <Text style={styles.wordMeaning}>저장된 단어가 없습니다.</Text>
+          ) : null}
+
           {filteredWords.map((item) => (
-            <Pressable key={`${item.date}-${item.word}`} style={styles.wordCard}>
+            <Pressable key={item.quizId} style={styles.wordCard}>
               <View style={styles.wordLeft}>
-                <Text style={styles.wordDate}>{item.date}</Text>
-                <Text style={styles.wordTitle}>{item.word}</Text>
-                <Text style={styles.wordMeaning}>{item.meaning}</Text>
+                <Text style={styles.wordDate}>{formatSavedDate(item.savedAt)}</Text>
+                <Text style={styles.wordTitle}>{item.word || '-'}</Text>
+                <Text style={styles.wordMeaning}>{item.questionText || '-'}</Text>
               </View>
 
               <View style={styles.playBtn}>
-                <Ionicons name="play" size={17} color={PRIMARY} />
+                <Ionicons name="bookmark" size={17} color={PRIMARY} />
               </View>
             </Pressable>
           ))}

@@ -1,12 +1,51 @@
 ﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '@/context/auth-context';
+import { DAILY_GOAL_TARGET, getGoalPercent, getTodaySolvedCount, normalizeDailySolvedCounts } from '@/lib/daily-goal';
+import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 
 const PRIMARY = '#1f80e3';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const nickname = user?.name?.trim() || '사용자';
+  const profileImageUri = user?.picture?.trim();
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+
+  const loadUserInfo = useCallback(async () => {
+    if (!user?.id) {
+      setUserInfo(null);
+      return;
+    }
+    try {
+      const info = await fetchUserInfo(user.id);
+      setUserInfo(info);
+    } catch {
+      setUserInfo(null);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadUserInfo();
+  }, [loadUserInfo]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadUserInfo();
+    }, [loadUserInfo])
+  );
+
+  const dailySolvedCounts = useMemo(
+    () => normalizeDailySolvedCounts((userInfo?.dailySolvedCounts ?? null) as Record<string, unknown> | null),
+    [userInfo?.dailySolvedCounts]
+  );
+  const solvedToday = getTodaySolvedCount(dailySolvedCounts);
+  const goalPercent = getGoalPercent(solvedToday, DAILY_GOAL_TARGET);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -15,12 +54,14 @@ export default function HomeScreen() {
           <View style={styles.header}>
             <View style={styles.profileWrap}>
               <Image
-                source={{
-                  uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCuZETDLRamDcAeDLqsFHRHY7H8vVuyNRf2BjbeRkBNnbpvzmtYka4wZUIw4nMw4UjnoxdJhQ3GWnkkh6SipTszqzAzyaMMiH_aojuiiRJtAzGyRXJJ4vCWTh4DlSgdkPdpyPpso6vK9-TlBdgpMt42i_pur5Bqft_LCR-sNkZarzqQP3WoO5pXedmHsVIJ6jji1gBXedgAtCdJCkMYhfIsWplUnRXF_VqMTidonJ1lZVrHZL4LzhdBALOXzlKcDvzWXEqHotuHtQ',
-                }}
+                source={
+                  profileImageUri
+                    ? { uri: profileImageUri }
+                    : { uri: 'https://cdn-icons-png.flaticon.com/512/149/149071.png' }
+                }
                 style={styles.profileImage}
               />
-              <Text style={styles.profileName}>Suyeojigyo</Text>
+              <Text style={styles.profileName}>{nickname}</Text>
             </View>
             <Pressable style={styles.iconButton}>
               <Ionicons name="notifications" size={20} color="#111827" />
@@ -28,19 +69,21 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.intro}>
-            <Text style={styles.greeting}>안녕하세요, 지은님! 👋</Text>
+            <Text style={styles.greeting}>안녕하세요, {nickname}님</Text>
             <Text style={styles.greetingSub}>수어 학습을 응원합니다!</Text>
           </View>
 
           <View style={styles.goalCard}>
             <View style={styles.goalRow}>
               <Text style={styles.goalTitle}>오늘의 목표</Text>
-              <Text style={styles.goalPercent}>60%</Text>
+              <Text style={styles.goalPercent}>{goalPercent}%</Text>
             </View>
             <View style={styles.progressTrack}>
-              <View style={styles.progressFill} />
+              <View style={[styles.progressFill, { width: `${goalPercent}%` }]} />
             </View>
-            <Text style={styles.goalDesc}>오늘의 퀴즈 5개 중 3개 완료</Text>
+            <Text style={styles.goalDesc}>
+              오늘의 퀴즈 {DAILY_GOAL_TARGET}개 중 {solvedToday}개 완료
+            </Text>
           </View>
 
           <View style={styles.challengeCard}>
@@ -59,7 +102,7 @@ export default function HomeScreen() {
             <View style={styles.challengeBody}>
               <Text style={styles.challengeTitle}>오늘의 퀴즈 풀기</Text>
               <Text style={styles.challengeSub}>AI 아바타와 함께 수어 실력을 키워보세요.</Text>
-              <Pressable style={styles.challengeButton}>
+              <Pressable style={styles.challengeButton} onPress={() => router.push('/quiz')}>
                 <Text style={styles.challengeButtonText}>퀴즈 시작하기</Text>
               </Pressable>
             </View>
@@ -67,7 +110,11 @@ export default function HomeScreen() {
 
           <View style={styles.quickWrap}>
             <Text style={styles.quickTitle}>빠른 메뉴</Text>
+<<<<<<< HEAD
             <Pressable style={styles.quickCard} onPress={() => router.push('/mapping')}>
+=======
+            <Pressable style={styles.quickCard} onPress={() => router.push('/translator')}>
+>>>>>>> main
               <View style={styles.quickIconWrap}>
                 <MaterialCommunityIcons name="sign-language" size={22} color={PRIMARY} />
               </View>

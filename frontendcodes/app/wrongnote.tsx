@@ -1,20 +1,120 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useVideoPlayer, VideoView } from 'expo-video';
+
+import { useAuth } from '@/context/auth-context';
+import {
+  WrongNoteSavedItem,
+  deleteSavedWrongNote,
+  fetchSavedWrongNotes,
+} from '@/lib/api/wrong-note-saved';
 
 const PRIMARY = '#137fec';
 
-const wrongWords = [
-  { word: '사랑합니다', date: '2023.10.24' },
-  { word: '친구', date: '2023.10.23' },
-  { word: '안녕하세요', date: '2023.10.20' },
-  { word: '감사합니다', date: '2023.10.18' },
-];
-
 export default function WrongNoteScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+
+  const [wrongNotes, setWrongNotes] = useState<WrongNoteSavedItem[]>([]);
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadWrongNotes() {
+      if (!user?.id) {
+        setWrongNotes([]);
+        setSelectedQuizId(null);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const data = await fetchSavedWrongNotes(user.id);
+        if (!mounted) return;
+
+        const list = data ?? [];
+        setWrongNotes(list);
+        setSelectedQuizId(list[0]?.quizId ?? null);
+      } catch (error) {
+        if (!mounted) return;
+        setErrorMessage(error instanceof Error ? error.message : '오답노트를 불러오지 못했습니다.');
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadWrongNotes();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  const selectedItem = useMemo(
+    () => wrongNotes.find((item) => item.quizId === selectedQuizId) ?? wrongNotes[0] ?? null,
+    [wrongNotes, selectedQuizId]
+  );
+
+  const player = useVideoPlayer(selectedItem?.videoUrl ?? null, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.play();
+  });
+
+  function handlePlay(quizId: string) {
+    setSelectedQuizId(quizId);
+    try {
+      player.replay();
+      player.play();
+    } catch {
+      // Ignore player readiness errors and rely on selected item update.
+    }
+  }
+
+  async function handleDelete(quizId: string) {
+    if (!user?.id || deletingQuizId === quizId) return;
+    try {
+      setDeletingQuizId(quizId);
+      setErrorMessage(null);
+      await deleteSavedWrongNote(user.id, quizId);
+      setWrongNotes((prev) => {
+        const next = prev.filter((item) => item.quizId !== quizId);
+        if (selectedQuizId === quizId) {
+          setSelectedQuizId(next[0]?.quizId ?? null);
+        }
+        return next;
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '오답노트 삭제에 실패했습니다.');
+    } finally {
+      setDeletingQuizId(null);
+    }
+  }
+
+  function formatWrongDate(value: unknown): string {
+    if (value && typeof value === 'object' && 'seconds' in value) {
+      const raw = (value as { seconds?: unknown }).seconds;
+      if (typeof raw === 'number') {
+        return new Date(raw * 1000).toISOString().slice(0, 10).replace(/-/g, '.');
+      }
+    }
+    if (typeof value === 'string') {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString().slice(0, 10).replace(/-/g, '.');
+      }
+    }
+    return '-';
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -29,53 +129,79 @@ export default function WrongNoteScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.heroCard}>
-            <View style={styles.dotLayer} />
-
-            <Pressable style={styles.replayBtn}>
-              <Ionicons name="refresh" size={16} color="#475569" />
-              <Text style={styles.replayText}>다시 보기</Text>
-            </Pressable>
-
-            <Image
-              source={{
-                uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA9xzg_QHvuUbnQVvId25kc3DxT6xgZYv7hdXVPBleZEWUHktwcMlvQG1wx-vXuT53_Ah-AQVmTIBVym4_hT8xWPSd9Fp9rCWpXdIQWWr4REC3xvNLAjTBVl8BvaBCZCW1WZwNkrA8zFK28kgB3birhCN3AX21RhyN83PJDnB3HbWsnyYI8ZfOJHO7DL3LhPpwUIZoxWLeddmWQP9xoPrqcGe2WLR9OI25acRea0Px0vbWqG8RvtJow0X1bCQXGv6hckv7Zn9rsyA',
-              }}
-              contentFit="cover"
-              style={styles.heroImage}
-            />
+            {selectedItem?.videoUrl ? (
+              <VideoView style={styles.heroVideo} player={player} nativeControls contentFit="cover" />
+            ) : (
+              <View style={styles.heroImagePlaceholder}>
+                <Ionicons name="bookmark" size={42} color={PRIMARY} />
+              </View>
+            )}
 
             <View style={styles.wordPanel}>
               <Text style={styles.wordLabel}>선택된 단어</Text>
               <View style={styles.wordRow}>
-                <Text style={styles.wordText}>수어지교</Text>
+                <Text style={styles.wordText}>{selectedItem?.word || '-'}</Text>
                 <Ionicons name="volume-high" size={16} color={PRIMARY} />
               </View>
+              <Text style={styles.questionText}>{selectedItem?.questionText || '틀린 단어를 선택하세요.'}</Text>
             </View>
           </View>
 
           <View style={styles.listHeader}>
             <Text style={styles.listTitle}>틀린 단어 목록</Text>
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>12개 복습 필요</Text>
+              <Text style={styles.badgeText}>{wrongNotes.length}개 복습 필요</Text>
             </View>
           </View>
 
           <View style={styles.listWrap}>
-            {wrongWords.map((item) => (
-              <Pressable key={item.word} style={styles.wordItem}>
-                <View>
-                  <Text style={styles.itemWord}>{item.word}</Text>
-                  <View style={styles.dateRow}>
-                    <Ionicons name="calendar-outline" size={12} color="#94a3b8" />
-                    <Text style={styles.itemDate}>{item.date}</Text>
-                  </View>
-                </View>
+            {isLoading ? <Text style={styles.helperText}>불러오는 중...</Text> : null}
+            {!isLoading && errorMessage ? <Text style={styles.helperText}>{errorMessage}</Text> : null}
+            {!isLoading && !errorMessage && wrongNotes.length === 0 ? (
+              <Text style={styles.helperText}>저장된 오답이 없습니다.</Text>
+            ) : null}
 
-                <View style={styles.playBtn}>
-                  <Ionicons name="play" size={18} color={PRIMARY} />
-                </View>
-              </Pressable>
-            ))}
+            {wrongNotes.map((item) => {
+              const isSelected = (selectedItem?.quizId ?? null) === item.quizId;
+              return (
+                <Pressable
+                  key={item.quizId}
+                  style={[styles.wordItem, isSelected && styles.wordItemSelected]}
+                  onPress={() => setSelectedQuizId(item.quizId)}>
+                  <View>
+                    <Text style={styles.itemWord}>{item.word || '-'}</Text>
+                    <View style={styles.dateRow}>
+                      <Ionicons name="calendar-outline" size={12} color="#94a3b8" />
+                      <Text style={styles.itemDate}>{formatWrongDate(item.savedAt ?? item.wrongAt)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.actionsRow}>
+                    <Pressable
+                      style={styles.playBtn}
+                      onPress={(e) => {
+                        (e as any)?.stopPropagation?.();
+                        handlePlay(item.quizId);
+                      }}>
+                      <Ionicons name="play" size={18} color={PRIMARY} />
+                    </Pressable>
+                    <Pressable
+                      style={styles.deleteBtn}
+                      onPress={(e) => {
+                        (e as any)?.stopPropagation?.();
+                        void handleDelete(item.quizId);
+                      }}
+                      disabled={deletingQuizId === item.quizId}>
+                      <Ionicons
+                        name={deletingQuizId === item.quizId ? 'time-outline' : 'trash-outline'}
+                        size={18}
+                        color="#ef4444"
+                      />
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         </ScrollView>
 
@@ -142,40 +268,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#c7ddfc',
     overflow: 'hidden',
-    position: 'relative',
   },
-  dotLayer: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.4,
-    backgroundColor: 'transparent',
-  },
-  replayBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 2,
-    flexDirection: 'row',
+  heroImagePlaceholder: {
+    width: '100%',
+    height: 260,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ffffffcc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    justifyContent: 'center',
   },
-  replayText: {
-    fontSize: 12,
-    color: '#475569',
-    fontWeight: '700',
-  },
-  heroImage: {
-    alignSelf: 'center',
-    width: 154,
-    height: 154,
-    marginTop: 8,
-    marginBottom: 4,
-    borderRadius: 10,
+  heroVideo: {
+    width: '100%',
+    height: 260,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
   },
   wordPanel: {
     borderTopWidth: 1,
@@ -184,6 +293,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 12,
     alignItems: 'center',
+    paddingHorizontal: 12,
   },
   wordLabel: {
     fontSize: 11,
@@ -200,6 +310,12 @@ const styles = StyleSheet.create({
     fontSize: 30,
     color: PRIMARY,
     fontWeight: '800',
+  },
+  questionText: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '500',
   },
   listHeader: {
     marginTop: 20,
@@ -228,6 +344,13 @@ const styles = StyleSheet.create({
   listWrap: {
     gap: 10,
   },
+  helperText: {
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: '600',
+    marginVertical: 8,
+  },
   wordItem: {
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -245,6 +368,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
+  wordItemSelected: {
+    borderColor: '#93c5fd',
+    backgroundColor: '#f8fbff',
+  },
   itemWord: {
     fontSize: 18,
     color: '#111827',
@@ -261,11 +388,24 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '600',
   },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
   playBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: '#e8f1ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fee2e2',
     alignItems: 'center',
     justifyContent: 'center',
   },

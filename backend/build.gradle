@@ -28,9 +28,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
-    implementation 'com.google.api-client:google-api-client:2.7.2'
-    implementation 'com.google.http-client:google-http-client-gson:1.45.0'
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0' // 충돌 방지 위해 주석 처리
+    implementation 'com.google.api-client:google-api-client:2.4.0'
+    implementation 'com.google.http-client:google-http-client-gson:1.44.1'
+    implementation 'com.google.firebase:firebase-admin:9.3.0'
+    //implementation 'io.github.cdimascio:java-dotenv:5.2.2'
 
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

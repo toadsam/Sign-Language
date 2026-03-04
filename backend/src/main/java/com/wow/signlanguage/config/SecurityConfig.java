@@ -21,11 +21,21 @@ public class SecurityConfig {
             .requestMatchers(
                 "/api/health",
                 "/api/auth/**",
+<<<<<<< HEAD
                 "/oauth2/**",
                 "/login/**",
                 "/error",
                 "/translate",
                 "/clips/**")
+=======
+                "/api/quiz/**",
+                "/choicemp4/**",
+                "/clips/**",
+                "/oauth2/**",
+                "/login/**",
+                "/error",
+                "/api/users/**")
+>>>>>>> main
             .permitAll()
             .anyRequest().authenticated())
         .oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(oauth2SuccessUrl, true))

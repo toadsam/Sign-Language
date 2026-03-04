@@ -5,7 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="693a4928-a697-406a-8c43-5d8e6496dcb1" name="변경" comment="">
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/dto/IdTokenRequest.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/dto/SignupCompleteRequest.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserAlreadyExistsException.java" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserNotFoundException.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/backend/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/.gradle/file-system.probe" beforeDir="false" afterPath="$PROJECT_DIR$/backend/.gradle/file-system.probe" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/build/tmp/compileJava/previous-compilation-data.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/build/tmp/compileJava/previous-compilation-data.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/AuthController.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/AuthController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/GoogleAuthService.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/auth/GoogleAuthService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/controller/UserController.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/controller/UserController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/model/UserInfo.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/model/UserInfo.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserService.java" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/main/java/com/wow/signlanguage/user/service/UserService.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -19,8 +31,8 @@
   </component>
   <component name="CopilotUserSelectedModel">
     <selectedModels>
-      <entry key="chat-panel" value="GPT-5.2" />
-      <entry key="agent-panel" value="GPT-5.2" />
+      <entry key="chat-panel" value="Claude Sonnet 4.5" />
+      <entry key="agent-panel" value="Claude Sonnet 4.5" />
     </selectedModels>
   </component>
   <component name="Git.Settings">
@@ -52,8 +64,10 @@
     &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;com.intellij.ide.FileNotInSourceRootChecker.no.check&quot;: &quot;true&quot;,
     &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;taewon&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;origin/jiheon&quot;,
     &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
     &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
     &quot;last_opened_file_path&quot;: &quot;C:/Users/USER/Documents/GitHub/Sign-Language&quot;,
@@ -88,8 +102,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-30f59d01ecdd-2fc7cc6b9a17-intellij.indexing.shared.core-IU-253.31033.145" />
-        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-IU-253.31033.145" />
+        <option value="bundled-jdk-30f59d01ecdd-2fc7cc6b9a17-intellij.indexing.shared.core-IU-253.30387.90" />
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-IU-253.30387.90" />
       </set>
     </attachedChunks>
   </component>
@@ -115,6 +129,9 @@
       <workItem from="1771320380284" duration="238000" />
       <workItem from="1771741077238" duration="170000" />
       <workItem from="1771742807135" duration="120000" />
+      <workItem from="1771983445463" duration="9038000" />
+      <workItem from="1772465575029" duration="2123000" />
+      <workItem from="1772504830241" duration="17887000" />
     </task>
     <servers />
   </component>
