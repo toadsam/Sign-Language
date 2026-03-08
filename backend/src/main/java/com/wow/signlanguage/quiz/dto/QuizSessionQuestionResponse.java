@@ -7,4 +7,8 @@ public record QuizSessionQuestionResponse(
     String questionText,
     List<String> choices,
     String videoUrl,
-    long level) {}
+    long level,
+    Long attemptCount,
+    Long correctCount,
+    Integer correctRate,
+    String difficultyLevel) {}

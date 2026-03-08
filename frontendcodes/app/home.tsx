@@ -9,6 +9,38 @@ import { DAILY_GOAL_TARGET, getGoalPercent, getTodaySolvedCount, normalizeDailyS
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 
 const PRIMARY = '#1f80e3';
+const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+type ChartPoint = {
+  dateKey: string;
+  dayLabel: string;
+  solvedCount: number;
+};
+
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildRecent7DaysChart(counts: Record<string, number>): ChartPoint[] {
+  const today = new Date();
+  const points: ChartPoint[] = [];
+
+  for (let dayOffset = 6; dayOffset >= 0; dayOffset--) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - dayOffset);
+    const dateKey = toLocalDateKey(date);
+    points.push({
+      dateKey,
+      dayLabel: WEEKDAY_LABELS[date.getDay()],
+      solvedCount: counts[dateKey] ?? 0,
+    });
+  }
+
+  return points;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -46,6 +78,11 @@ export default function HomeScreen() {
   );
   const solvedToday = getTodaySolvedCount(dailySolvedCounts);
   const goalPercent = getGoalPercent(solvedToday, DAILY_GOAL_TARGET);
+  const weeklyChartData = useMemo(() => buildRecent7DaysChart(dailySolvedCounts), [dailySolvedCounts]);
+  const maxWeeklySolved = useMemo(
+    () => Math.max(...weeklyChartData.map((point) => point.solvedCount), 1),
+    [weeklyChartData]
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -84,6 +121,24 @@ export default function HomeScreen() {
             <Text style={styles.goalDesc}>
               오늘의 퀴즈 {DAILY_GOAL_TARGET}개 중 {solvedToday}개 완료
             </Text>
+          </View>
+
+          <View style={styles.weeklyCard}>
+            <Text style={styles.weeklyTitle}>최근 7일 풀이 그래프</Text>
+            <View style={styles.weeklyBarsRow}>
+              {weeklyChartData.map((point) => {
+                const barHeight = Math.max((point.solvedCount / maxWeeklySolved) * 80, 6);
+                return (
+                  <View key={point.dateKey} style={styles.weeklyBarItem}>
+                    <Text style={styles.weeklyValue}>{point.solvedCount}</Text>
+                    <View style={styles.weeklyTrack}>
+                      <View style={[styles.weeklyFill, { height: barHeight }]} />
+                    </View>
+                    <Text style={styles.weeklyLabel}>{point.dayLabel}</Text>
+                  </View>
+                );
+              })}
+            </View>
           </View>
 
           <View style={styles.challengeCard}>
@@ -238,6 +293,56 @@ const styles = StyleSheet.create({
     color: '#5a7da1',
     fontSize: 14,
     fontWeight: '500',
+  },
+  weeklyCard: {
+    marginTop: 18,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dbe4ef',
+  },
+  weeklyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  weeklyBarsRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  weeklyBarItem: {
+    width: 36,
+    alignItems: 'center',
+  },
+  weeklyValue: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  weeklyTrack: {
+    width: 18,
+    height: 84,
+    borderRadius: 12,
+    backgroundColor: '#e2ebf5',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  weeklyFill: {
+    width: '100%',
+    borderRadius: 12,
+    backgroundColor: PRIMARY,
+  },
+  weeklyLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
   },
   challengeCard: {
     marginTop: 22,

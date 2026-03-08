@@ -38,6 +38,6 @@ export async function deleteSavedWrongNote(uid: string, quizId: string): Promise
     method: 'DELETE',
   });
   if (!response.ok) {
-    throw new Error(`Failed to delete saved wrong note: ${response.status}`);
+    throw new Error(`Failed to hide saved wrong note: ${response.status}`);
   }
 }

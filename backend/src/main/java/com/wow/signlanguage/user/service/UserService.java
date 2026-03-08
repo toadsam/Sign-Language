@@ -15,6 +15,9 @@ import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
 import com.google.firebase.cloud.FirestoreClient;
 import com.wow.signlanguage.user.dto.BookmarkResponse;
+import com.wow.signlanguage.user.dto.DailySolvedCountPointResponse;
+import com.wow.signlanguage.user.dto.DailySolvedTrendResponse;
+import com.wow.signlanguage.user.dto.TopWrongWordResponse;
 import com.wow.signlanguage.user.dto.WrongNoteResponse;
 import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
 import com.wow.signlanguage.user.model.UserInfo;
@@ -29,6 +32,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.concurrent.ExecutionException;
 
 @Service
@@ -72,6 +76,7 @@ public class UserService {
                 userData.put("userLevel", newUser.getUserLevel());
                 userData.put("totalQuestions", newUser.getTotalQuestions());
                 userData.put("dailySolvedCounts", newUser.getDailySolvedCounts());
+                userData.put("incorrectQuestionCounts", newUser.getIncorrectQuestionCounts());
                 docRef.set(userData).get();
                 return newUser;
             } else {
@@ -112,6 +117,7 @@ public class UserService {
         updateData.put("totalQuestionNum", userInfo.getTotalQuestionNum());
         updateData.put("userLevel", userInfo.getUserLevel());
         updateData.put("dailySolvedCounts", userInfo.getDailySolvedCounts());
+        updateData.put("incorrectQuestionCounts", userInfo.getIncorrectQuestionCounts());
 
         ApiFuture<WriteResult> updateFuture = docRef.update(updateData);
         updateFuture.get();
@@ -211,6 +217,7 @@ public class UserService {
         List<String> incorrectQuestions = user.getIncorrectQuestions() != null ? new ArrayList<>(user.getIncorrectQuestions()) : new ArrayList<>();
         Map<String, Object> incorrectQuestionDates = toStringObjectMap(document.get("incorrectQuestionDates"));
         Map<String, Integer> dailySolvedCounts = toStringIntegerMap(document.get("dailySolvedCounts"));
+        Map<String, Integer> incorrectQuestionCounts = toStringIntegerMap(document.get("incorrectQuestionCounts"));
         int totalQuestionNum = user.getTotalQuestionNum();
         int correctQuestionNum = user.getCorrectQuestionNum();
         totalQuestionNum++;
@@ -228,6 +235,9 @@ public class UserService {
         updateData.put("dailySolvedCounts", dailySolvedCounts);
 
         if (!isCorrect) {
+            int wrongCount = incorrectQuestionCounts.getOrDefault(questionId, 0) + 1;
+            incorrectQuestionCounts.put(questionId, wrongCount);
+            updateData.put("incorrectQuestionCounts", incorrectQuestionCounts);
             if (!incorrectQuestions.contains(questionId)) {
                 incorrectQuestions.add(questionId);
                 updateData.put("incorrectQuestions", incorrectQuestions);
@@ -380,18 +390,13 @@ public class UserService {
             throw new RuntimeException("User not found");
         }
 
-        List<String> incorrectQuestions = toStringList(userDoc.get("incorrectQuestions"));
-        if (!incorrectQuestions.contains(quizId)) {
-            throw new IllegalArgumentException("Only wrong questions can be saved.");
-        }
-
         DocumentSnapshot quizDoc = db.collection(QUIZ_COLLECTION_NAME).document(quizId).get().get();
         if (!quizDoc.exists()) {
             throw new RuntimeException("Quiz not found");
         }
 
         Map<String, Object> incorrectQuestionDates = toStringObjectMap(userDoc.get("incorrectQuestionDates"));
-        Object wrongAt = incorrectQuestionDates.get(quizId);
+        Object wrongAt = incorrectQuestionDates.getOrDefault(quizId, new Date());
 
         String questionText = safeString(quizDoc.getString("questionText"));
         String videoUrl = safeString(quizDoc.getString("videoUrl"));
@@ -405,6 +410,8 @@ public class UserService {
         data.put("videoUrl", videoUrl);
         data.put("wrongAt", wrongAt);
         data.put("savedAt", FieldValue.serverTimestamp());
+        data.put("isHidden", false);
+        data.put("hiddenAt", null);
 
         DocumentReference savedRef = userRef.collection(WRONG_NOTE_SAVED_COLLECTION_NAME).document(quizId);
         savedRef.set(data).get();
@@ -433,6 +440,9 @@ public class UserService {
 
         List<WrongNoteSavedResponse> result = new ArrayList<>();
         for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            if (isDocumentHidden(doc)) {
+                continue;
+            }
             result.add(toWrongNoteSavedResponse(doc));
         }
         return result;
@@ -449,12 +459,89 @@ public class UserService {
             throw new RuntimeException("User not found");
         }
 
-        db.collection(COLLECTION_NAME)
+        DocumentReference wrongNoteRef = db.collection(COLLECTION_NAME)
                 .document(uid)
                 .collection(WRONG_NOTE_SAVED_COLLECTION_NAME)
-                .document(quizId)
-                .delete()
-                .get();
+                .document(quizId);
+
+        DocumentSnapshot wrongNoteDoc = wrongNoteRef.get().get();
+        if (!wrongNoteDoc.exists()) {
+            return;
+        }
+
+        Map<String, Object> hideData = new HashMap<>();
+        hideData.put("isHidden", true);
+        hideData.put("hiddenAt", FieldValue.serverTimestamp());
+        wrongNoteRef.update(hideData).get();
+    }
+
+    public DailySolvedTrendResponse getRecentDailySolvedCounts(String uid) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        Map<String, Integer> dailySolvedCounts = toStringIntegerMap(userDoc.get("dailySolvedCounts"));
+        LocalDate todayKst = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        List<DailySolvedCountPointResponse> trend = new ArrayList<>();
+
+        for (int dayOffset = 6; dayOffset >= 0; dayOffset--) {
+            LocalDate date = todayKst.minusDays(dayOffset);
+            String dateKey = date.toString();
+            int solvedCount = dailySolvedCounts.getOrDefault(dateKey, 0);
+            trend.add(new DailySolvedCountPointResponse(dateKey, solvedCount));
+        }
+
+        return new DailySolvedTrendResponse(uid, trend);
+    }
+
+    public List<TopWrongWordResponse> getTopWrongWords(String uid, int limit) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        Map<String, Integer> incorrectQuestionCounts = toStringIntegerMap(userDoc.get("incorrectQuestionCounts"));
+        if (incorrectQuestionCounts.isEmpty()) {
+            for (String quizId : toStringList(userDoc.get("incorrectQuestions"))) {
+                incorrectQuestionCounts.putIfAbsent(quizId, 1);
+            }
+        }
+
+        List<Map.Entry<String, Integer>> sortedEntries = new ArrayList<>(incorrectQuestionCounts.entrySet());
+        sortedEntries.sort(
+                Comparator.comparingInt((Map.Entry<String, Integer> entry) -> entry.getValue()).reversed()
+                        .thenComparing(Map.Entry::getKey));
+
+        List<TopWrongWordResponse> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : sortedEntries) {
+            if (result.size() >= limit) {
+                break;
+            }
+            String quizId = entry.getKey();
+            int wrongCount = entry.getValue();
+
+            DocumentSnapshot quizDoc = db.collection(QUIZ_COLLECTION_NAME).document(quizId).get().get();
+            if (!quizDoc.exists()) {
+                continue;
+            }
+
+            String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
+            String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+            result.add(new TopWrongWordResponse(quizId, word, wrongCount));
+        }
+
+        return result;
     }
 
     private BookmarkResponse toBookmarkResponse(DocumentSnapshot doc) {
@@ -474,6 +561,11 @@ public class UserService {
                 safeString(doc.getString("videoUrl")),
                 doc.get("wrongAt"),
                 doc.get("savedAt"));
+    }
+
+    private boolean isDocumentHidden(DocumentSnapshot doc) {
+        Object hidden = doc.get("isHidden");
+        return hidden instanceof Boolean && (Boolean) hidden;
     }
 
     private String safeString(String value) {
@@ -545,6 +637,7 @@ public class UserService {
         return result;
     }
 
+
     // 구글 ID로 유저 존재 여부 확인
     public boolean existsByGoogleId(String googleId) {
         try {
@@ -580,6 +673,7 @@ public class UserService {
             userData.put("userLevel", newUser.getUserLevel());
             userData.put("totalQuestions", newUser.getTotalQuestions());
             userData.put("dailySolvedCounts", newUser.getDailySolvedCounts());
+            userData.put("incorrectQuestionCounts", newUser.getIncorrectQuestionCounts());
             userData.put("email", newUser.getEmail());
             userData.put("isRegistered", newUser.isRegistered());
 

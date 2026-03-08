@@ -13,6 +13,7 @@ public class UserInfo {
     private int userLevel;
     private List<String> totalQuestions;
     private Map<String, Integer> dailySolvedCounts;
+    private Map<String, Integer> incorrectQuestionCounts;
 
     // 추가 필드: 회원가입 시 입력받는 정보
     private String name;
@@ -26,6 +27,7 @@ public class UserInfo {
         this.incorrectQuestions = new ArrayList<>();
         this.totalQuestions = new ArrayList<>();
         this.dailySolvedCounts = new HashMap<>();
+        this.incorrectQuestionCounts = new HashMap<>();
         this.isRegistered = false;
     }
 
@@ -37,6 +39,7 @@ public class UserInfo {
         this.incorrectQuestions = new ArrayList<>();
         this.totalQuestions = new ArrayList<>();
         this.dailySolvedCounts = new HashMap<>();
+        this.incorrectQuestionCounts = new HashMap<>();
         this.isRegistered = false;
     }
 
@@ -94,6 +97,14 @@ public class UserInfo {
 
     public void setDailySolvedCounts(Map<String, Integer> dailySolvedCounts) {
         this.dailySolvedCounts = dailySolvedCounts;
+    }
+
+    public Map<String, Integer> getIncorrectQuestionCounts() {
+        return incorrectQuestionCounts;
+    }
+
+    public void setIncorrectQuestionCounts(Map<String, Integer> incorrectQuestionCounts) {
+        this.incorrectQuestionCounts = incorrectQuestionCounts;
     }
 
     public String getName() {

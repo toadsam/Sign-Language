@@ -24,6 +24,13 @@ public class QuizController {
     return quizService.getSession(count);
   }
 
+  @GetMapping("/session/wrong")
+  public QuizSessionResponse wrongSession(
+      @RequestParam String uid,
+      @RequestParam(defaultValue = "10") int count) {
+    return quizService.getWrongSession(uid, count);
+  }
+
   @PostMapping("/answer")
   public QuizAnswerResponse answer(@RequestBody QuizAnswerRequest request) {
     return quizService.checkAnswer(request);

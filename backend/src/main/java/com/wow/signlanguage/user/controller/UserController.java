@@ -2,6 +2,8 @@ package com.wow.signlanguage.user.controller;
 
 import com.wow.signlanguage.user.dto.BookmarkRequest;
 import com.wow.signlanguage.user.dto.BookmarkResponse;
+import com.wow.signlanguage.user.dto.DailySolvedTrendResponse;
+import com.wow.signlanguage.user.dto.TopWrongWordResponse;
 import com.wow.signlanguage.user.dto.WrongNoteResponse;
 import com.wow.signlanguage.user.dto.WrongNoteSaveRequest;
 import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
@@ -60,7 +62,7 @@ public class UserController {
         }
     }
 
-    @GetMapping("/{uid}/{fieldName}")
+    @GetMapping("/{uid}/{fieldName:totalQuestionNum|correctQuestionNum|incorrectQuestions|userId|userLevel|totalQuestions}")
     public ResponseEntity<?> getUserField(@PathVariable String uid, @PathVariable String fieldName) {
         try {
             UserInfo userInfo = userService.getUserInfo(uid);
@@ -223,6 +225,34 @@ public class UserController {
         try {
             userService.deleteSavedWrongNote(uid, quizId);
             return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{uid}/daily-solved-7days")
+    public ResponseEntity<?> getRecentDailySolvedCounts(@PathVariable String uid) {
+        try {
+            DailySolvedTrendResponse response = userService.getRecentDailySolvedCounts(uid);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{uid}/top-wrong-words")
+    public ResponseEntity<?> getTopWrongWords(@PathVariable String uid) {
+        try {
+            List<TopWrongWordResponse> response = userService.getTopWrongWords(uid, 5);
+            return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (RuntimeException e) {

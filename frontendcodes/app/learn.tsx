@@ -13,7 +13,6 @@ const PRIMARY = '#1f80e3';
 type CourseCardProps = {
   title: string;
   description: string;
-  percent: number;
   level: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   color: string;
@@ -24,7 +23,6 @@ type CourseCardProps = {
 function CourseCard({
   title,
   description,
-  percent,
   level,
   icon,
   color,
@@ -33,25 +31,19 @@ function CourseCard({
 }: CourseCardProps) {
   return (
     <Pressable style={styles.courseCard} onPress={onPress}>
-      <View style={[styles.courseIconWrap, { backgroundColor: lightBg }]}> 
+      <View style={[styles.courseIconWrap, { backgroundColor: lightBg }]}>
         <MaterialCommunityIcons name={icon} size={20} color={color} />
       </View>
       <View style={styles.courseBody}>
         <View style={styles.courseHeadRow}>
           <Text style={styles.courseTitle}>{title}</Text>
-          <View style={[styles.levelBadge, { backgroundColor: `${color}22` }]}> 
+          <View style={[styles.levelBadge, { backgroundColor: `${color}22` }]}>
             <Text style={[styles.levelText, { color }]}>{level}</Text>
           </View>
         </View>
         <Text style={styles.courseDesc} numberOfLines={1}>
           {description}
         </Text>
-        <View style={styles.progressRow}>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${percent}%`, backgroundColor: color }]} />
-          </View>
-          <Text style={styles.progressText}>{percent}%</Text>
-        </View>
       </View>
     </Pressable>
   );
@@ -124,17 +116,24 @@ export default function LearnScreen() {
           <CourseCard
             title="기초 단어"
             description="숫자, 가족, 인사 등 기본적인 단어를 배워보세요."
-            percent={80}
             level="Level 1"
             icon="school"
             color="#3b82f6"
             lightBg="#eff6ff"
-            onPress={() => router.push('/quiz')}
+            onPress={() => router.push({ pathname: '/quiz', params: { title: '기초 단어' } })}
+          />
+          <CourseCard
+            title="오답 복습 퀴즈"
+            description="내가 틀린 문제들만 모아 다시 풀어보세요."
+            level="Review"
+            icon="refresh"
+            color="#ef4444"
+            lightBg="#fef2f2"
+            onPress={() => router.push({ pathname: '/quiz', params: { mode: 'wrong', title: '오답 복습 퀴즈' } })}
           />
           <CourseCard
             title="일상 회화"
             description="일상 생활에서 자주 쓰이는 문장을 익혀보세요."
-            percent={30}
             level="Level 2"
             icon="forum-outline"
             color="#a855f7"
@@ -143,7 +142,6 @@ export default function LearnScreen() {
           <CourseCard
             title="상황별 표현"
             description="병원, 은행, 식당 등 다양한 장소에서의 표현."
-            percent={5}
             level="Level 3"
             icon="storefront-outline"
             color="#f97316"
@@ -332,27 +330,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94a3b8',
     marginBottom: 8,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  progressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#e2e8f0',
-    overflow: 'hidden',
-    marginRight: 8,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  progressText: {
-    fontSize: 10,
-    color: '#94a3b8',
-    fontWeight: '700',
   },
   lockedCard: {
     marginTop: 4,
