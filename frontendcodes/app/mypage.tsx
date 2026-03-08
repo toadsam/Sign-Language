@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@/context/auth-context';
 import { DAILY_GOAL_TARGET, getConsecutiveGoalDays, normalizeDailySolvedCounts } from '@/lib/daily-goal';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
+import { fetchTopWrongWords, TopWrongWordItem } from '@/lib/api/top-wrong-words';
 
 const PRIMARY = '#137fec';
 
@@ -18,18 +19,25 @@ export default function MyPageScreen() {
   const { user, isGuest, signOut, updateUser } = useAuth();
 
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [topWrongWords, setTopWrongWords] = useState<TopWrongWordItem[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const loadUserInfo = useCallback(async () => {
     if (!user?.id) {
       setUserInfo(null);
+      setTopWrongWords([]);
       return;
     }
     try {
-      const data = await fetchUserInfo(user.id);
+      const [data, topWords] = await Promise.all([
+        fetchUserInfo(user.id),
+        fetchTopWrongWords(user.id).catch(() => []),
+      ]);
       setUserInfo(data);
+      setTopWrongWords(topWords);
     } catch {
       setUserInfo(null);
+      setTopWrongWords([]);
     }
   }, [user?.id]);
 
@@ -177,6 +185,23 @@ export default function MyPageScreen() {
                 <Text style={styles.statUnit}>%</Text>
               </Text>
             </View>
+          </View>
+
+          <Text style={styles.sectionTitle}>자주 틀린 단어 TOP 5</Text>
+          <View style={styles.topWordsWrap}>
+            {topWrongWords.length === 0 ? (
+              <Text style={styles.emptyTopWordsText}>아직 오답 데이터가 충분하지 않습니다.</Text>
+            ) : (
+              topWrongWords.map((item, index) => (
+                <View key={item.quizId} style={styles.topWordItem}>
+                  <View style={styles.rankBadge}>
+                    <Text style={styles.rankText}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.topWordText}>{item.word || '단어 정보 없음'}</Text>
+                  <Text style={styles.topWordCount}>{item.wrongCount}회</Text>
+                </View>
+              ))
+            )}
           </View>
 
           <Text style={styles.sectionTitle}>학습 관리</Text>
@@ -371,6 +396,56 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#6b7280',
     fontWeight: '700',
+  },
+  topWordsWrap: {
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9edf3',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 8,
+    marginBottom: 8,
+  },
+  topWordItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  rankBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  rankText: {
+    fontSize: 12,
+    color: '#1d4ed8',
+    fontWeight: '800',
+  },
+  topWordText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  topWordCount: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '700',
+  },
+  emptyTopWordsText: {
+    paddingVertical: 12,
+    textAlign: 'center',
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '600',
   },
   menuWrap: {
     gap: 10,

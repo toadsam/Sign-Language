@@ -6,6 +6,10 @@ export type QuizSessionQuestion = {
   choices: string[];
   videoUrl: string;
   level: number;
+  attemptCount?: number | null;
+  correctCount?: number | null;
+  correctRate?: number | null;
+  difficultyLevel?: string | null;
 };
 
 export type QuizSessionResponse = {
@@ -29,6 +33,16 @@ export async function fetchQuizSession(count = 10): Promise<QuizSessionResponse>
   const response = await fetch(`${getBaseUrl()}/api/quiz/session?count=${count}`);
   if (!response.ok) {
     throw new Error(`Failed to load quiz session: ${response.status}`);
+  }
+  return response.json() as Promise<QuizSessionResponse>;
+}
+
+export async function fetchWrongQuizSession(uid: string, count = 10): Promise<QuizSessionResponse> {
+  const response = await fetch(
+    `${getBaseUrl()}/api/quiz/session/wrong?uid=${encodeURIComponent(uid)}&count=${count}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load wrong-only quiz session: ${response.status}`);
   }
   return response.json() as Promise<QuizSessionResponse>;
 }

@@ -94,7 +94,7 @@ export default function WrongNoteScreen() {
         return next;
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '오답노트 삭제에 실패했습니다.');
+      setErrorMessage(error instanceof Error ? error.message : '오답노트 숨기기에 실패했습니다.');
     } finally {
       setDeletingQuizId(null);
     }
@@ -191,9 +191,10 @@ export default function WrongNoteScreen() {
                         (e as any)?.stopPropagation?.();
                         void handleDelete(item.quizId);
                       }}
-                      disabled={deletingQuizId === item.quizId}>
+                      disabled={deletingQuizId === item.quizId}
+                      accessibilityLabel="오답노트 숨기기">
                       <Ionicons
-                        name={deletingQuizId === item.quizId ? 'time-outline' : 'trash-outline'}
+                        name={deletingQuizId === item.quizId ? 'time-outline' : 'eye-off-outline'}
                         size={18}
                         color="#ef4444"
                       />
