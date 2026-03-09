@@ -13,6 +13,9 @@ import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 import { fetchTopWrongWords, TopWrongWordItem } from '@/lib/api/top-wrong-words';
 
 const PRIMARY = '#137fec';
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  'https://sign-language-backend-336670885247.asia-northeast3.run.app';
 
 export default function MyPageScreen() {
   const router = useRouter();
@@ -82,7 +85,7 @@ export default function MyPageScreen() {
         const base64Image = `data:image/jpeg;base64,${asset.base64}`;
 
         // 백엔드에 프로필 이미지 업데이트 요청
-        const response = await fetch(`http://localhost:8080/api/users/${user.id}/profile-image`, {
+        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/profile-image`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profileImageUrl: base64Image }),

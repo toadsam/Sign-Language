@@ -16,7 +16,9 @@ type TranslateResponse = {
   unknown: string[];
 };
 
-const BACKEND_BASE_URL = 'http://localhost:8080';
+const BACKEND_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  'https://sign-language-backend-336670885247.asia-northeast3.run.app';
 
 const SAMPLES = [
   '화장실 어디 있어?',

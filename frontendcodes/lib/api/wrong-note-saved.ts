@@ -8,7 +8,7 @@ export type WrongNoteSavedItem = {
 };
 
 function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
+  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://sign-language-backend-336670885247.asia-northeast3.run.app';
 }
 
 export async function saveWrongNote(uid: string, quizId: string): Promise<WrongNoteSavedItem> {

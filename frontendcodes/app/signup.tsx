@@ -16,6 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
 
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  'https://sign-language-backend-336670885247.asia-northeast3.run.app';
+
 export default function SignupScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -50,7 +54,7 @@ export default function SignupScreen() {
 
       console.log('회원가입 완료 요청:', { googleId, name, phoneNumber, organization });
 
-      const response = await fetch('http://localhost:8080/api/auth/signup/complete', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/signup/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

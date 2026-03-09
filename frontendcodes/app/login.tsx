@@ -7,12 +7,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/auth-context';
 import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
 
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  'https://sign-language-backend-336670885247.asia-northeast3.run.app';
+
 export default function LoginScreen() {
   const router = useRouter();
   const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
   const { request, response, promptAsync, isExpoGo, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const parseGoogleSubFromIdToken = (idToken: string): string | null => {
+    try {
+      const payloadBase64 = idToken.split('.')[1];
+      if (!payloadBase64) {
+        return null;
+      }
+      const payload = JSON.parse(atob(payloadBase64));
+      return typeof payload?.sub === 'string' ? payload.sub : null;
+    } catch {
+      return null;
+    }
+  };
 
   // accessToken이나 isGuest가 이미 있으면 홈으로 이동하는 로직을 제거
   // (회원가입 미완료 시 signup으로 이동해야 하므로)
@@ -53,7 +69,7 @@ export default function LoginScreen() {
         setErrorMessage(null);
 
         // 1. 먼저 로그인 시도
-        const loginResponse = await fetch('http://localhost:8080/api/auth/login', {
+        const loginResponse = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idToken }),
@@ -64,11 +80,17 @@ export default function LoginScreen() {
         console.log('isRegistered 값:', loginData.isRegistered);
         console.log('user.isRegistered 값:', loginData.user?.isRegistered);
 
-        if (loginResponse.ok && loginData.success) {
+        if (loginResponse.ok && (loginData.success || loginData.accessToken)) {
           // 로그인 성공
           console.log('로그인 성공, 백엔드 응답:', loginData);
 
-          if (loginData.isRegistered === true) {
+          const registeredFlag =
+            loginData.isRegistered === true ||
+            loginData.isRegistered === 'true' ||
+            loginData.user?.isRegistered === true ||
+            loginData.user?.isRegistered === 'true';
+
+          if (registeredFlag) {
             // 회원가입 완료된 유저 -> 백엔드 유저 정보로 AuthContext 업데이트 후 홈으로
             console.log('회원가입 완료 유저 -> 백엔드 유저 정보로 로그인, 홈으로 이동');
             console.log('백엔드 유저 정보:', loginData.user);
@@ -82,23 +104,24 @@ export default function LoginScreen() {
             // 임시로 토큰만 저장 (회원가입 완료 후 다시 업데이트됨)
             await signInWithBackendUser(loginData.accessToken, loginData.user);
 
-            const googleId = loginData.user.id;
-            const email = loginData.user.email || '';
+            const googleId = loginData.user?.id ?? parseGoogleSubFromIdToken(idToken) ?? '';
+            const email = loginData.user?.email || '';
 
             console.log('이동할 경로:', '/signup', '파라미터:', { googleId, email });
 
-            router.push({
+            router.replace({
               pathname: '/signup' as any,
               params: {
                 googleId,
                 email,
               },
             } as any);
+            return;
           }
         } else if (loginResponse.status === 404 && loginData.needsSignup) {
           // 2. 유저가 없으면 회원가입 시도
           console.log('유저 없음 -> 회원가입 시도');
-          const signupResponse = await fetch('http://localhost:8080/api/auth/signup', {
+          const signupResponse = await fetch(`${API_BASE_URL}/api/auth/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ idToken }),
