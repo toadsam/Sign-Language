@@ -1,0 +1,10 @@
+.git
+.gradle
+.gradle-cache
+.idea
+build
+build_tmp
+target
+*.log
+.env
+.env.*

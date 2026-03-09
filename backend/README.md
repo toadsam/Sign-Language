@@ -27,3 +27,8 @@ If Gradle Wrapper exists:
 ```powershell
 .\gradlew.bat bootRun
 ```
+
+Recommended on Windows (auto-fix port 8080 conflict):
+```powershell
+.\scripts\dev-run.ps1
+```
