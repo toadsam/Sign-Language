@@ -1,3 +1,5 @@
+import { getBaseUrl } from './base-url';
+
 export type UserInfo = {
   correctQuestionNum: number;
   totalQuestionNum: number;
@@ -7,10 +9,6 @@ export type UserInfo = {
   incorrectQuestions?: string[];
   dailySolvedCounts?: Record<string, number>;
 };
-
-function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-}
 
 export async function fetchUserInfo(uid: string): Promise<UserInfo> {
   const response = await fetch(`${getBaseUrl()}/api/users/${uid}`);

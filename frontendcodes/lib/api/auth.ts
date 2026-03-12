@@ -1,3 +1,5 @@
+import { getBaseUrl } from './base-url';
+
 export type AuthUser = {
   id: string;
   email: string;
@@ -14,8 +16,7 @@ export type GoogleAuthApiResponse = {
 };
 
 export async function loginWithGoogleToken(idToken: string): Promise<GoogleAuthApiResponse> {
-  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-  const response = await fetch(`${baseUrl}/api/auth/google`, {
+  const response = await fetch(`${getBaseUrl()}/api/auth/google`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

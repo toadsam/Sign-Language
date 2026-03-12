@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getBaseUrl } from '@/lib/api/base-url';
 
 type Clip = {
   word: string;
@@ -16,7 +17,7 @@ type TranslateResponse = {
   unknown: string[];
 };
 
-const BACKEND_BASE_URL = 'http://localhost:8080';
+const BACKEND_BASE_URL = getBaseUrl();
 
 const SAMPLES = [
   '화장실 어디 있어?',

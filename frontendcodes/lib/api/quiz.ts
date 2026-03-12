@@ -1,3 +1,5 @@
+import { getBaseUrl, resolveBackendUrl } from './base-url';
+
 export type ChoiceId = 'A' | 'B' | 'C' | 'D';
 
 export type QuizSessionQuestion = {
@@ -25,16 +27,19 @@ export type QuizAnswerResponse = {
   correctChoiceText: string;
 };
 
-function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-}
-
 export async function fetchQuizSession(count = 10): Promise<QuizSessionResponse> {
   const response = await fetch(`${getBaseUrl()}/api/quiz/session?count=${count}`);
   if (!response.ok) {
     throw new Error(`Failed to load quiz session: ${response.status}`);
   }
-  return response.json() as Promise<QuizSessionResponse>;
+  const data = (await response.json()) as QuizSessionResponse;
+  return {
+    ...data,
+    questions: (data.questions ?? []).map((question) => ({
+      ...question,
+      videoUrl: resolveBackendUrl(question.videoUrl),
+    })),
+  };
 }
 
 export async function fetchWrongQuizSession(uid: string, count = 10): Promise<QuizSessionResponse> {
@@ -44,7 +49,14 @@ export async function fetchWrongQuizSession(uid: string, count = 10): Promise<Qu
   if (!response.ok) {
     throw new Error(`Failed to load wrong-only quiz session: ${response.status}`);
   }
-  return response.json() as Promise<QuizSessionResponse>;
+  const data = (await response.json()) as QuizSessionResponse;
+  return {
+    ...data,
+    questions: (data.questions ?? []).map((question) => ({
+      ...question,
+      videoUrl: resolveBackendUrl(question.videoUrl),
+    })),
+  };
 }
 
 export async function submitQuizAnswer(

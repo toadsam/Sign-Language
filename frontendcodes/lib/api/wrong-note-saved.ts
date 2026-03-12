@@ -1,3 +1,5 @@
+import { getBaseUrl, resolveBackendUrl } from './base-url';
+
 export type WrongNoteSavedItem = {
   quizId: string;
   questionText: string;
@@ -6,10 +8,6 @@ export type WrongNoteSavedItem = {
   wrongAt: unknown;
   savedAt: unknown;
 };
-
-function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-}
 
 export async function saveWrongNote(uid: string, quizId: string): Promise<WrongNoteSavedItem> {
   const response = await fetch(`${getBaseUrl()}/api/users/${uid}/wrong-note-saved`, {
@@ -22,7 +20,11 @@ export async function saveWrongNote(uid: string, quizId: string): Promise<WrongN
     throw new Error(`Failed to save wrong note: ${response.status}`);
   }
 
-  return response.json() as Promise<WrongNoteSavedItem>;
+  const data = (await response.json()) as WrongNoteSavedItem;
+  return {
+    ...data,
+    videoUrl: resolveBackendUrl(data.videoUrl),
+  };
 }
 
 export async function fetchSavedWrongNotes(uid: string): Promise<WrongNoteSavedItem[]> {
@@ -30,7 +32,11 @@ export async function fetchSavedWrongNotes(uid: string): Promise<WrongNoteSavedI
   if (!response.ok) {
     throw new Error(`Failed to load saved wrong notes: ${response.status}`);
   }
-  return response.json() as Promise<WrongNoteSavedItem[]>;
+  const data = (await response.json()) as WrongNoteSavedItem[];
+  return data.map((item) => ({
+    ...item,
+    videoUrl: resolveBackendUrl(item.videoUrl),
+  }));
 }
 
 export async function deleteSavedWrongNote(uid: string, quizId: string): Promise<void> {

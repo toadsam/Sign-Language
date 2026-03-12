@@ -15,8 +15,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
+import { getBaseUrl } from '@/lib/api/base-url';
 
 export default function SignupScreen() {
+  const apiBaseUrl = getBaseUrl();
   const router = useRouter();
   const params = useLocalSearchParams();
   const googleId = params.googleId as string;
@@ -50,7 +52,7 @@ export default function SignupScreen() {
 
       console.log('회원가입 완료 요청:', { googleId, name, phoneNumber, organization });
 
-      const response = await fetch('http://localhost:8080/api/auth/signup/complete', {
+      const response = await fetch(`${apiBaseUrl}/api/auth/signup/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
