@@ -199,11 +199,6 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.loginWrap}>
-          <Pressable style={styles.kakaoButton}>
-            <MaterialCommunityIcons name="chat" size={20} color="#3c1e1e" />
-            <Text style={styles.kakaoText}>카카오는 준비 중입니다</Text>
-          </Pressable>
-
           <Pressable
             disabled={!request || isSubmitting}
             onPress={handleGooglePress}
@@ -294,25 +289,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 46,
     gap: 10,
-  },
-  kakaoButton: {
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#FEE500',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  kakaoText: {
-    color: '#3c1e1e',
-    fontSize: 16,
-    fontWeight: '800',
   },
   googleButton: {
     height: 54,

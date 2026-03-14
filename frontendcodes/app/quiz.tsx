@@ -134,6 +134,14 @@ export default function QuizScreen() {
       : difficultyLabel === 'medium' || difficultyLabel === '보통'
       ? '보통'
       : '';
+  const difficultyTone =
+    difficultyText === '쉬움'
+      ? { chipBg: '#dcfce7', chipText: '#15803d', percent: '#16a34a' }
+      : difficultyText === '보통'
+      ? { chipBg: '#fef3c7', chipText: '#a16207', percent: '#ca8a04' }
+      : difficultyText === '어려움'
+      ? { chipBg: '#fecaca', chipText: '#991b1b', percent: '#b91c1c' }
+      : { chipBg: '#dbeafe', chipText: '#2563eb', percent: '#2563eb' };
 
   const accuracy = answeredCount <= 0 ? 0 : Math.round((correctCount / answeredCount) * 100);
   const summarySeconds = Math.max(elapsedSeconds, 1);
@@ -510,25 +518,30 @@ export default function QuizScreen() {
           </View>
 
           <View style={styles.questionWrap}>
-            <Text style={styles.questionTitle}>{currentQuestion.questionText}</Text>
-            <Text style={styles.questionSub}>알맞은 답을 선택해주세요.</Text>
-            <View style={styles.questionStatsWrap}>
-              {difficultyText ? (
-                <View style={styles.difficultyBadge}>
-                  <Text style={styles.difficultyBadgeText}>난이도 {difficultyText}</Text>
-                </View>
-              ) : null}
+            <View style={styles.difficultyPanel}>
+              <View style={[styles.difficultyChip, { backgroundColor: difficultyTone.chipBg }]}>
+                <Ionicons name="pulse" size={12} color={difficultyTone.chipText} />
+                <Text style={[styles.difficultyChipText, { color: difficultyTone.chipText }]}>
+                  난이도 {difficultyText || '미정'}
+                </Text>
+              </View>
               {questionCorrectRate !== null ? (
-                <Text style={styles.questionStatsText}>
-                  이 문제는 전체 사용자의 {questionCorrectRate}%가 맞춘 퀴즈입니다.
+                <Text style={styles.difficultyDescription}>
+                  이 문제는 전체 사용자의{' '}
+                  <Text style={[styles.correctRateValue, { color: difficultyTone.percent }]}>
+                    {questionCorrectRate}%
+                  </Text>
+                  가 맞춘 퀴즈입니다.
                 </Text>
               ) : (
-                <Text style={styles.questionStatsTextMuted}>이 문제 통계는 집계 중입니다.</Text>
+                <Text style={styles.difficultyDescriptionMuted}>이 문제 통계는 집계 중입니다.</Text>
               )}
               {questionAttemptCount !== null && questionAttemptCount < 20 ? (
-                <Text style={styles.questionStatsHint}>표본이 적어 통계가 달라질 수 있습니다.</Text>
+                <Text style={styles.difficultyHint}>표본이 적어 통계가 달라질 수 있습니다.</Text>
               ) : null}
             </View>
+            <Text style={styles.questionTitle}>{currentQuestion.questionText}</Text>
+            <Text style={styles.questionSub}>알맞은 답을 선택해주세요.</Text>
           </View>
 
           <View style={styles.optionsWrap}>
@@ -945,8 +958,58 @@ const styles = StyleSheet.create({
   questionWrap: {
     marginTop: 14,
     alignItems: 'center',
+    width: '100%',
+  },
+  difficultyPanel: {
+    width: '100%',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#dde4ef',
+    backgroundColor: '#eef2f7',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    gap: 4,
+  },
+  difficultyChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#dbeafe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  difficultyChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  difficultyDescription: {
+    marginTop: 2,
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  correctRateValue: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  difficultyDescriptionMuted: {
+    marginTop: 2,
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  difficultyHint: {
+    color: '#94a3b8',
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   questionTitle: {
+    marginTop: 14,
     color: '#111827',
     fontSize: 22,
     fontWeight: '800',
@@ -958,42 +1021,6 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 13,
     fontWeight: '500',
-  },
-  questionStatsWrap: {
-    marginTop: 8,
-    alignItems: 'center',
-    gap: 3,
-  },
-  difficultyBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  difficultyBadgeText: {
-    color: '#1d4ed8',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  questionStatsText: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  questionStatsTextMuted: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  questionStatsHint: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '500',
-    textAlign: 'center',
   },
   optionsWrap: {
     marginTop: 14,
