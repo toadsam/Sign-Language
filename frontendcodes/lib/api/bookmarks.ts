@@ -1,3 +1,5 @@
+import { getBaseUrl, resolveBackendUrl } from './base-url';
+
 export type BookmarkItem = {
   quizId: string;
   questionText: string;
@@ -5,10 +7,6 @@ export type BookmarkItem = {
   videoUrl: string;
   savedAt: unknown;
 };
-
-function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-}
 
 export async function saveBookmark(uid: string, quizId: string): Promise<BookmarkItem> {
   const response = await fetch(`${getBaseUrl()}/api/users/${uid}/bookmarks`, {
@@ -21,7 +19,11 @@ export async function saveBookmark(uid: string, quizId: string): Promise<Bookmar
     throw new Error(`Failed to save bookmark: ${response.status}`);
   }
 
-  return response.json() as Promise<BookmarkItem>;
+  const data = (await response.json()) as BookmarkItem;
+  return {
+    ...data,
+    videoUrl: resolveBackendUrl(data.videoUrl),
+  };
 }
 
 export async function fetchBookmarks(uid: string): Promise<BookmarkItem[]> {
@@ -29,7 +31,11 @@ export async function fetchBookmarks(uid: string): Promise<BookmarkItem[]> {
   if (!response.ok) {
     throw new Error(`Failed to load bookmarks: ${response.status}`);
   }
-  return response.json() as Promise<BookmarkItem[]>;
+  const data = (await response.json()) as BookmarkItem[];
+  return data.map((item) => ({
+    ...item,
+    videoUrl: resolveBackendUrl(item.videoUrl),
+  }));
 }
 
 export async function deleteBookmark(uid: string, quizId: string): Promise<void> {

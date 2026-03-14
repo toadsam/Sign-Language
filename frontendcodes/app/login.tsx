@@ -6,8 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
 import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
+import { getBaseUrl } from '@/lib/api/base-url';
 
 export default function LoginScreen() {
+  const apiBaseUrl = getBaseUrl();
   const router = useRouter();
   const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
   const { request, response, promptAsync, isExpoGo, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
@@ -53,7 +55,7 @@ export default function LoginScreen() {
         setErrorMessage(null);
 
         // 1. 먼저 로그인 시도
-        const loginResponse = await fetch('http://localhost:8080/api/auth/login', {
+        const loginResponse = await fetch(`${apiBaseUrl}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idToken }),
@@ -98,7 +100,7 @@ export default function LoginScreen() {
         } else if (loginResponse.status === 404 && loginData.needsSignup) {
           // 2. 유저가 없으면 회원가입 시도
           console.log('유저 없음 -> 회원가입 시도');
-          const signupResponse = await fetch('http://localhost:8080/api/auth/signup', {
+          const signupResponse = await fetch(`${apiBaseUrl}/api/auth/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ idToken }),
@@ -137,7 +139,7 @@ export default function LoginScreen() {
     };
 
     void login();
-  }, [response, router, signInWithBackendUser]);
+  }, [apiBaseUrl, response, router, signInWithBackendUser]);
 
   const handleGooglePress = async () => {
     if (!hasGoogleClientId) {
@@ -197,11 +199,6 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.loginWrap}>
-          <Pressable style={styles.kakaoButton}>
-            <MaterialCommunityIcons name="chat" size={20} color="#3c1e1e" />
-            <Text style={styles.kakaoText}>카카오는 준비 중입니다</Text>
-          </Pressable>
-
           <Pressable
             disabled={!request || isSubmitting}
             onPress={handleGooglePress}
@@ -292,25 +289,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 46,
     gap: 10,
-  },
-  kakaoButton: {
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#FEE500',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  kakaoText: {
-    color: '#3c1e1e',
-    fontSize: 16,
-    fontWeight: '800',
   },
   googleButton: {
     height: 54,

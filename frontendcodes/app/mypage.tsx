@@ -11,10 +11,12 @@ import { useAuth } from '@/context/auth-context';
 import { DAILY_GOAL_TARGET, getConsecutiveGoalDays, normalizeDailySolvedCounts } from '@/lib/daily-goal';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 import { fetchTopWrongWords, TopWrongWordItem } from '@/lib/api/top-wrong-words';
+import { getBaseUrl } from '@/lib/api/base-url';
 
 const PRIMARY = '#137fec';
 
 export default function MyPageScreen() {
+  const apiBaseUrl = getBaseUrl();
   const router = useRouter();
   const { user, isGuest, signOut, updateUser } = useAuth();
 
@@ -82,7 +84,7 @@ export default function MyPageScreen() {
         const base64Image = `data:image/jpeg;base64,${asset.base64}`;
 
         // 백엔드에 프로필 이미지 업데이트 요청
-        const response = await fetch(`http://localhost:8080/api/users/${user.id}/profile-image`, {
+        const response = await fetch(`${apiBaseUrl}/api/users/${user.id}/profile-image`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profileImageUrl: base64Image }),

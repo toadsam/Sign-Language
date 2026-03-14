@@ -1,3 +1,5 @@
+import { getBaseUrl, resolveBackendUrl } from './base-url';
+
 export type WrongNoteItem = {
   quizId: string;
   questionText: string;
@@ -6,14 +8,14 @@ export type WrongNoteItem = {
   wrongAt: unknown;
 };
 
-function getBaseUrl() {
-  return process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-}
-
 export async function fetchWrongNotes(uid: string): Promise<WrongNoteItem[]> {
   const response = await fetch(`${getBaseUrl()}/api/users/${uid}/wrong-notes`);
   if (!response.ok) {
     throw new Error(`Failed to load wrong notes: ${response.status}`);
   }
-  return response.json() as Promise<WrongNoteItem[]>;
+  const data = (await response.json()) as WrongNoteItem[];
+  return data.map((item) => ({
+    ...item,
+    videoUrl: resolveBackendUrl(item.videoUrl),
+  }));
 }
