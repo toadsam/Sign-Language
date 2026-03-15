@@ -16,9 +16,10 @@ public class SecurityConfig {
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     http
-        .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+        .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/translate"))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(
+                "/translate",
                 "/api/health",
                 "/api/auth/**",
                 "/api/quiz/**",

@@ -498,5 +498,10 @@
         "id":  100,
         "word":  "다시",
         "file":  "0100.placeholder"
+    },
+    {
+        "id":  101,
+        "word":  "끝",
+        "file":  "0101.placeholder"
     }
 ]

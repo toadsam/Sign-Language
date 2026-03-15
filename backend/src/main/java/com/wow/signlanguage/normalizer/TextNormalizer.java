@@ -37,7 +37,7 @@ public class TextNormalizer {
     return normalized;
   }
 
-  private String normalizeToken(String rawToken) {
+  public String normalizeToken(String rawToken) {
     String token = rawToken.trim();
     if (token.isEmpty()) {
       return "";
@@ -70,6 +70,8 @@ public class TextNormalizer {
     map.put("가자", "가다");
     map.put("갈래", "가다");
     map.put("갑니다", "가다");
+    map.put("가니", "가다");
+    map.put("가냐", "가다");
 
     map.put("와", "오다");
     map.put("와요", "오다");
@@ -82,12 +84,56 @@ public class TextNormalizer {
     map.put("지하철역은", "지하철역");
     map.put("왼쪽으로", "왼쪽");
     map.put("오른쪽으로", "오른쪽");
+    map.put("뭐야", "무엇");
+    map.put("뭐예요", "무엇");
+    map.put("뭐", "무엇");
+    map.put("누구야", "누구");
+    map.put("언제야", "언제");
+    map.put("왜야", "왜");
+    map.put("어떻게야", "어떻게");
 
     map.put("가서", "가다");
     map.put("건너", "건너다");
     map.put("건너요", "건너다");
+    map.put("건너자", "건너다");
     map.put("가능해", "가능");
     map.put("가능해요", "가능");
+    map.put("불가능해", "불가능");
+    map.put("불가능해요", "불가능");
+    map.put("타요", "타다");
+    map.put("타자", "타다");
+    map.put("찾아요", "찾다");
+    map.put("찾아", "찾다");
+    map.put("봐요", "보다");
+    map.put("봐", "보다");
+    map.put("주세요", "주다");
+    map.put("줘요", "주다");
+    map.put("줘", "주다");
+    map.put("받아요", "받다");
+    map.put("받아", "받다");
+    map.put("기다려", "기다리다");
+    map.put("기다려요", "기다리다");
+    map.put("돌아", "돌다");
+    map.put("돌아요", "돌다");
+    map.put("들어가", "들어가다");
+    map.put("들어가요", "들어가다");
+    map.put("나가", "나가다");
+    map.put("나가요", "나가다");
+    map.put("멈춰", "멈추다");
+    map.put("멈춰요", "멈추다");
+    map.put("맞아요", "맞다");
+    map.put("몰라", "모르다");
+    map.put("몰라요", "모르다");
+    map.put("알아요", "알다");
+    map.put("알아", "알다");
+    map.put("확인해", "확인");
+    map.put("확인해요", "확인");
+    map.put("예약해", "예약");
+    map.put("예약해요", "예약");
+    map.put("출발해", "출발");
+    map.put("출발해요", "출발");
+    map.put("도착해", "도착");
+    map.put("도착해요", "도착");
 
     return map;
   }

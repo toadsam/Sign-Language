@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getBaseUrl } from '@/lib/api/base-url';
 
 type Clip = {
   word: string;
@@ -10,21 +9,31 @@ type Clip = {
   url: string;
 };
 
+type SimplificationMetadata = {
+  question: boolean;
+  negative: boolean;
+  tense: string;
+};
+
 type TranslateResponse = {
   input: string;
+  simplifiedSentence: string;
   normalizedTokens: string[];
+  appliedRules: string[];
+  metadata: SimplificationMetadata;
   clips: Clip[];
   unknown: string[];
 };
 
-const BACKEND_BASE_URL = getBaseUrl();
+const BACKEND_BASE_URL = 'http://localhost:8080';
 
 const SAMPLES = [
   '화장실 어디 있어?',
   '지하철역은 어디야?',
-  '택시 타고 공항 가요',
-  '지금 출발 가능해?',
-  '왼쪽으로 가서 횡단보도 건너',
+  '내일 공항에 가요',
+  '화장실이 없어요?',
+  '오늘 출발했어요',
+  '왼쪽으로 가서 횡단보도 건너요',
 ];
 
 export default function TestScreen() {
@@ -37,6 +46,8 @@ export default function TestScreen() {
   const unknownTokens = useMemo(() => result?.unknown ?? [], [result]);
   const normalizedTokens = useMemo(() => result?.normalizedTokens ?? [], [result]);
   const clips = useMemo(() => result?.clips ?? [], [result]);
+  const appliedRules = useMemo(() => result?.appliedRules ?? [], [result]);
+  const metadata = result?.metadata;
 
   const checkClipStatus = async (relativeUrl: string): Promise<'OK' | 'FAIL'> => {
     const fullUrl = `${BACKEND_BASE_URL}${relativeUrl}`;
@@ -98,8 +109,8 @@ export default function TestScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>/test 매핑 테스트</Text>
-        <Text style={styles.caption}>Frontend(8081) -> Backend(8080) API/파일 접근 검증</Text>
+        <Text style={styles.title}>/test 수어 문장 변환 테스트</Text>
+        <Text style={styles.caption}>{'원문 -> 수어 직전 문장 -> /translate 매핑 흐름 검증'}</Text>
 
         <TextInput
           style={styles.input}
@@ -129,6 +140,26 @@ export default function TestScreen() {
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Simplified Sentence</Text>
+          <Text style={styles.sentenceText}>{result?.simplifiedSentence || '없음'}</Text>
+        </View>
+
+        <Section title="Applied Rules" tokens={appliedRules} />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Metadata</Text>
+          {metadata ? (
+            <View style={styles.metaWrap}>
+              <Text style={styles.metaText}>question: {metadata.question ? 'true' : 'false'}</Text>
+              <Text style={styles.metaText}>negative: {metadata.negative ? 'true' : 'false'}</Text>
+              <Text style={styles.metaText}>tense: {metadata.tense}</Text>
+            </View>
+          ) : (
+            <Text style={styles.empty}>없음</Text>
+          )}
+        </View>
 
         <Section title="Normalized Tokens" tokens={normalizedTokens} />
 
@@ -237,8 +268,18 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
+  sentenceText: {
+    color: '#1e2b3a',
+    lineHeight: 22,
+  },
   sectionTitle: {
     fontWeight: '700',
+    color: '#1e2b3a',
+  },
+  metaWrap: {
+    gap: 4,
+  },
+  metaText: {
     color: '#1e2b3a',
   },
   empty: {
