@@ -27,3 +27,18 @@ app:
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
+
+external:
+  api:
+    etri:
+      enabled: ${ETRI_ENABLED:true}
+      access-key: ${ETRI_ACCESS_KEY:}
+      url: ${ETRI_API_URL:http://aiopen.etri.re.kr:8000/WiseNLU_spoken}
+    urimalsam:
+      enabled: ${URIMALSAM_ENABLED:true}
+      api-key: ${URIMALSAM_API_KEY:}
+      url: ${URIMALSAM_API_URL:https://opendict.korean.go.kr/api/search}
+    krdict:
+      enabled: ${KRDICT_ENABLED:true}
+      api-key: ${KRDICT_API_KEY:}
+      url: ${KRDICT_API_URL:https://krdict.korean.go.kr/api/search}

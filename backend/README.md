@@ -9,6 +9,9 @@ Set these before running:
 - `GOOGLE_CLIENT_ID` (recommended)
 - `GOOGLE_WEB_CLIENT_ID` (fallback alias)
 - `JWT_SECRET` (32+ chars)
+- `ETRI_ACCESS_KEY` (optional, unknown 단어 보강용)
+- `URIMALSAM_API_KEY` (optional, unknown 단어 보강용)
+- `KRDICT_API_KEY` (optional, unknown 단어 보강용)
 
 Example (PowerShell):
 ```powershell

@@ -16,15 +16,18 @@ public class TranslationService {
   private final TextNormalizer textNormalizer;
   private final DictionaryLoader dictionaryLoader;
   private final SignSentenceSimplifier signSentenceSimplifier;
+  private final UnknownTokenResolverService unknownTokenResolverService;
 
   public TranslationService(
       TextNormalizer textNormalizer,
       DictionaryLoader dictionaryLoader,
-      SignSentenceSimplifier signSentenceSimplifier
+      SignSentenceSimplifier signSentenceSimplifier,
+      UnknownTokenResolverService unknownTokenResolverService
   ) {
     this.textNormalizer = textNormalizer;
     this.dictionaryLoader = dictionaryLoader;
     this.signSentenceSimplifier = signSentenceSimplifier;
+    this.unknownTokenResolverService = unknownTokenResolverService;
   }
 
   public TranslateResponse translate(String input) {
@@ -34,10 +37,21 @@ public class TranslationService {
         .map(textNormalizer::normalizeToken)
         .filter(token -> !token.isBlank())
         .toList();
+    List<String> resolvedTokens = new ArrayList<>();
+    for (String token : tokens) {
+      if (dictionaryLoader.findByWord(token).isPresent()) {
+        resolvedTokens.add(token);
+        continue;
+      }
+
+      String resolved = unknownTokenResolverService.resolveToken(token).orElse(token);
+      resolvedTokens.add(resolved);
+    }
+
     List<ClipMatch> clips = new ArrayList<>();
     List<String> unknown = new ArrayList<>();
 
-    for (String token : tokens) {
+    for (String token : resolvedTokens) {
       SignDictionaryEntry entry = dictionaryLoader.findByWord(token).orElse(null);
       if (entry == null) {
         unknown.add(token);
@@ -55,7 +69,7 @@ public class TranslationService {
     return new TranslateResponse(
         safeInput,
         simplification.simplifiedSentence(),
-        tokens,
+        resolvedTokens,
         simplification.appliedRules(),
         simplification.metadata(),
         clips,
