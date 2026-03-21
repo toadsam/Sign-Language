@@ -4,6 +4,8 @@ import com.wow.signlanguage.user.dto.BookmarkRequest;
 import com.wow.signlanguage.user.dto.BookmarkResponse;
 import com.wow.signlanguage.user.dto.DailySolvedTrendResponse;
 import com.wow.signlanguage.user.dto.TopWrongWordResponse;
+import com.wow.signlanguage.user.dto.TranslatorBookmarkRequest;
+import com.wow.signlanguage.user.dto.TranslatorBookmarkResponse;
 import com.wow.signlanguage.user.dto.WrongNoteResponse;
 import com.wow.signlanguage.user.dto.WrongNoteSaveRequest;
 import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
@@ -224,6 +226,56 @@ public class UserController {
     public ResponseEntity<?> deleteSavedWrongNote(@PathVariable String uid, @PathVariable String quizId) {
         try {
             userService.deleteSavedWrongNote(uid, quizId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/{uid}/translator-bookmarks")
+    public ResponseEntity<?> saveTranslatorBookmark(@PathVariable String uid, @RequestBody TranslatorBookmarkRequest request) {
+        if (request == null || request.sentence() == null || request.sentence().isBlank()) {
+            return ResponseEntity.badRequest().body("sentence를 입력하세요");
+        }
+        try {
+            TranslatorBookmarkResponse response = userService.saveTranslatorBookmark(
+                    uid,
+                    request.sentence(),
+                    request.word(),
+                    request.videoUrl()
+            );
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{uid}/translator-bookmarks")
+    public ResponseEntity<?> getTranslatorBookmarks(@PathVariable String uid) {
+        try {
+            List<TranslatorBookmarkResponse> response = userService.getTranslatorBookmarks(uid);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (ExecutionException | InterruptedException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/{uid}/translator-bookmarks/{bookmarkId}")
+    public ResponseEntity<?> deleteTranslatorBookmark(@PathVariable String uid, @PathVariable String bookmarkId) {
+        try {
+            userService.deleteTranslatorBookmark(uid, bookmarkId);
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

@@ -18,6 +18,7 @@ import com.wow.signlanguage.user.dto.BookmarkResponse;
 import com.wow.signlanguage.user.dto.DailySolvedCountPointResponse;
 import com.wow.signlanguage.user.dto.DailySolvedTrendResponse;
 import com.wow.signlanguage.user.dto.TopWrongWordResponse;
+import com.wow.signlanguage.user.dto.TranslatorBookmarkResponse;
 import com.wow.signlanguage.user.dto.WrongNoteResponse;
 import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
 import com.wow.signlanguage.user.model.UserInfo;
@@ -33,6 +34,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 @Service
@@ -420,6 +422,108 @@ public class UserService {
         return toWrongNoteSavedResponse(savedDoc);
     }
 
+    public TranslatorBookmarkResponse saveTranslatorBookmark(
+            String uid,
+            String sentence,
+            String word,
+            String videoUrl
+    ) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+        if (sentence == null || sentence.isBlank()) {
+            throw new IllegalArgumentException("sentence is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentReference userRef = db.collection(COLLECTION_NAME).document(uid);
+        DocumentSnapshot userDoc = userRef.get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        String bookmarkId = "txt_" + UUID.randomUUID();
+        Map<String, Object> data = new HashMap<>();
+        data.put("quizId", bookmarkId);
+        data.put("questionText", safeString(sentence));
+        data.put("word", resolveBookmarkWord(word, sentence));
+        data.put("videoUrl", safeString(videoUrl));
+        data.put("source", "translator");
+        data.put("savedAt", FieldValue.serverTimestamp());
+
+        DocumentReference bookmarkRef = userRef
+                .collection(TRANSLATOR_BOOKMARKS_COLLECTION_NAME)
+                .document(bookmarkId);
+        bookmarkRef.set(data).get();
+
+        DocumentSnapshot savedDoc = bookmarkRef.get().get();
+        return toTranslatorBookmarkResponse(savedDoc);
+    }
+
+    public List<TranslatorBookmarkResponse> getTranslatorBookmarks(String uid) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank()) {
+            throw new IllegalArgumentException("uid is required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        QuerySnapshot snapshot = db.collection(COLLECTION_NAME)
+                .document(uid)
+                .collection(TRANSLATOR_BOOKMARKS_COLLECTION_NAME)
+                .orderBy("savedAt", Query.Direction.DESCENDING)
+                .get()
+                .get();
+
+        List<TranslatorBookmarkResponse> result = new ArrayList<>();
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            String source = safeString(doc.getString("source"));
+            String questionText = safeString(doc.getString("questionText"));
+
+            // translator 전용 북마크만 반환
+            // - 신규 데이터: source == "translator"
+            // - 이전 데이터 호환: questionText가 존재하면 translator 문장 북마크로 간주
+            if (!"translator".equals(source) && questionText.isBlank()) {
+                continue;
+            }
+            result.add(toTranslatorBookmarkResponse(doc));
+        }
+        return result;
+    }
+
+    public void deleteTranslatorBookmark(String uid, String bookmarkId) throws ExecutionException, InterruptedException {
+        if (uid == null || uid.isBlank() || bookmarkId == null || bookmarkId.isBlank()) {
+            throw new IllegalArgumentException("uid and bookmarkId are required");
+        }
+
+        Firestore db = FirestoreClient.getFirestore();
+        DocumentSnapshot userDoc = db.collection(COLLECTION_NAME).document(uid).get().get();
+        if (!userDoc.exists()) {
+            throw new RuntimeException("User not found");
+        }
+
+        DocumentReference bookmarkRef = db.collection(COLLECTION_NAME)
+                .document(uid)
+                .collection(TRANSLATOR_BOOKMARKS_COLLECTION_NAME)
+                .document(bookmarkId);
+
+        DocumentSnapshot bookmarkDoc = bookmarkRef.get().get();
+        if (!bookmarkDoc.exists()) {
+            return;
+        }
+
+        String source = safeString(bookmarkDoc.getString("source"));
+        String questionText = safeString(bookmarkDoc.getString("questionText"));
+        if (!"translator".equals(source) && questionText.isBlank()) {
+            throw new IllegalArgumentException("not a translator bookmark");
+        }
+
+        bookmarkRef.delete().get();
+    }
+
     public List<WrongNoteSavedResponse> getSavedWrongNotes(String uid) throws ExecutionException, InterruptedException {
         if (uid == null || uid.isBlank()) {
             throw new IllegalArgumentException("uid is required");
@@ -563,6 +667,15 @@ public class UserService {
                 doc.get("savedAt"));
     }
 
+    private TranslatorBookmarkResponse toTranslatorBookmarkResponse(DocumentSnapshot doc) {
+        return new TranslatorBookmarkResponse(
+                doc.getId(),
+                safeString(doc.getString("questionText")),
+                safeString(doc.getString("word")),
+                safeString(doc.getString("videoUrl")),
+                doc.get("savedAt"));
+    }
+
     private boolean isDocumentHidden(DocumentSnapshot doc) {
         Object hidden = doc.get("isHidden");
         return hidden instanceof Boolean && (Boolean) hidden;
@@ -592,6 +705,21 @@ public class UserService {
         }
         Object value = choices.get(index);
         return value instanceof String ? (String) value : "";
+    }
+
+    private String resolveBookmarkWord(String word, String sentence) {
+        String safeWord = safeString(word).trim();
+        if (!safeWord.isBlank()) {
+            return safeWord;
+        }
+
+        String safeSentence = safeString(sentence).trim();
+        if (safeSentence.isBlank()) {
+            return "";
+        }
+
+        String[] tokens = safeSentence.split("\\s+");
+        return tokens.length > 0 ? tokens[0] : "";
     }
 
     private List<String> toStringList(Object value) {

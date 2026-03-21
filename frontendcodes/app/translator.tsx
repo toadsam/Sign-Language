@@ -7,27 +7,37 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
+import { useAuth } from '@/context/auth-context';
+import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
 import { TranslateClip, TranslateResponse, translateText } from '@/lib/api/translate';
 
 const PRIMARY = '#2281ea';
-const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v1';
+const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v2';
 const MAX_BOOKMARKS = 20;
 
 export default function TranslatorScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingDotCount, setLoadingDotCount] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [bookmarkQuery, setBookmarkQuery] = useState('');
   const [result, setResult] = useState<TranslateResponse | null>(null);
-  const [bookmarks, setBookmarks] = useState<string[]>([]);
+  const [bookmarks, setBookmarks] = useState<TranslatorBookmarkItem[]>([]);
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
 
   const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
   const unknownTokens = useMemo<string[]>(() => result?.unknown ?? [], [result]);
   const normalizedTokens = useMemo<string[]>(() => result?.normalizedTokens ?? [], [result]);
+  const filteredBookmarks = useMemo(() => {
+    const q = bookmarkQuery.trim().toLowerCase();
+    if (!q) return bookmarks;
+    return bookmarks.filter((item) => (item.questionText ?? '').toLowerCase().includes(q));
+  }, [bookmarks, bookmarkQuery]);
   const currentClip = clips[currentClipIndex] ?? null;
   const currentClipUrl = currentClip?.url ?? null;
 
@@ -54,13 +64,29 @@ export default function TranslatorScreen() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const stored = await readBookmarks();
-      if (mounted) setBookmarks(stored);
+      try {
+        if (user?.id) {
+          const stored = await fetchTranslatorBookmarks(user.id);
+          if (mounted) {
+            setBookmarks(stored.slice(0, MAX_BOOKMARKS));
+          }
+          return;
+        }
+
+        const localStored = await readBookmarks();
+        if (mounted) {
+          setBookmarks(localStored);
+        }
+      } catch (error) {
+        if (mounted) {
+          setErrorMessage(error instanceof Error ? error.message : '북마크를 불러오지 못했습니다.');
+        }
+      }
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.id]);
   useEffect(() => {
     if (!loading) {
       setLoadingDotCount(1);
@@ -73,13 +99,22 @@ export default function TranslatorScreen() {
 
     return () => clearInterval(timer);
   }, [loading]);
-  async function handleTranslate() {
-    const text = inputText.trim();
+
+  useEffect(() => {
+    if (!feedbackMessage) return;
+    const timer = setTimeout(() => setFeedbackMessage(null), 1600);
+    return () => clearTimeout(timer);
+  }, [feedbackMessage]);
+  async function handleTranslate(overrideText?: string) {
+    const text = (overrideText ?? inputText).trim();
     if (!text || loading) return;
 
     try {
       setLoading(true);
       setErrorMessage(null);
+      if (overrideText) {
+        setInputText(text);
+      }
       const next = await translateText(text);
       setResult(next);
       setCurrentClipIndex(0);
@@ -95,10 +130,46 @@ export default function TranslatorScreen() {
   async function handleSaveSentence() {
     const sentence = inputText.trim();
     if (!sentence) return;
+    setErrorMessage(null);
 
-    const next = [sentence, ...bookmarks.filter((item) => item !== sentence)].slice(0, MAX_BOOKMARKS);
-    setBookmarks(next);
-    await writeBookmarks(next);
+    try {
+      if (user?.id) {
+        const saved = await saveTranslatorBookmark(user.id, {
+          sentence,
+          word: currentClip?.word ?? '',
+          videoUrl: currentClip?.url ?? '',
+        });
+        const next = [saved, ...bookmarks.filter((item) => item.quizId !== saved.quizId)].slice(0, MAX_BOOKMARKS);
+        setBookmarks(next);
+        setFeedbackMessage('저장되었습니다!');
+        return;
+      }
+
+      const fallbackItem: TranslatorBookmarkItem = {
+        quizId: `local_${Date.now()}`,
+        questionText: sentence,
+        word: currentClip?.word ?? '',
+        videoUrl: currentClip?.url ?? '',
+        savedAt: new Date().toISOString(),
+      };
+      const next = [fallbackItem, ...bookmarks.filter((item) => item.questionText !== sentence)].slice(0, MAX_BOOKMARKS);
+      setBookmarks(next);
+      await writeBookmarks(next);
+      setFeedbackMessage('저장되었습니다!');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '북마크 저장에 실패했습니다.');
+    }
+  }
+
+  function handleToggleBookmarks() {
+    setBookmarksOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        setBookmarkQuery('');
+      }
+      setFeedbackMessage(next ? '북마크를 열었습니다.' : '북마크를 닫았습니다.');
+      return next;
+    });
   }
 
   function moveClip(step: -1 | 1) {
@@ -109,16 +180,6 @@ export default function TranslatorScreen() {
       if (next >= clips.length) return clips.length - 1;
       return next;
     });
-  }
-
-  function replayCurrentClip() {
-    if (!currentClip) return;
-    try {
-      player.replay();
-      player.play();
-    } catch {
-      // noop
-    }
   }
 
   return (
@@ -163,28 +224,54 @@ export default function TranslatorScreen() {
           </View>
           <View style={styles.actionItem}>
             <Pressable
-              style={styles.actionIconWrap}
-              onPress={() => setBookmarksOpen((prev) => !prev)}
+              style={[styles.actionIconWrap, bookmarksOpen && styles.actionIconWrapActive]}
+              onPress={handleToggleBookmarks}
               accessibilityLabel="북마크 보기">
-              <Ionicons name="bookmarks-outline" size={16} color="#111827" />
+              <Ionicons name="bookmarks-outline" size={16} color={bookmarksOpen ? PRIMARY : '#111827'} />
             </Pressable>
             <Text style={styles.actionLabel}>북마크</Text>
           </View>
         </View>
 
+        {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
         {bookmarksOpen && (
-          <View style={styles.bookmarkPanel}>
-            <Text style={styles.bookmarkTitle}>내 북마크 문장</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bookmarkList}>
-              {bookmarks.length === 0 ? (
+          <View style={styles.bookmarkSheet}>
+            <View style={styles.bookmarkSheetHeader}>
+              <Text style={styles.bookmarkTitle}>내 북마크 문장</Text>
+              <Pressable style={styles.bookmarkCloseBtn} onPress={handleToggleBookmarks}>
+                <Ionicons name="close" size={16} color="#64748b" />
+              </Pressable>
+            </View>
+            <View style={styles.bookmarkSearchWrap}>
+              <Ionicons name="search" size={16} color="#94a3b8" />
+              <TextInput
+                value={bookmarkQuery}
+                onChangeText={setBookmarkQuery}
+                placeholder="문장 검색"
+                placeholderTextColor="#94a3b8"
+                style={styles.bookmarkSearchInput}
+              />
+            </View>
+            <ScrollView style={styles.bookmarkList} contentContainerStyle={styles.bookmarkListContent} showsVerticalScrollIndicator={false}>
+              {filteredBookmarks.length === 0 ? (
                 <Text style={styles.bookmarkEmpty}>저장된 문장이 없습니다.</Text>
               ) : (
-                bookmarks.map((sentence, index) => (
-                  <Pressable key={`${sentence}-${index}`} style={styles.bookmarkChip} onPress={() => setInputText(sentence)}>
-                    <Text style={styles.bookmarkChipText} numberOfLines={1}>
-                      {sentence}
+                filteredBookmarks.map((item) => (
+                  <View key={item.quizId} style={styles.bookmarkItemRow}>
+                    <Text style={styles.bookmarkItemText} numberOfLines={2}>
+                      {item.questionText || '-'}
                     </Text>
-                  </Pressable>
+                    <Pressable
+                      style={styles.bookmarkPlayButton}
+                      onPress={() => {
+                        void handleTranslate(item.questionText);
+                        setBookmarksOpen(false);
+                        setBookmarkQuery('');
+                        setFeedbackMessage('북마크 문장을 재생합니다.');
+                      }}>
+                      <Ionicons name="play" size={14} color={PRIMARY} />
+                    </Pressable>
+                  </View>
                 ))
               )}
             </ScrollView>
@@ -221,7 +308,7 @@ export default function TranslatorScreen() {
             </Pressable>
           </View>
 
-          <Pressable style={[styles.translateButton, loading && styles.translateButtonDisabled]} onPress={handleTranslate} disabled={loading}>
+          <Pressable style={[styles.translateButton, loading && styles.translateButtonDisabled]} onPress={() => void handleTranslate()} disabled={loading}>
             <Ionicons name="language-outline" size={18} color="#fff" />
             <Text style={styles.translateButtonText}>
               {loading ? `번역중${'.'.repeat(loadingDotCount)}` : '번역하기 (Translate)'}
@@ -348,30 +435,76 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionLabel: { color: '#64748b', fontSize: 11, fontWeight: '600' },
-  bookmarkPanel: {
-    marginTop: 8,
-    borderRadius: 12,
+  actionIconWrapActive: {
+    backgroundColor: '#e8f1ff',
     borderWidth: 1,
-    borderColor: '#dbe4f3',
+    borderColor: '#bfdbfe',
+  },
+  actionLabel: { color: '#64748b', fontSize: 11, fontWeight: '600' },
+  feedbackText: { marginTop: 2, textAlign: 'center', color: '#1d4ed8', fontSize: 12, fontWeight: '700' },
+  bookmarkSheet: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 74,
+    height: 290,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 8,
+    zIndex: 35,
+  },
+  bookmarkSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bookmarkTitle: { color: '#334155', fontSize: 15, fontWeight: '900' },
+  bookmarkCloseBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookmarkSearchWrap: {
+    marginTop: 8,
+    marginBottom: 8,
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bookmarkSearchInput: { flex: 1, color: '#0f172a', fontSize: 13, paddingVertical: 7 },
+  bookmarkList: { flex: 1 },
+  bookmarkListContent: { gap: 8, paddingBottom: 4 },
+  bookmarkItemRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     backgroundColor: '#f8fbff',
     paddingHorizontal: 10,
     paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  bookmarkTitle: { color: '#334155', fontSize: 12, fontWeight: '800' },
-  bookmarkList: { gap: 8, minHeight: 30, alignItems: 'center' },
-  bookmarkChip: {
-    maxWidth: 250,
-    borderRadius: 999,
+  bookmarkItemText: { flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '600' },
+  bookmarkPlayButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#dbe4f3',
-    backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  bookmarkChipText: { color: '#0f172a', fontSize: 12, fontWeight: '600' },
-  bookmarkEmpty: { color: '#94a3b8', fontSize: 12, fontWeight: '600' },
+  bookmarkEmpty: { color: '#94a3b8', fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 12 },
   errorText: { marginTop: 6, textAlign: 'center', color: '#b91c1c', fontSize: 12, fontWeight: '700' },
   inputPanel: {
     marginTop: 'auto',
@@ -506,24 +639,24 @@ const styles = StyleSheet.create({
   navTextActive: { color: PRIMARY },
 });
 
-async function readBookmarks(): Promise<string[]> {
+async function readBookmarks(): Promise<TranslatorBookmarkItem[]> {
   try {
     if (Platform.OS === 'web') {
       const raw = window.localStorage.getItem(BOOKMARKS_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+      return Array.isArray(parsed) ? parsed.filter(isTranslatorBookmarkItem) : [];
     }
     const raw = await SecureStore.getItemAsync(BOOKMARKS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+    return Array.isArray(parsed) ? parsed.filter(isTranslatorBookmarkItem) : [];
   } catch {
     return [];
   }
 }
 
-async function writeBookmarks(bookmarks: string[]): Promise<void> {
+async function writeBookmarks(bookmarks: TranslatorBookmarkItem[]): Promise<void> {
   const serialized = JSON.stringify(bookmarks);
   try {
     if (Platform.OS === 'web') {
@@ -534,5 +667,18 @@ async function writeBookmarks(bookmarks: string[]): Promise<void> {
   } catch {
     // ignore storage failures
   }
+}
+
+function isTranslatorBookmarkItem(value: unknown): value is TranslatorBookmarkItem {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const item = value as Partial<TranslatorBookmarkItem>;
+  return (
+    typeof item.quizId === 'string'
+    && typeof item.questionText === 'string'
+    && typeof item.word === 'string'
+    && typeof item.videoUrl === 'string'
+  );
 }
 
