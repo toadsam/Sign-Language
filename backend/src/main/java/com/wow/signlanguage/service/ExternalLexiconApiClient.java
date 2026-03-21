@@ -52,14 +52,18 @@ public class ExternalLexiconApiClient {
 
   public List<String> fetchCandidates(String token) {
     LinkedHashSet<String> candidates = new LinkedHashSet<>();
-    candidates.addAll(fetchEtriLemmas(token));
+    candidates.addAll(fetchEtriLemmas(token, false));
     candidates.addAll(fetchUrimalsamWords(token));
     candidates.addAll(fetchKrDictWords(token));
     candidates.removeIf(String::isBlank);
     return new ArrayList<>(candidates);
   }
 
-  private List<String> fetchEtriLemmas(String token) {
+  public List<String> fetchSentenceLemmas(String sentence) {
+    return fetchEtriLemmas(sentence, true);
+  }
+
+  private List<String> fetchEtriLemmas(String text, boolean contentOnly) {
     if (!etriEnabled || etriAccessKey == null || etriAccessKey.isBlank()) {
       return List.of();
     }
@@ -69,7 +73,7 @@ public class ExternalLexiconApiClient {
           objectMapper.createObjectNode()
               .put("access_key", etriAccessKey)
               .set("argument", objectMapper.createObjectNode()
-                  .put("text", token)
+                  .put("text", text)
                   .put("analysis_code", "morp"))
       );
 
@@ -93,9 +97,13 @@ public class ExternalLexiconApiClient {
           continue;
         }
         for (JsonNode morpNode : morp) {
+          String type = morpNode.path("type").asText("");
+          if (contentOnly && !isContentPos(type)) {
+            continue;
+          }
           String lemma = morpNode.path("lemma").asText("");
           if (!lemma.isBlank()) {
-            lemmas.add(lemma);
+            lemmas.addAll(expandLemmaByPos(lemma, type));
           }
         }
       }
@@ -103,6 +111,44 @@ public class ExternalLexiconApiClient {
     } catch (Exception ignored) {
       return List.of();
     }
+  }
+
+  private boolean isContentPos(String pos) {
+    if (pos == null || pos.isBlank()) {
+      return false;
+    }
+    return pos.startsWith("N") // nouns/pronouns/numerals
+        || pos.startsWith("V") // verbs/adjectives/auxiliary predicates
+        || pos.startsWith("M") // adverbs/determiners
+        || pos.equals("XR") // bound roots
+        || pos.equals("SL") // foreign words
+        || pos.equals("SN"); // numbers
+  }
+
+  private List<String> expandLemmaByPos(String lemma, String pos) {
+    LinkedHashSet<String> expanded = new LinkedHashSet<>();
+    String base = lemma == null ? "" : lemma.trim();
+    if (base.isBlank()) {
+      return List.of();
+    }
+    expanded.add(base);
+
+    if (pos != null && pos.startsWith("V")) {
+      if (!base.endsWith("다")) {
+        expanded.add(base + "다");
+      }
+      if (base.endsWith("하")) {
+        expanded.add(base.substring(0, base.length() - 1) + "하다");
+      }
+      if (base.endsWith("되")) {
+        expanded.add(base.substring(0, base.length() - 1) + "되다");
+      }
+      if (base.endsWith("지")) {
+        expanded.add(base.substring(0, base.length() - 1) + "지다");
+      }
+    }
+
+    return new ArrayList<>(expanded);
   }
 
   private List<String> fetchUrimalsamWords(String token) {

@@ -7,7 +7,9 @@ import com.wow.signlanguage.translate.ClipMatch;
 import com.wow.signlanguage.translate.SimplificationResult;
 import com.wow.signlanguage.translate.TranslateResponse;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,36 +19,35 @@ public class TranslationService {
   private final DictionaryLoader dictionaryLoader;
   private final SignSentenceSimplifier signSentenceSimplifier;
   private final UnknownTokenResolverService unknownTokenResolverService;
+  private final ExternalLexiconApiClient externalLexiconApiClient;
 
   public TranslationService(
       TextNormalizer textNormalizer,
       DictionaryLoader dictionaryLoader,
       SignSentenceSimplifier signSentenceSimplifier,
-      UnknownTokenResolverService unknownTokenResolverService
+      UnknownTokenResolverService unknownTokenResolverService,
+      ExternalLexiconApiClient externalLexiconApiClient
   ) {
     this.textNormalizer = textNormalizer;
     this.dictionaryLoader = dictionaryLoader;
     this.signSentenceSimplifier = signSentenceSimplifier;
     this.unknownTokenResolverService = unknownTokenResolverService;
+    this.externalLexiconApiClient = externalLexiconApiClient;
   }
 
   public TranslateResponse translate(String input) {
     String safeInput = input == null ? "" : input;
     SimplificationResult simplification = signSentenceSimplifier.simplify(safeInput);
-    List<String> tokens = simplification.tokens().stream()
+    List<String> ruleTokens = simplification.tokens().stream()
         .map(textNormalizer::normalizeToken)
         .filter(token -> !token.isBlank())
         .toList();
-    List<String> resolvedTokens = new ArrayList<>();
-    for (String token : tokens) {
-      if (dictionaryLoader.findByWord(token).isPresent()) {
-        resolvedTokens.add(token);
-        continue;
-      }
-
-      String resolved = unknownTokenResolverService.resolveToken(token).orElse(token);
-      resolvedTokens.add(resolved);
-    }
+    List<String> etriTokens = externalLexiconApiClient.fetchSentenceLemmas(safeInput).stream()
+        .map(textNormalizer::normalizeToken)
+        .filter(token -> !token.isBlank())
+        .toList();
+    List<String> tokens = chooseTokenStream(ruleTokens, etriTokens);
+    List<String> resolvedTokens = resolveTokens(tokens, etriTokens);
 
     List<ClipMatch> clips = new ArrayList<>();
     List<String> unknown = new ArrayList<>();
@@ -62,7 +63,7 @@ public class TranslationService {
           token,
           entry.id(),
           entry.file(),
-          "/clips/" + entry.file()
+          buildClipUrl(entry.file())
       ));
     }
 
@@ -75,5 +76,144 @@ public class TranslationService {
         clips,
         unknown
     );
+  }
+
+  private List<String> chooseTokenStream(List<String> ruleTokens, List<String> etriTokens) {
+    if (etriTokens == null || etriTokens.isEmpty()) {
+      return ruleTokens;
+    }
+    if (ruleTokens == null || ruleTokens.isEmpty()) {
+      return etriTokens;
+    }
+
+    int ruleHits = countDictionaryHits(ruleTokens);
+    int etriHits = countDictionaryHits(etriTokens);
+    return etriHits > ruleHits ? etriTokens : ruleTokens;
+  }
+
+  private int countDictionaryHits(List<String> tokens) {
+    int hits = 0;
+    for (String token : tokens) {
+      if (dictionaryLoader.findByWord(token).isPresent()) {
+        hits++;
+      }
+    }
+    return hits;
+  }
+
+  private List<String> resolveTokens(List<String> tokens, List<String> contextTokens) {
+    List<String> resolvedTokens = new ArrayList<>();
+    List<String> contextDictionaryWords = buildContextDictionaryWords(contextTokens);
+
+    for (String token : tokens) {
+      if (dictionaryLoader.findByWord(token).isPresent()) {
+        resolvedTokens.add(token);
+        continue;
+      }
+
+      String resolved = unknownTokenResolverService.resolveToken(token).orElse(null);
+      if (resolved == null || resolved.isBlank()) {
+        resolved = pickBestContextMatch(token, contextDictionaryWords).orElse(token);
+      }
+      resolvedTokens.add(resolved);
+    }
+    return resolvedTokens;
+  }
+
+  private List<String> buildContextDictionaryWords(List<String> contextTokens) {
+    if (contextTokens == null || contextTokens.isEmpty()) {
+      return List.of();
+    }
+
+    Set<String> contextWords = new LinkedHashSet<>();
+    for (String contextToken : contextTokens) {
+      if (contextToken == null || contextToken.isBlank()) {
+        continue;
+      }
+
+      if (dictionaryLoader.findByWord(contextToken).isPresent()) {
+        contextWords.add(contextToken);
+        continue;
+      }
+
+      String resolved = unknownTokenResolverService.resolveToken(contextToken).orElse(null);
+      if (resolved != null && !resolved.isBlank() && dictionaryLoader.findByWord(resolved).isPresent()) {
+        contextWords.add(resolved);
+      }
+    }
+    return new ArrayList<>(contextWords);
+  }
+
+  private java.util.Optional<String> pickBestContextMatch(String token, List<String> contextWords) {
+    if (token == null || token.isBlank() || contextWords == null || contextWords.isEmpty()) {
+      return java.util.Optional.empty();
+    }
+
+    int bestScore = Integer.MIN_VALUE;
+    String best = null;
+    for (String candidate : contextWords) {
+      int score = similarityScore(token, candidate);
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    if (best == null || bestScore < 2) {
+      return java.util.Optional.empty();
+    }
+    return java.util.Optional.of(best);
+  }
+
+  private int similarityScore(String source, String candidate) {
+    if (source.equals(candidate)) {
+      return 100;
+    }
+
+    int score = 0;
+    if (source.startsWith(candidate) || candidate.startsWith(source)) {
+      score += 4;
+    }
+    if (source.contains(candidate) || candidate.contains(source)) {
+      score += 3;
+    }
+
+    score += commonPrefixLength(source, candidate) * 2;
+    score += commonSuffixLength(source, candidate);
+    return score;
+  }
+
+  private int commonPrefixLength(String a, String b) {
+    int max = Math.min(a.length(), b.length());
+    int idx = 0;
+    while (idx < max && a.charAt(idx) == b.charAt(idx)) {
+      idx++;
+    }
+    return idx;
+  }
+
+  private int commonSuffixLength(String a, String b) {
+    int ai = a.length() - 1;
+    int bi = b.length() - 1;
+    int count = 0;
+    while (ai >= 0 && bi >= 0 && a.charAt(ai) == b.charAt(bi)) {
+      count++;
+      ai--;
+      bi--;
+    }
+    return count;
+  }
+
+  private String buildClipUrl(String fileName) {
+    if (fileName == null || fileName.isBlank()) {
+      return "";
+    }
+
+    String trimmed = fileName.trim();
+    if (trimmed.toLowerCase().endsWith(".mp4")) {
+      return "/choicemp4/" + trimmed;
+    }
+
+    return "/clips/" + trimmed;
   }
 }

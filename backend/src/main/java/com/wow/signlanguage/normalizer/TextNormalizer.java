@@ -43,12 +43,44 @@ public class TextNormalizer {
       return "";
     }
 
+    String predicateNormalized = normalizePredicateEnding(token);
+    if (!predicateNormalized.equals(token)) {
+      return predicateNormalized;
+    }
+
     String mapped = REPLACEMENTS.get(token);
     if (mapped != null) {
       return mapped;
     }
 
     return REPLACEMENTS.getOrDefault(token, token);
+  }
+
+  private String normalizePredicateEnding(String token) {
+    // e.g. 생각한다/생각했는데/생각했었다 -> 생각하다
+    String[] hadaEndings = {
+        "한다", "한다고", "하는데", "한다면",
+        "했다", "했어", "했어요", "했는데", "했다가",
+        "했었다", "했었어", "했었어요", "했었는데"
+    };
+    for (String ending : hadaEndings) {
+      if (token.endsWith(ending) && token.length() > ending.length()) {
+        return token.substring(0, token.length() - ending.length()) + "하다";
+      }
+    }
+
+    // e.g. 부러졌다/부러졌는데/부러졌었다 -> 부러지다
+    String[] jidaEndings = {
+        "졌다", "졌어", "졌어요", "졌는데",
+        "졌었다", "졌었어", "졌었어요", "졌었는데"
+    };
+    for (String ending : jidaEndings) {
+      if (token.endsWith(ending) && token.length() > ending.length()) {
+        return token.substring(0, token.length() - ending.length()) + "지다";
+      }
+    }
+
+    return token;
   }
 
   private static Map<String, String> buildReplacements() {

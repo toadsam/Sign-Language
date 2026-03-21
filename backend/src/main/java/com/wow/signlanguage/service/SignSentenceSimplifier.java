@@ -166,6 +166,7 @@ public class SignSentenceSimplifier {
 
     Role particleRole = detectParticleRole(token);
     String stripped = stripParticles(token);
+    stripped = stripCommonParticles(stripped);
     boolean removedParticle = !stripped.equals(token);
 
     String normalized = resolveKnownWord(stripped);
@@ -220,6 +221,21 @@ public class SignSentenceSimplifier {
         String stem = token.substring(0, token.length() - suffix.length());
         candidates.add(stem);
         candidates.add(stem + "다");
+      }
+    }
+
+    String[] pastSuffixes = {"었어", "았어", "였어", "었어요", "았어요", "였어요", "었다", "았다", "였다"};
+    for (String suffix : pastSuffixes) {
+      if (token.endsWith(suffix) && token.length() > suffix.length()) {
+        String stem = token.substring(0, token.length() - suffix.length());
+        candidates.add(stem);
+        candidates.add(stem + "다");
+
+        if (stem.endsWith("웠") && stem.length() > 1) {
+          String restored = stem.substring(0, stem.length() - 1) + "우";
+          candidates.add(restored);
+          candidates.add(restored + "다");
+        }
       }
     }
 
@@ -280,6 +296,21 @@ public class SignSentenceSimplifier {
     return token;
   }
 
+
+  private String stripCommonParticles(String token) {
+    if (token == null || token.isBlank()) {
+      return "";
+    }
+
+    String[] particles = {"이랑", "랑", "와", "과", "은", "는", "이", "가", "을", "를", "에서", "에", "으로", "로"};
+    for (String suffix : particles) {
+      if (token.endsWith(suffix) && token.length() > suffix.length()) {
+        return token.substring(0, token.length() - suffix.length());
+      }
+    }
+
+    return token;
+  }
   private boolean detectPastTense(String token) {
     return token.matches(".*(었|았|였|했다|했어|했어요|였습니다|였다).*");
   }
@@ -319,3 +350,4 @@ public class SignSentenceSimplifier {
   ) {
   }
 }
+
