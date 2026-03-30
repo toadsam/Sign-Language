@@ -1,66 +1,186 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+﻿import { Ionicons } from '@expo/vector-icons';
+import { useEventListener } from 'expo';
+import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Animated,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
-const PRIMARY = '#137fec';
+import { useAuth } from '@/context/auth-context';
+import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
+import { TranslateClip, TranslateResponse, translateText } from '@/lib/api/translate';
 
-const BOOKMARKS = [
-  { date: '2023.10.24', ko: '안녕하세요', en: 'Hello / Hi' },
-  { date: '2023.10.24', ko: '고마워요', en: 'Thank you' },
-  { date: '2023.10.25', ko: '만나서 반가워요', en: 'Nice to meet you' },
-  { date: '2023.10.25', ko: '잘 지내세요?', en: 'How are you?' },
-  { date: '2023.10.26', ko: '좋은 아침이에요', en: 'Good morning' },
-  { date: '2023.10.26', ko: '다음에 또 봐요', en: 'See you next time' },
-];
+const PRIMARY = '#2281ea';
+const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v2';
+const MAX_BOOKMARKS = 20;
 
 export default function TranslatorScreen() {
   const router = useRouter();
-  const [savedVisible, setSavedVisible] = useState(false);
-  const [bookmarkOpen, setBookmarkOpen] = useState(false);
-  const dragY = useRef(new Animated.Value(0)).current;
+  const { user } = useAuth();
+  const [inputText, setInputText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [loadingDotCount, setLoadingDotCount] = useState(1);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [bookmarkQuery, setBookmarkQuery] = useState('');
+  const [result, setResult] = useState<TranslateResponse | null>(null);
+  const [bookmarks, setBookmarks] = useState<TranslatorBookmarkItem[]>([]);
+  const [currentClipIndex, setCurrentClipIndex] = useState(0);
+
+  const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
+  const unknownTokens = useMemo<string[]>(() => result?.unknown ?? [], [result]);
+  const normalizedTokens = useMemo<string[]>(() => result?.normalizedTokens ?? [], [result]);
+  const filteredBookmarks = useMemo(() => {
+    const q = bookmarkQuery.trim().toLowerCase();
+    if (!q) return bookmarks;
+    return bookmarks.filter((item) => (item.questionText ?? '').toLowerCase().includes(q));
+  }, [bookmarks, bookmarkQuery]);
+  const currentClip = clips[currentClipIndex] ?? null;
+  const currentClipUrl = currentClip?.url ?? null;
+
+  const player = useVideoPlayer(currentClipUrl, (videoPlayer) => {
+    videoPlayer.loop = false;
+    videoPlayer.play();
+  });
+
+  useEventListener(player, 'playToEnd', () => {
+    if (clips.length <= 1) return;
+    setCurrentClipIndex((prev) => Math.min(prev + 1, clips.length - 1));
+  });
 
   useEffect(() => {
-    if (!savedVisible) return;
-    const timer = setTimeout(() => setSavedVisible(false), 1200);
-    return () => clearTimeout(timer);
-  }, [savedVisible]);
+    if (!currentClip) return;
+    try {
+      player.replay();
+      player.play();
+    } catch {
+      // player readiness race
+    }
+  }, [currentClip, player]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 4,
-        onPanResponderMove: (_, gesture) => {
-          if (gesture.dy > 0) {
-            dragY.setValue(gesture.dy);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (user?.id) {
+          const stored = await fetchTranslatorBookmarks(user.id);
+          if (mounted) {
+            setBookmarks(stored.slice(0, MAX_BOOKMARKS));
           }
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (gesture.dy > 90) {
-            setBookmarkOpen(false);
-            dragY.setValue(0);
-            return;
-          }
-          Animated.spring(dragY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 6,
-          }).start();
-        },
-      }),
-    [dragY]
-  );
+          return;
+        }
+
+        const localStored = await readBookmarks();
+        if (mounted) {
+          setBookmarks(localStored);
+        }
+      } catch (error) {
+        if (mounted) {
+          setErrorMessage(error instanceof Error ? error.message : '북마크를 불러오지 못했습니다.');
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+  useEffect(() => {
+    if (!loading) {
+      setLoadingDotCount(1);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setLoadingDotCount((prev) => (prev >= 3 ? 1 : prev + 1));
+    }, 350);
+
+    return () => clearInterval(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!feedbackMessage) return;
+    const timer = setTimeout(() => setFeedbackMessage(null), 1600);
+    return () => clearTimeout(timer);
+  }, [feedbackMessage]);
+  async function handleTranslate(overrideText?: string) {
+    const text = (overrideText ?? inputText).trim();
+    if (!text || loading) return;
+
+    try {
+      setLoading(true);
+      setErrorMessage(null);
+      if (overrideText) {
+        setInputText(text);
+      }
+      const next = await translateText(text);
+      setResult(next);
+      setCurrentClipIndex(0);
+    } catch (error) {
+      setResult(null);
+      setCurrentClipIndex(0);
+      setErrorMessage(error instanceof Error ? error.message : '번역 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveSentence() {
+    const sentence = inputText.trim();
+    if (!sentence) return;
+    setErrorMessage(null);
+
+    try {
+      if (user?.id) {
+        const saved = await saveTranslatorBookmark(user.id, {
+          sentence,
+          word: currentClip?.word ?? '',
+          videoUrl: currentClip?.url ?? '',
+        });
+        const next = [saved, ...bookmarks.filter((item) => item.quizId !== saved.quizId)].slice(0, MAX_BOOKMARKS);
+        setBookmarks(next);
+        setFeedbackMessage('저장되었습니다!');
+        return;
+      }
+
+      const fallbackItem: TranslatorBookmarkItem = {
+        quizId: `local_${Date.now()}`,
+        questionText: sentence,
+        word: currentClip?.word ?? '',
+        videoUrl: currentClip?.url ?? '',
+        savedAt: new Date().toISOString(),
+      };
+      const next = [fallbackItem, ...bookmarks.filter((item) => item.questionText !== sentence)].slice(0, MAX_BOOKMARKS);
+      setBookmarks(next);
+      await writeBookmarks(next);
+      setFeedbackMessage('저장되었습니다!');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '북마크 저장에 실패했습니다.');
+    }
+  }
+
+  function handleToggleBookmarks() {
+    setBookmarksOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        setBookmarkQuery('');
+      }
+      setFeedbackMessage(next ? '북마크를 열었습니다.' : '북마크를 닫았습니다.');
+      return next;
+    });
+  }
+
+  function moveClip(step: -1 | 1) {
+    if (clips.length === 0) return;
+    setCurrentClipIndex((prev) => {
+      const next = prev + step;
+      if (next < 0) return 0;
+      if (next >= clips.length) return clips.length - 1;
+      return next;
+    });
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -70,19 +190,18 @@ export default function TranslatorScreen() {
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </Pressable>
           <Text style={styles.headerTitle}>번역 모드 (Translation)</Text>
-          <Pressable style={styles.headerIcon} onPress={() => setBookmarkOpen(true)}>
-            <Ionicons name="bookmarks" size={20} color="#111827" />
-          </Pressable>
+          <View style={styles.headerIcon} />
         </View>
 
         <View style={styles.avatarCard}>
-          <Image
-            source={{
-              uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBL3I2WFW5Xq3Xbmp0Pi84_-rKAZVAhnn0iz8_HC6cIwAqU1Lq6ubMWG6YGnSqnib5maNhZCQvrrPsHwLstWwnMt7OsSgt-ssJ1KVsHorbjtmhzItLumBZCmMV6m_wBMcxE5s5xaalIa-IRKFG0PFiEtmmlDclYryEj1r_a_be8Vr0YDp6mao8UfYR_mmDUCgI9Dfiv4vkZc4g8zms8VdvuiwHBFdvKrpCSZQu6YdTYHWsRasG8CEZnxngDIFJhnhEDhiqNCsOh8A',
-            }}
-            contentFit="cover"
-            style={styles.avatarImage}
-          />
+          {currentClipUrl ? (
+            <VideoView style={styles.avatarVideo} player={player} nativeControls contentFit="cover" />
+          ) : (
+            <View style={styles.emptyAvatar}>
+              <Ionicons name="chatbubble-ellipses-outline" size={30} color="#94a3b8" />
+              <Text style={styles.emptyAvatarText}>문장을 입력하면 아바타가 표시됩니다</Text>
+            </View>
+          )}
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>Live</Text>
@@ -90,79 +209,161 @@ export default function TranslatorScreen() {
         </View>
 
         <View style={styles.detectWrap}>
-          <Text style={styles.detectTitle}>나 (I/Me)</Text>
-          <Text style={styles.detectSub}>인식된 수어 (Detected Gesture)</Text>
+          <Text style={styles.detectTitle}>{currentClip?.word ?? '나 (I/Me)'}</Text>
+          <Text style={styles.detectSub}>
+            {clips.length > 0 ? `${currentClipIndex + 1} / ${clips.length}` : '0 / 0'} 인식된 수어 (Detected Gesture)
+          </Text>
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable style={styles.actionItem} onPress={() => setSavedVisible(true)}>
-            <View style={styles.actionIconWrap}>
-              <Ionicons name="bookmark-outline" size={22} color="#111827" />
-            </View>
-            <Text style={styles.actionLabel}>단어장에 저장</Text>
-          </Pressable>
-          <Pressable style={styles.actionItem}>
-            <View style={styles.actionIconWrap}>
-              <Ionicons name="volume-high-outline" size={22} color="#111827" />
-            </View>
-            <Text style={styles.actionLabel}>듣기</Text>
-          </Pressable>
+          <View style={styles.actionItem}>
+            <Pressable style={styles.actionIconWrap} onPress={handleSaveSentence} accessibilityLabel="현재 문장 저장">
+              <Ionicons name="bookmark" size={16} color="#111827" />
+            </Pressable>
+            <Text style={styles.actionLabel}>저장</Text>
+          </View>
+          <View style={styles.actionItem}>
+            <Pressable
+              style={[styles.actionIconWrap, bookmarksOpen && styles.actionIconWrapActive]}
+              onPress={handleToggleBookmarks}
+              accessibilityLabel="북마크 보기">
+              <Ionicons name="bookmarks-outline" size={16} color={bookmarksOpen ? PRIMARY : '#111827'} />
+            </Pressable>
+            <Text style={styles.actionLabel}>북마크</Text>
+          </View>
         </View>
 
-        {savedVisible && <Text style={styles.savedText}>저장되었습니다</Text>}
-
-        {!bookmarkOpen && (
-          <View style={styles.inputPanel}>
-            <View style={styles.inputWrap}>
-              <Ionicons name="keypad-outline" size={18} color="#94a3b8" />
-              <TextInput
-                style={styles.input}
-                placeholder="번역할 내용을 입력하세요"
-                placeholderTextColor="#94a3b8"
-              />
-              <Pressable onPress={() => setBookmarkOpen(true)}>
-                <Ionicons name="bookmarks" size={18} color={PRIMARY} />
+        {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
+        {bookmarksOpen && (
+          <View style={styles.bookmarkSheet}>
+            <View style={styles.bookmarkSheetHeader}>
+              <Text style={styles.bookmarkTitle}>내 북마크 문장</Text>
+              <Pressable style={styles.bookmarkCloseBtn} onPress={handleToggleBookmarks}>
+                <Ionicons name="close" size={16} color="#64748b" />
               </Pressable>
             </View>
-
-            <Pressable style={styles.translateButton}>
-              <Ionicons name="language-outline" size={18} color="#fff" />
-              <Text style={styles.translateButtonText}>번역하기 (Translate)</Text>
-            </Pressable>
+            <View style={styles.bookmarkSearchWrap}>
+              <Ionicons name="search" size={16} color="#94a3b8" />
+              <TextInput
+                value={bookmarkQuery}
+                onChangeText={setBookmarkQuery}
+                placeholder="문장 검색"
+                placeholderTextColor="#94a3b8"
+                style={styles.bookmarkSearchInput}
+              />
+            </View>
+            <ScrollView style={styles.bookmarkList} contentContainerStyle={styles.bookmarkListContent} showsVerticalScrollIndicator={false}>
+              {filteredBookmarks.length === 0 ? (
+                <Text style={styles.bookmarkEmpty}>저장된 문장이 없습니다.</Text>
+              ) : (
+                filteredBookmarks.map((item) => (
+                  <View key={item.quizId} style={styles.bookmarkItemRow}>
+                    <Text style={styles.bookmarkItemText} numberOfLines={2}>
+                      {item.questionText || '-'}
+                    </Text>
+                    <Pressable
+                      style={styles.bookmarkPlayButton}
+                      onPress={() => {
+                        void handleTranslate(item.questionText);
+                        setBookmarksOpen(false);
+                        setBookmarkQuery('');
+                        setFeedbackMessage('북마크 문장을 재생합니다.');
+                      }}>
+                      <Ionicons name="play" size={14} color={PRIMARY} />
+                    </Pressable>
+                  </View>
+                ))
+              )}
+            </ScrollView>
           </View>
         )}
 
-        {bookmarkOpen && (
-          <Animated.View style={[styles.bookmarkSheet, { transform: [{ translateY: dragY }] }]}>
-            <View style={styles.handleArea} {...panResponder.panHandlers}>
-              <View style={styles.handle} />
-            </View>
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-            <ScrollView
-              style={styles.sheetList}
-              contentContainerStyle={styles.sheetListContent}
-              showsVerticalScrollIndicator={false}>
-              {BOOKMARKS.map((item) => (
-                <View key={`${item.date}-${item.ko}`} style={styles.bookmarkItem}>
-                  <View>
-                    <Text style={styles.bookmarkDate}>{item.date}</Text>
-                    <Text style={styles.bookmarkKo}>{item.ko}</Text>
-                    <Text style={styles.bookmarkEn}>{item.en}</Text>
-                  </View>
-                  <Pressable style={styles.playButton}>
-                    <Ionicons name="play" size={14} color={PRIMARY} />
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
+        <View style={styles.inputPanel}>
+          <View style={styles.inputWrap}>
+            <Ionicons name="keypad-outline" size={18} color="#94a3b8" />
+            <TextInput
+              style={styles.input}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="번역할 내용을 입력하세요"
+              placeholderTextColor="#94a3b8"
+              multiline
+            />
+          </View>
 
-            <View style={styles.sheetBottom}>
-              <Pressable style={styles.translateButton}>
-                <Ionicons name="language-outline" size={18} color="#fff" />
-                <Text style={styles.translateButtonText}>번역하기 (Translate)</Text>
+          <View style={styles.clipControlRow}>
+            <Pressable
+              style={[styles.smallControlButton, currentClipIndex <= 0 && styles.smallControlButtonDisabled]}
+              onPress={() => moveClip(-1)}
+              disabled={currentClipIndex <= 0}>
+              <Ionicons name="play-back" size={14} color="#334155" />
+            </Pressable>
+            <Pressable
+              style={[styles.smallControlButton, currentClipIndex >= clips.length - 1 && styles.smallControlButtonDisabled]}
+              onPress={() => moveClip(1)}
+              disabled={currentClipIndex >= clips.length - 1}>
+              <Ionicons name="play-forward" size={14} color="#334155" />
+            </Pressable>
+          </View>
+
+          <Pressable style={[styles.translateButton, loading && styles.translateButtonDisabled]} onPress={() => void handleTranslate()} disabled={loading}>
+            <Ionicons name="language-outline" size={18} color="#fff" />
+            <Text style={styles.translateButtonText}>
+              {loading ? `번역중${'.'.repeat(loadingDotCount)}` : '번역하기 (Translate)'}
+            </Text>
+          </Pressable>
+
+          <Pressable style={styles.detailButton} onPress={() => setResultOpen(true)}>
+            <Ionicons name="list-outline" size={16} color={PRIMARY} />
+            <Text style={styles.detailButtonText}>세부 결과</Text>
+          </Pressable>
+        </View>
+
+        {resultOpen && (
+          <View style={styles.resultSheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>번역 결과</Text>
+              <Pressable onPress={() => setResultOpen(false)}>
+                <Ionicons name="close" size={18} color="#64748b" />
               </Pressable>
             </View>
-          </Animated.View>
+            <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetBodyContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>수어용 변환 문장</Text>
+                <Text style={styles.resultValue}>{result?.simplifiedSentence || '-'}</Text>
+              </View>
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>매칭된 토큰</Text>
+                <View style={styles.tokenWrap}>
+                  {normalizedTokens.length === 0 ? (
+                    <Text style={styles.emptyText}>-</Text>
+                  ) : (
+                    normalizedTokens.map((token, index) => (
+                      <View key={`${token}-${index}`} style={styles.tokenChip}>
+                        <Text style={styles.tokenChipText}>{token}</Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>사전에 없는 토큰</Text>
+                <View style={styles.tokenWrap}>
+                  {unknownTokens.length === 0 ? (
+                    <Text style={styles.emptyText}>없음</Text>
+                  ) : (
+                    unknownTokens.map((token, index) => (
+                      <View key={`${token}-${index}`} style={styles.unknownChip}>
+                        <Text style={styles.unknownChipText}>{token}</Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
         )}
 
         <View style={styles.bottomNav}>
@@ -189,38 +390,14 @@ export default function TranslatorScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f6f7f8',
-  },
-  root: {
-    flex: 1,
-    backgroundColor: '#f6f7f8',
-    paddingHorizontal: 8,
-    paddingTop: 4,
-  },
-  header: {
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerIcon: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: '#111827',
-    fontSize: 20,
-    fontWeight: '800',
-  },
+  safeArea: { flex: 1, backgroundColor: '#f5f7fb' },
+  root: { flex: 1, backgroundColor: '#f5f7fb', paddingHorizontal: 8, paddingTop: 4 },
+  header: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, textAlign: 'center', color: '#111827', fontSize: 20, fontWeight: '800' },
   avatarCard: {
     marginTop: 6,
-    height: '48%',
+    height: '39%',
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
@@ -228,10 +405,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#e5e7eb',
     position: 'relative',
   },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
+  avatarVideo: { width: '100%', height: '100%', backgroundColor: '#000' },
+  emptyAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eef2f7', gap: 8, paddingHorizontal: 14 },
+  emptyAvatarText: { color: '#64748b', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   liveBadge: {
     position: 'absolute',
     right: 12,
@@ -244,63 +420,92 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
   },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#4ade80',
-  },
-  liveText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  detectWrap: {
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  detectTitle: {
-    color: '#111827',
-    fontSize: 44,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  detectSub: {
-    marginTop: 2,
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  actionRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 48,
-  },
-  actionItem: {
-    alignItems: 'center',
-    gap: 6,
-  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' },
+  liveText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  detectWrap: { alignItems: 'center', marginTop: 8 },
+  detectTitle: { color: '#111827', fontSize: 34, fontWeight: '800', letterSpacing: -0.3 },
+  detectSub: { marginTop: 2, color: '#64748b', fontSize: 13, fontWeight: '500' },
+  actionRow: { marginTop: 28, marginBottom: 6, flexDirection: 'row', justifyContent: 'center', gap: 52 },
+  actionItem: { alignItems: 'center', gap: 6 },
   actionIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#eef2f7',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionLabel: {
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: '600',
+  actionIconWrapActive: {
+    backgroundColor: '#e8f1ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
   },
-  savedText: {
+  actionLabel: { color: '#64748b', fontSize: 11, fontWeight: '600' },
+  feedbackText: { marginTop: 2, textAlign: 'center', color: '#1d4ed8', fontSize: 12, fontWeight: '700' },
+  bookmarkSheet: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 74,
+    height: 290,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 8,
+    zIndex: 35,
+  },
+  bookmarkSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bookmarkTitle: { color: '#334155', fontSize: 15, fontWeight: '900' },
+  bookmarkCloseBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookmarkSearchWrap: {
     marginTop: 8,
-    textAlign: 'center',
-    color: '#16a34a',
-    fontSize: 12,
-    fontWeight: '700',
+    marginBottom: 8,
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
+  bookmarkSearchInput: { flex: 1, color: '#0f172a', fontSize: 13, paddingVertical: 7 },
+  bookmarkList: { flex: 1 },
+  bookmarkListContent: { gap: 8, paddingBottom: 4 },
+  bookmarkItemRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fbff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bookmarkItemText: { flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '600' },
+  bookmarkPlayButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookmarkEmpty: { color: '#94a3b8', fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 12 },
+  errorText: { marginTop: 6, textAlign: 'center', color: '#b91c1c', fontSize: 12, fontWeight: '700' },
   inputPanel: {
     marginTop: 'auto',
     marginBottom: 10,
@@ -311,7 +516,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   inputWrap: {
-    height: 44,
+    minHeight: 44,
     borderRadius: 10,
     backgroundColor: '#f8fafc',
     paddingHorizontal: 10,
@@ -319,11 +524,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  input: {
-    flex: 1,
-    color: '#111827',
-    fontSize: 14,
+  input: { flex: 1, color: '#111827', fontSize: 14, paddingVertical: 10 },
+  clipControlRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  smallControlButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#dbe4f3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
+  smallControlButtonDisabled: { opacity: 0.45 },
   translateButton: {
     marginTop: 8,
     height: 50,
@@ -333,23 +546,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 6,
-    shadowColor: '#3b82f6',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    elevation: 3,
   },
-  translateButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '800',
+  translateButtonDisabled: { opacity: 0.6 },
+  translateButtonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  detailButton: {
+    marginTop: 8,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
-  bookmarkSheet: {
+  detailButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '800' },
+  resultSheet: {
     position: 'absolute',
     left: 8,
     right: 8,
     bottom: 74,
-    height: 300,
+    height: 320,
     borderRadius: 16,
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -359,72 +577,52 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 14,
     elevation: 6,
-    overflow: 'hidden',
     zIndex: 40,
+    overflow: 'hidden',
   },
-  handleArea: {
+  sheetHeader: {
+    height: 42,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf1f6',
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 4,
+    justifyContent: 'space-between',
   },
-  handle: {
-    width: 36,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#d1d5db',
-  },
-  sheetList: {
-    flex: 1,
-  },
-  sheetListContent: {
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-    gap: 8,
-  },
-  bookmarkItem: {
+  sheetTitle: { color: '#111827', fontSize: 14, fontWeight: '800' },
+  sheetBody: { flex: 1 },
+  sheetBodyContent: { padding: 10, gap: 8 },
+  resultCard: {
     borderRadius: 12,
-    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e6edf8',
+    backgroundColor: '#f8fbff',
     paddingHorizontal: 10,
     paddingVertical: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 6,
   },
-  bookmarkDate: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  bookmarkKo: {
-    marginTop: 1,
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  bookmarkEn: {
-    marginTop: 1,
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  playButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#fff',
+  resultTitle: { color: '#334155', fontSize: 12, fontWeight: '800' },
+  resultValue: { color: '#0f172a', fontSize: 14, fontWeight: '600' },
+  tokenWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  tokenChip: {
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  sheetBottom: {
-    paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 10,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+  tokenChipText: { color: '#1d4ed8', fontSize: 11, fontWeight: '700' },
+  unknownChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
+  unknownChipText: { color: '#b91c1c', fontSize: 11, fontWeight: '700' },
+  emptyText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
   bottomNav: {
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
@@ -436,18 +634,51 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     zIndex: 20,
   },
-  navItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    minWidth: 58,
-  },
-  navText: {
-    fontSize: 10,
-    color: '#94a3b8',
-    fontWeight: '600',
-  },
-  navTextActive: {
-    color: PRIMARY,
-  },
+  navItem: { alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 58 },
+  navText: { fontSize: 10, color: '#94a3b8', fontWeight: '600' },
+  navTextActive: { color: PRIMARY },
 });
+
+async function readBookmarks(): Promise<TranslatorBookmarkItem[]> {
+  try {
+    if (Platform.OS === 'web') {
+      const raw = window.localStorage.getItem(BOOKMARKS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter(isTranslatorBookmarkItem) : [];
+    }
+    const raw = await SecureStore.getItemAsync(BOOKMARKS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isTranslatorBookmarkItem) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeBookmarks(bookmarks: TranslatorBookmarkItem[]): Promise<void> {
+  const serialized = JSON.stringify(bookmarks);
+  try {
+    if (Platform.OS === 'web') {
+      window.localStorage.setItem(BOOKMARKS_KEY, serialized);
+      return;
+    }
+    await SecureStore.setItemAsync(BOOKMARKS_KEY, serialized);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function isTranslatorBookmarkItem(value: unknown): value is TranslatorBookmarkItem {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const item = value as Partial<TranslatorBookmarkItem>;
+  return (
+    typeof item.quizId === 'string'
+    && typeof item.questionText === 'string'
+    && typeof item.word === 'string'
+    && typeof item.videoUrl === 'string'
+  );
+}
+

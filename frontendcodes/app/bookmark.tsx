@@ -5,7 +5,11 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
-import { BookmarkItem, fetchBookmarks } from '@/lib/api/bookmarks';
+import {
+  deleteTranslatorBookmark,
+  fetchTranslatorBookmarks,
+  TranslatorBookmarkItem,
+} from '@/lib/api/translator-bookmarks';
 
 const PRIMARY = '#137fec';
 
@@ -14,9 +18,11 @@ export default function BookmarkScreen() {
   const { user } = useAuth();
 
   const [query, setQuery] = useState('');
-  const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+  const [bookmarks, setBookmarks] = useState<TranslatorBookmarkItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -30,7 +36,7 @@ export default function BookmarkScreen() {
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const data = await fetchBookmarks(user.id);
+        const data = await fetchTranslatorBookmarks(user.id);
         if (!mounted) return;
         setBookmarks(data ?? []);
       } catch (error) {
@@ -50,6 +56,12 @@ export default function BookmarkScreen() {
     };
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!feedbackMessage) return;
+    const timer = setTimeout(() => setFeedbackMessage(null), 1400);
+    return () => clearTimeout(timer);
+  }, [feedbackMessage]);
+
   function formatSavedDate(value: unknown): string {
     if (value && typeof value === 'object' && 'seconds' in value && typeof (value as { seconds?: unknown }).seconds === 'number') {
       const date = new Date(((value as { seconds: number }).seconds ?? 0) * 1000);
@@ -58,16 +70,31 @@ export default function BookmarkScreen() {
     return '-';
   }
 
-  const filteredWords = useMemo(() => {
+  const filteredBookmarks = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
     if (!trimmed) return bookmarks;
 
     return bookmarks.filter((item) => {
-      const word = item.word?.toLowerCase?.() ?? '';
       const questionText = item.questionText?.toLowerCase?.() ?? '';
-      return word.includes(trimmed) || questionText.includes(trimmed);
+      return questionText.includes(trimmed);
     });
   }, [bookmarks, query]);
+
+  async function handleDeleteBookmark(bookmarkId: string) {
+    if (!user?.id || deletingId) return;
+
+    try {
+      setDeletingId(bookmarkId);
+      setErrorMessage(null);
+      await deleteTranslatorBookmark(user.id, bookmarkId);
+      setBookmarks((prev) => prev.filter((item) => item.quizId !== bookmarkId));
+      setFeedbackMessage('삭제되었습니다.');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '북마크 삭제에 실패했습니다.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -85,31 +112,36 @@ export default function BookmarkScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="단어 검색"
+            placeholder="문장 검색"
             placeholderTextColor="#9ca3af"
             style={styles.searchInput}
           />
         </View>
 
         <ScrollView contentContainerStyle={styles.listWrap} showsVerticalScrollIndicator={false}>
+          {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
           {isLoading ? <Text style={styles.wordMeaning}>불러오는 중...</Text> : null}
           {!isLoading && errorMessage ? <Text style={styles.wordMeaning}>{errorMessage}</Text> : null}
-          {!isLoading && !errorMessage && filteredWords.length === 0 ? (
-            <Text style={styles.wordMeaning}>저장된 단어가 없습니다.</Text>
+          {!isLoading && !errorMessage && filteredBookmarks.length === 0 ? (
+            <Text style={styles.wordMeaning}>저장된 문장이 없습니다.</Text>
           ) : null}
 
-          {filteredWords.map((item) => (
-            <Pressable key={item.quizId} style={styles.wordCard}>
+          {filteredBookmarks.map((item) => (
+            <View key={item.quizId} style={styles.wordCard}>
               <View style={styles.wordLeft}>
                 <Text style={styles.wordDate}>{formatSavedDate(item.savedAt)}</Text>
-                <Text style={styles.wordTitle}>{item.word || '-'}</Text>
-                <Text style={styles.wordMeaning}>{item.questionText || '-'}</Text>
+                <Text style={styles.sentenceText}>{item.questionText || '-'}</Text>
               </View>
 
-              <View style={styles.playBtn}>
-                <Ionicons name="bookmark" size={17} color={PRIMARY} />
-              </View>
-            </Pressable>
+              <Pressable
+                style={[styles.deleteBtn, deletingId === item.quizId && styles.deleteBtnDisabled]}
+                onPress={() => {
+                  void handleDeleteBookmark(item.quizId);
+                }}
+                disabled={deletingId === item.quizId}>
+                <Ionicons name="trash-outline" size={17} color="#ef4444" />
+              </Pressable>
+            </View>
           ))}
         </ScrollView>
 
@@ -191,6 +223,12 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
     gap: 10,
   },
+  feedbackText: {
+    textAlign: 'center',
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   wordCard: {
     minHeight: 90,
     borderRadius: 18,
@@ -218,10 +256,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 2,
   },
-  wordTitle: {
+  sentenceText: {
     fontSize: 18,
     color: '#111827',
-    fontWeight: '800',
+    fontWeight: '600',
     lineHeight: 22,
   },
   wordMeaning: {
@@ -230,14 +268,17 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '500',
   },
-  playBtn: {
+  deleteBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#e8f1ff',
+    backgroundColor: '#fff1f2',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#fecdd3',
   },
+  deleteBtnDisabled: { opacity: 0.5 },
   bottomNav: {
     position: 'absolute',
     left: 0,
