@@ -1,0 +1,10 @@
+.git
+.gitignore
+.gcloudignore
+
+.gradle/
+build/
+target/
+.idea/
+
+.env

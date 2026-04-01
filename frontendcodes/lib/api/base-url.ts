@@ -8,17 +8,22 @@ const LOCAL_BACKEND_ORIGINS = new Set([
 ]);
 
 export function getBaseUrl() {
-  const raw = process.env.EXPO_PUBLIC_API_BASE_URL ?? DEFAULT_BASE_URL;
+  const envBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  const raw = envBaseUrl ?? DEFAULT_BASE_URL;
   const normalized = raw.replace(/\/+$/, '');
   // Frontend may be hosted under `/app`, but backend APIs are served from root.
   const withoutAppSuffix = normalized.replace(/\/app$/i, '');
 
-  // In local web development, prioritize local backend to avoid remote auth (403) issues.
+  // In local web development, fallback to local backend only when an explicit remote
+  // backend is not configured.
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     const isLocalWeb = host === 'localhost' || host === '127.0.0.1';
     if (isLocalWeb) {
-      return DEFAULT_BASE_URL;
+      const hasExplicitEnv = typeof envBaseUrl === 'string' && envBaseUrl.trim().length > 0;
+      if (!hasExplicitEnv) {
+        return DEFAULT_BASE_URL;
+      }
     }
   }
 

@@ -1,0 +1,12 @@
+.gcloudignore
+.git
+.gitignore
+
+# Local/build artifacts
+.gradle/
+build/
+target/
+.idea/
+
+# Local env
+.env
