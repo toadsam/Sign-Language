@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class TranslationService {
+  private static final String[] TEST_AVATAR_FILES = {
+      "테스트아바타.mp4",
+      "테스트아바타2.mp4"
+  };
 
   private final TextNormalizer textNormalizer;
   private final DictionaryLoader dictionaryLoader;
@@ -205,15 +209,8 @@ public class TranslationService {
   }
 
   private String buildClipUrl(String fileName) {
-    if (fileName == null || fileName.isBlank()) {
-      return "";
-    }
-
-    String trimmed = fileName.trim();
-    if (trimmed.toLowerCase().endsWith(".mp4")) {
-      return "/choicemp4/" + trimmed;
-    }
-
-    return "/clips/" + trimmed;
+    String seed = fileName == null ? "" : fileName.trim();
+    int index = Math.floorMod(seed.hashCode(), TEST_AVATAR_FILES.length);
+    return "/choicemp4/" + TEST_AVATAR_FILES[index];
   }
 }

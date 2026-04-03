@@ -25,6 +25,10 @@ public class QuizService {
   private static final String USERS_COLLECTION_NAME = "users";
   private static final int DEFAULT_COUNT = 10;
   private static final int MAX_COUNT = 50;
+  private static final String[] TEST_AVATAR_FILES = {
+      "테스트아바타.mp4",
+      "테스트아바타2.mp4"
+  };
 
   private final Firestore firestore;
 
@@ -208,12 +212,18 @@ public class QuizService {
         doc.getId(),
         questionText,
         choices,
-        videoUrl,
+        buildTestAvatarUrl(doc.getId()),
         doc.getLong("level") == null ? 1L : doc.getLong("level"),
         attemptCount,
         correctCount,
         correctRate,
         difficultyLevel);
+  }
+
+  private String buildTestAvatarUrl(String seedValue) {
+    String seed = isBlank(seedValue) ? "quiz" : seedValue.trim();
+    int index = Math.floorMod(seed.hashCode(), TEST_AVATAR_FILES.length);
+    return "/choicemp4/" + TEST_AVATAR_FILES[index];
   }
 
   private String normalizeChoiceId(String value) {
