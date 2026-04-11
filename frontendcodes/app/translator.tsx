@@ -1,8 +1,9 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
 import { useEventListener } from 'expo';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -27,8 +28,13 @@ export default function TranslatorScreen() {
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [bookmarkQuery, setBookmarkQuery] = useState('');
   const [result, setResult] = useState<TranslateResponse | null>(null);
+  const [playbackUrlMap, setPlaybackUrlMap] = useState<Record<string, string>>({});
   const [bookmarks, setBookmarks] = useState<TranslatorBookmarkItem[]>([]);
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
+  const isWeb = Platform.OS === 'web';
+  const [webVideoSources, setWebVideoSources] = useState<[string | null, string | null]>([null, null]);
+  const [webVideoReady, setWebVideoReady] = useState<[boolean, boolean]>([false, false]);
+  const [webActiveSlot, setWebActiveSlot] = useState<0 | 1>(0);
 
   const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
   const unknownTokens = useMemo<string[]>(() => result?.unknown ?? [], [result]);
@@ -39,27 +45,139 @@ export default function TranslatorScreen() {
     return bookmarks.filter((item) => (item.questionText ?? '').toLowerCase().includes(q));
   }, [bookmarks, bookmarkQuery]);
   const currentClip = clips[currentClipIndex] ?? null;
-  const currentClipUrl = currentClip?.url ?? null;
+  const currentClipUrl = currentClip ? playbackUrlMap[currentClip.url] ?? currentClip.url : null;
 
-  const player = useVideoPlayer(currentClipUrl, (videoPlayer) => {
+  const player = useVideoPlayer(null, (videoPlayer) => {
     videoPlayer.loop = false;
-    videoPlayer.play();
+    // Web autoplay policy blocks programmatic play for unmuted media.
+    // Sign clips do not require audio, so keep muted for seamless chaining.
+    videoPlayer.muted = true;
+  });
+  const replaceVersionRef = useRef(0);
+  const pendingAutoplayVersionRef = useRef(0);
+  const WebVideoTag = 'video' as any;
+  const webVideoRefA = useRef<any>(null);
+  const webVideoRefB = useRef<any>(null);
+  const webPendingSlotRef = useRef<0 | 1 | null>(null);
+  const webLastQueuedTokenRef = useRef<string | null>(null);
+
+  const advanceClip = () => {
+    if (clips.length <= 1) return;
+    setCurrentClipIndex((prev) => Math.min(prev + 1, clips.length - 1));
+  };
+
+  useEventListener(player, 'sourceLoad', () => {
+    const version = pendingAutoplayVersionRef.current;
+    if (version <= 0 || version !== replaceVersionRef.current) {
+      return;
+    }
+
+    try {
+      player.currentTime = 0;
+      player.play();
+      pendingAutoplayVersionRef.current = 0;
+    } catch {
+      // ignore play race
+    }
   });
 
   useEventListener(player, 'playToEnd', () => {
-    if (clips.length <= 1) return;
-    setCurrentClipIndex((prev) => Math.min(prev + 1, clips.length - 1));
+    if (isWeb) return;
+    advanceClip();
   });
 
   useEffect(() => {
-    if (!currentClip) return;
-    try {
-      player.replay();
-      player.play();
-    } catch {
-      // player readiness race
+    if (isWeb) {
+      pendingAutoplayVersionRef.current = 0;
+      return;
     }
-  }, [currentClip, player]);
+
+    if (!currentClipUrl) {
+      pendingAutoplayVersionRef.current = 0;
+      return;
+    }
+
+    const version = ++replaceVersionRef.current;
+    pendingAutoplayVersionRef.current = version;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await player.replaceAsync(toVideoSource(currentClipUrl));
+        if (cancelled || version !== replaceVersionRef.current) {
+          return;
+        }
+        // Fallback: some environments may not emit sourceLoad reliably.
+        setTimeout(() => {
+          if (cancelled || pendingAutoplayVersionRef.current !== version || version !== replaceVersionRef.current) {
+            return;
+          }
+          try {
+            player.currentTime = 0;
+            player.play();
+            pendingAutoplayVersionRef.current = 0;
+          } catch {
+            // ignore play race
+          }
+        }, 120);
+      } catch {
+        try {
+          player.replace(toVideoSource(currentClipUrl), true);
+          if (cancelled || version !== replaceVersionRef.current) {
+            return;
+          }
+          setTimeout(() => {
+            if (cancelled || pendingAutoplayVersionRef.current !== version || version !== replaceVersionRef.current) {
+              return;
+            }
+            try {
+              player.currentTime = 0;
+              player.play();
+              pendingAutoplayVersionRef.current = 0;
+            } catch {
+              // ignore play race
+            }
+          }, 120);
+        } catch {
+          // player replacement failure should not crash the screen
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentClipUrl, isWeb, player]);
+
+  useEffect(() => {
+    if (!isWeb) {
+      return;
+    }
+
+    if (!currentClipUrl) {
+      webLastQueuedTokenRef.current = null;
+      return;
+    }
+
+    const token = `${currentClipIndex}:${currentClipUrl}`;
+    if (webLastQueuedTokenRef.current === token) {
+      return;
+    }
+    webLastQueuedTokenRef.current = token;
+
+    const nextSlot: 0 | 1 = webActiveSlot === 0 ? 1 : 0;
+    webPendingSlotRef.current = nextSlot;
+    setWebVideoReady((prev) => {
+      const next: [boolean, boolean] = [prev[0], prev[1]];
+      next[nextSlot] = false;
+      return next;
+    });
+    setWebVideoSources((prev) => {
+      const next: [string | null, string | null] = [prev[0], prev[1]];
+      next[nextSlot] = currentClipUrl;
+      return next;
+    });
+  }, [isWeb, currentClipIndex, currentClipUrl, webActiveSlot]);
 
   useEffect(() => {
     let mounted = true;
@@ -116,10 +234,27 @@ export default function TranslatorScreen() {
         setInputText(text);
       }
       const next = await translateText(text);
+      if (isWeb) {
+        webPendingSlotRef.current = null;
+        webLastQueuedTokenRef.current = null;
+        setWebVideoSources([null, null]);
+        setWebVideoReady([false, false]);
+        setWebActiveSlot(0);
+      }
+      const nextPlaybackUrlMap = await buildPlaybackUrlMap(next.clips.map((clip) => clip.url));
+      setPlaybackUrlMap(nextPlaybackUrlMap);
       setResult(next);
       setCurrentClipIndex(0);
     } catch (error) {
+      if (isWeb) {
+        webPendingSlotRef.current = null;
+        webLastQueuedTokenRef.current = null;
+        setWebVideoSources([null, null]);
+        setWebVideoReady([false, false]);
+        setWebActiveSlot(0);
+      }
       setResult(null);
+      setPlaybackUrlMap({});
       setCurrentClipIndex(0);
       setErrorMessage(error instanceof Error ? error.message : '번역 중 오류가 발생했습니다.');
     } finally {
@@ -182,6 +317,67 @@ export default function TranslatorScreen() {
     });
   }
 
+  function getWebVideoRef(slot: 0 | 1) {
+    return slot === 0 ? webVideoRefA.current : webVideoRefB.current;
+  }
+
+  function handleWebSlotLoaded(slot: 0 | 1) {
+    const videoEl = getWebVideoRef(slot);
+    if (videoEl) {
+      videoEl.defaultMuted = true;
+      videoEl.muted = true;
+      videoEl.volume = 0;
+      tryPlayVideo(videoEl);
+    }
+
+    setWebVideoReady((prev) => {
+      const next: [boolean, boolean] = [prev[0], prev[1]];
+      next[slot] = true;
+      return next;
+    });
+  }
+
+  function handleWebSlotCanPlay(slot: 0 | 1) {
+    const videoEl = getWebVideoRef(slot);
+    if (!videoEl || !videoEl.paused) {
+      return;
+    }
+    tryPlayVideo(videoEl);
+  }
+
+  function handleWebSlotError(slot: 0 | 1) {
+    setErrorMessage('영상 재생 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    if (webPendingSlotRef.current === slot) {
+      webPendingSlotRef.current = null;
+    }
+  }
+
+  function handleWebSlotPlaying(slot: 0 | 1) {
+    if (webPendingSlotRef.current !== slot) {
+      return;
+    }
+
+    const previousSlot: 0 | 1 = slot === 0 ? 1 : 0;
+    const previousVideo = getWebVideoRef(previousSlot);
+    if (previousVideo) {
+      try {
+        previousVideo.pause?.();
+      } catch {
+        // ignore pause failure
+      }
+    }
+
+    setWebActiveSlot(slot);
+    webPendingSlotRef.current = null;
+  }
+
+  function handleWebSlotEnded(slot: 0 | 1) {
+    if (slot !== webActiveSlot) {
+      return;
+    }
+    advanceClip();
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.root}>
@@ -195,7 +391,42 @@ export default function TranslatorScreen() {
 
         <View style={styles.avatarCard}>
           {currentClipUrl ? (
-            <VideoView style={styles.avatarVideo} player={player} nativeControls contentFit="cover" />
+            isWeb ? (
+              <View style={styles.webVideoStack}>
+                <WebVideoTag
+                  ref={webVideoRefA}
+                  src={webVideoSources[0] || undefined}
+                  muted
+                  autoPlay
+                  playsInline
+                  controls={webActiveSlot === 0}
+                  preload="auto"
+                  onLoadedData={() => handleWebSlotLoaded(0)}
+                  onCanPlay={() => handleWebSlotCanPlay(0)}
+                  onPlaying={() => handleWebSlotPlaying(0)}
+                  onError={() => handleWebSlotError(0)}
+                  onEnded={() => handleWebSlotEnded(0)}
+                  style={getWebVideoStyle(0, webActiveSlot, webVideoReady)}
+                />
+                <WebVideoTag
+                  ref={webVideoRefB}
+                  src={webVideoSources[1] || undefined}
+                  muted
+                  autoPlay
+                  playsInline
+                  controls={webActiveSlot === 1}
+                  preload="auto"
+                  onLoadedData={() => handleWebSlotLoaded(1)}
+                  onCanPlay={() => handleWebSlotCanPlay(1)}
+                  onPlaying={() => handleWebSlotPlaying(1)}
+                  onError={() => handleWebSlotError(1)}
+                  onEnded={() => handleWebSlotEnded(1)}
+                  style={getWebVideoStyle(1, webActiveSlot, webVideoReady)}
+                />
+              </View>
+            ) : (
+              <VideoView style={styles.avatarVideo} player={player} nativeControls contentFit="cover" useExoShutter={false} />
+            )
           ) : (
             <View style={styles.emptyAvatar}>
               <Ionicons name="chatbubble-ellipses-outline" size={30} color="#94a3b8" />
@@ -389,6 +620,124 @@ export default function TranslatorScreen() {
   );
 }
 
+async function buildPlaybackUrlMap(sourceUrls: string[]): Promise<Record<string, string>> {
+  const uniqueUrls = Array.from(new Set(sourceUrls.filter((url) => !!url)));
+  const identityMap = Object.fromEntries(uniqueUrls.map((url) => [url, url]));
+
+  if (uniqueUrls.length === 0 || Platform.OS === 'web') {
+    return identityMap;
+  }
+
+  const cacheDirectory = FileSystem.cacheDirectory;
+  if (!cacheDirectory) {
+    return identityMap;
+  }
+
+  const translatorCacheDir = `${cacheDirectory}translator-clips/`;
+  try {
+    await FileSystem.makeDirectoryAsync(translatorCacheDir, { intermediates: true });
+  } catch {
+    // ignore if directory already exists or cannot be created
+  }
+
+  const entries = await Promise.all(
+    uniqueUrls.map(async (url) => {
+      const cached = await cacheClip(url, translatorCacheDir);
+      return [url, cached] as const;
+    })
+  );
+
+  return Object.fromEntries(entries);
+}
+
+async function cacheClip(sourceUrl: string, cacheDir: string): Promise<string> {
+  const fileUri = `${cacheDir}${hashString(sourceUrl)}.mp4`;
+  const tempFileUri = `${fileUri}.tmp`;
+
+  try {
+    const info = await FileSystem.getInfoAsync(fileUri);
+    if (info.exists && info.size > 0) {
+      return fileUri;
+    }
+    if (info.exists && info.size <= 0) {
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+    }
+  } catch {
+    // fallback to download
+  }
+
+  try {
+    await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
+    await FileSystem.downloadAsync(sourceUrl, tempFileUri);
+
+    const downloadedInfo = await FileSystem.getInfoAsync(tempFileUri);
+    if (!downloadedInfo.exists || downloadedInfo.size <= 0) {
+      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
+      return sourceUrl;
+    }
+
+    await FileSystem.deleteAsync(fileUri, { idempotent: true });
+    await FileSystem.moveAsync({ from: tempFileUri, to: fileUri });
+    return fileUri;
+  } catch {
+    try {
+      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
+    } catch {
+      // ignore cleanup failure
+    }
+    return sourceUrl;
+  }
+}
+
+function hashString(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return `clip_${Math.abs(hash)}`;
+}
+
+function toVideoSource(uri: string): { uri: string; useCaching?: boolean } {
+  const trimmed = uri.trim();
+  if (trimmed.startsWith('file://')) {
+    return { uri: trimmed };
+  }
+  return { uri: trimmed, useCaching: true };
+}
+
+function getWebVideoStyle(
+  slot: 0 | 1,
+  activeSlot: 0 | 1,
+  ready: [boolean, boolean]
+) {
+  const visible = slot === activeSlot && ready[slot];
+  return {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    backgroundColor: '#e5e7eb',
+    opacity: visible ? 1 : 0,
+    pointerEvents: visible ? 'auto' : 'none',
+  } as any;
+}
+
+function tryPlayVideo(videoEl: any) {
+  try {
+    const promise = videoEl.play?.();
+    if (promise && typeof promise.catch === 'function') {
+      promise.catch(() => {
+        // ignore autoplay race; user can still tap play manually.
+      });
+    }
+  } catch {
+    // ignore autoplay race
+  }
+}
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#f5f7fb' },
   root: { flex: 1, backgroundColor: '#f5f7fb', paddingHorizontal: 8, paddingTop: 4 },
@@ -406,6 +755,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   avatarVideo: { width: '100%', height: '100%', backgroundColor: '#000' },
+  webVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: '#e5e7eb' },
   emptyAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eef2f7', gap: 8, paddingHorizontal: 14 },
   emptyAvatarText: { color: '#64748b', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   liveBadge: {
