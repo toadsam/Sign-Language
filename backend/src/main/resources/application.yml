@@ -21,6 +21,13 @@ jwt:
   access-exp-min: ${JWT_ACCESS_EXP_MIN:60}
   refresh-exp-day: ${JWT_REFRESH_EXP_DAY:14}
 
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+  morphology:
+    enabled: ${OPENAI_MORPHOLOGY_ENABLED:true}
+  chat-completions-url: ${OPENAI_CHAT_COMPLETIONS_URL:https://api.openai.com/v1/chat/completions}
+
 app:
   frontend-base-url: http://localhost:8081/home
   oauth2-success-url: ${app.frontend-base-url}/
