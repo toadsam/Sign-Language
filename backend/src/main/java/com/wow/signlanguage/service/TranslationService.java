@@ -3,12 +3,14 @@ package com.wow.signlanguage.service;
 import com.wow.signlanguage.dictionary.DictionaryLoader;
 import com.wow.signlanguage.dictionary.SignDictionaryEntry;
 import com.wow.signlanguage.normalizer.TextNormalizer;
+import com.wow.signlanguage.service.OpenAiMorphologyNormalizerService.MorphologyNormalizationResult;
 import com.wow.signlanguage.translate.ClipMatch;
 import com.wow.signlanguage.translate.SimplificationResult;
 import com.wow.signlanguage.translate.TranslateResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -20,19 +22,22 @@ public class TranslationService {
   private final SignSentenceSimplifier signSentenceSimplifier;
   private final UnknownTokenResolverService unknownTokenResolverService;
   private final ExternalLexiconApiClient externalLexiconApiClient;
+  private final OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService;
 
   public TranslationService(
       TextNormalizer textNormalizer,
       DictionaryLoader dictionaryLoader,
       SignSentenceSimplifier signSentenceSimplifier,
       UnknownTokenResolverService unknownTokenResolverService,
-      ExternalLexiconApiClient externalLexiconApiClient
+      ExternalLexiconApiClient externalLexiconApiClient,
+      OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService
   ) {
     this.textNormalizer = textNormalizer;
     this.dictionaryLoader = dictionaryLoader;
     this.signSentenceSimplifier = signSentenceSimplifier;
     this.unknownTokenResolverService = unknownTokenResolverService;
     this.externalLexiconApiClient = externalLexiconApiClient;
+    this.openAiMorphologyNormalizerService = openAiMorphologyNormalizerService;
   }
 
   public TranslateResponse translate(String input) {
@@ -46,8 +51,15 @@ public class TranslationService {
         .map(textNormalizer::normalizeToken)
         .filter(token -> !token.isBlank())
         .toList();
-    List<String> tokens = chooseTokenStream(ruleTokens, etriTokens);
-    List<String> resolvedTokens = resolveTokens(tokens, etriTokens);
+    Optional<MorphologyNormalizationResult> openAiResult = openAiMorphologyNormalizerService.normalize(safeInput);
+    List<String> openAiTokens = openAiResult.stream()
+        .flatMap(result -> result.tokens().stream())
+        .map(textNormalizer::normalizeToken)
+        .filter(token -> !token.isBlank())
+        .toList();
+    TokenStreamChoice tokenChoice = chooseTokenStream(ruleTokens, etriTokens, openAiTokens);
+    List<String> tokens = tokenChoice.tokens();
+    List<String> resolvedTokens = resolveTokens(tokens, mergeContextTokens(etriTokens, openAiTokens));
 
     List<ClipMatch> clips = new ArrayList<>();
     List<String> unknown = new ArrayList<>();
@@ -69,26 +81,41 @@ public class TranslationService {
 
     return new TranslateResponse(
         safeInput,
-        simplification.simplifiedSentence(),
+        buildSimplifiedSentence(simplification, openAiResult, tokenChoice.source()),
         resolvedTokens,
-        simplification.appliedRules(),
+        buildAppliedRules(simplification.appliedRules(), openAiResult.isPresent(), tokenChoice.source()),
         simplification.metadata(),
         clips,
         unknown
     );
   }
 
-  private List<String> chooseTokenStream(List<String> ruleTokens, List<String> etriTokens) {
-    if (etriTokens == null || etriTokens.isEmpty()) {
-      return ruleTokens;
+  private TokenStreamChoice chooseTokenStream(List<String> ruleTokens, List<String> etriTokens, List<String> openAiTokens) {
+    List<TokenStreamChoice> choices = new ArrayList<>();
+    if (ruleTokens != null && !ruleTokens.isEmpty()) {
+      choices.add(new TokenStreamChoice("rule", ruleTokens));
     }
-    if (ruleTokens == null || ruleTokens.isEmpty()) {
-      return etriTokens;
+    if (etriTokens != null && !etriTokens.isEmpty()) {
+      choices.add(new TokenStreamChoice("etri", etriTokens));
+    }
+    if (openAiTokens != null && !openAiTokens.isEmpty()) {
+      choices.add(new TokenStreamChoice("openai", openAiTokens));
     }
 
-    int ruleHits = countDictionaryHits(ruleTokens);
-    int etriHits = countDictionaryHits(etriTokens);
-    return etriHits > ruleHits ? etriTokens : ruleTokens;
+    if (choices.isEmpty()) {
+      return new TokenStreamChoice("rule", List.of());
+    }
+
+    TokenStreamChoice best = choices.get(0);
+    int bestHits = countDictionaryHits(best.tokens());
+    for (TokenStreamChoice choice : choices.subList(1, choices.size())) {
+      int hits = countDictionaryHits(choice.tokens());
+      if (hits > bestHits || (hits == bestHits && shouldPreferTie(choice.source(), best.source()))) {
+        best = choice;
+        bestHits = hits;
+      }
+    }
+    return best;
   }
 
   private int countDictionaryHits(List<String> tokens) {
@@ -118,6 +145,57 @@ public class TranslationService {
       resolvedTokens.add(resolved);
     }
     return resolvedTokens;
+  }
+
+  private List<String> mergeContextTokens(List<String> first, List<String> second) {
+    LinkedHashSet<String> merged = new LinkedHashSet<>();
+    if (first != null) {
+      merged.addAll(first);
+    }
+    if (second != null) {
+      merged.addAll(second);
+    }
+    return new ArrayList<>(merged);
+  }
+
+  private boolean shouldPreferTie(String candidateSource, String currentSource) {
+    return sourcePriority(candidateSource) > sourcePriority(currentSource);
+  }
+
+  private int sourcePriority(String source) {
+    return switch (source) {
+      case "openai" -> 3;
+      case "etri" -> 2;
+      default -> 1;
+    };
+  }
+
+  private String buildSimplifiedSentence(
+      SimplificationResult simplification,
+      Optional<MorphologyNormalizationResult> openAiResult,
+      String source
+  ) {
+    if ("openai".equals(source) && openAiResult.isPresent()) {
+      String simplifiedSentence = openAiResult.get().simplifiedSentence();
+      if (simplifiedSentence != null && !simplifiedSentence.isBlank()) {
+        return simplifiedSentence;
+      }
+    }
+    return simplification.simplifiedSentence();
+  }
+
+  private List<String> buildAppliedRules(List<String> baseRules, boolean openAiAvailable, String source) {
+    LinkedHashSet<String> rules = new LinkedHashSet<>();
+    if (baseRules != null) {
+      rules.addAll(baseRules);
+    }
+    if (openAiAvailable) {
+      rules.add("openai_morphology_normalization");
+    }
+    if ("openai".equals(source)) {
+      rules.add("openai_token_stream");
+    }
+    return new ArrayList<>(rules);
   }
 
   private List<String> buildContextDictionaryWords(List<String> contextTokens) {
@@ -215,5 +293,8 @@ public class TranslationService {
     }
 
     return "/clips/" + trimmed;
+  }
+
+  private record TokenStreamChoice(String source, List<String> tokens) {
   }
 }
