@@ -4,6 +4,7 @@
 
 # Local/build artifacts
 .gradle/
+.gradle-cache/
 build/
 target/
 .idea/

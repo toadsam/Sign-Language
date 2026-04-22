@@ -11,15 +11,43 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
 public class TranslationService {
 
+  private static final Pattern COMPLEX_PREDICATE_PATTERN = Pattern.compile(
+      ".*((\\uD588|\\uC558|\\uC5C8)\\uC5C8|\\uACA0|\\uC744\\s*\\uAC83|\\uAC83\\uC774\\uB2E4|\\uAC70\\uB2E4|\\uC9C0\\uB3C4\\s*\\uBAA8\\uB978|\\uACE0\\s*\\uC788\\uC5C8).*"
+  );
+  private static final List<String> CHOICE_CLIP_FILES = List.of(
+      "q001.mp4",
+      "q002.mp4",
+      "q003.mp4",
+      "q004.mp4",
+      "q005.mp4",
+      "q006.mp4",
+      "q007.mp4",
+      "q008.mp4",
+      "q009.mp4",
+      "q010.mp4",
+      "q011.mp4",
+      "q012.mp4",
+      "q013.mp4",
+      "q014.mp4",
+      "q015.mp4",
+      "q016.mp4",
+      "q017.mp4",
+      "q018.mp4",
+      "q019.mp4",
+      "q020.mp4"
+  );
+
   private final TextNormalizer textNormalizer;
   private final DictionaryLoader dictionaryLoader;
   private final SignSentenceSimplifier signSentenceSimplifier;
+  private final FastLemmaResolverService fastLemmaResolverService;
   private final UnknownTokenResolverService unknownTokenResolverService;
   private final ExternalLexiconApiClient externalLexiconApiClient;
   private final OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService;
@@ -28,6 +56,7 @@ public class TranslationService {
       TextNormalizer textNormalizer,
       DictionaryLoader dictionaryLoader,
       SignSentenceSimplifier signSentenceSimplifier,
+      FastLemmaResolverService fastLemmaResolverService,
       UnknownTokenResolverService unknownTokenResolverService,
       ExternalLexiconApiClient externalLexiconApiClient,
       OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService
@@ -35,6 +64,7 @@ public class TranslationService {
     this.textNormalizer = textNormalizer;
     this.dictionaryLoader = dictionaryLoader;
     this.signSentenceSimplifier = signSentenceSimplifier;
+    this.fastLemmaResolverService = fastLemmaResolverService;
     this.unknownTokenResolverService = unknownTokenResolverService;
     this.externalLexiconApiClient = externalLexiconApiClient;
     this.openAiMorphologyNormalizerService = openAiMorphologyNormalizerService;
@@ -47,19 +77,29 @@ public class TranslationService {
         .map(textNormalizer::normalizeToken)
         .filter(token -> !token.isBlank())
         .toList();
+    List<String> fastRuleTokens = fastLemmaResolverService.resolveTokens(ruleTokens);
     List<String> etriTokens = externalLexiconApiClient.fetchSentenceLemmas(safeInput).stream()
         .map(textNormalizer::normalizeToken)
         .filter(token -> !token.isBlank())
         .toList();
-    Optional<MorphologyNormalizationResult> openAiResult = openAiMorphologyNormalizerService.normalize(safeInput);
+    List<String> fastEtriTokens = fastLemmaResolverService.resolveTokens(etriTokens);
+    Optional<MorphologyNormalizationResult> openAiResult = shouldAttemptOpenAi(safeInput, fastRuleTokens, fastEtriTokens)
+        ? openAiMorphologyNormalizerService.normalize(safeInput)
+        : Optional.empty();
     List<String> openAiTokens = openAiResult.stream()
         .flatMap(result -> result.tokens().stream())
         .map(textNormalizer::normalizeToken)
         .filter(token -> !token.isBlank())
         .toList();
-    TokenStreamChoice tokenChoice = chooseTokenStream(ruleTokens, etriTokens, openAiTokens);
+    List<String> fastOpenAiTokens = fastLemmaResolverService.resolveTokens(openAiTokens);
+    TokenStreamChoice tokenChoice = chooseTokenStream(safeInput, fastRuleTokens, fastEtriTokens, fastOpenAiTokens);
     List<String> tokens = tokenChoice.tokens();
-    List<String> resolvedTokens = resolveTokens(tokens, mergeContextTokens(etriTokens, openAiTokens));
+    boolean useContextFallback = !"openai".equals(tokenChoice.source());
+    List<String> resolvedTokens = resolveTokens(
+        tokens,
+        useContextFallback ? mergeContextTokens(fastEtriTokens, fastOpenAiTokens) : fastOpenAiTokens,
+        useContextFallback
+    );
 
     List<ClipMatch> clips = new ArrayList<>();
     List<String> unknown = new ArrayList<>();
@@ -71,11 +111,12 @@ public class TranslationService {
         continue;
       }
 
+      String playbackFile = resolvePlaybackFile(entry);
       clips.add(new ClipMatch(
           token,
           entry.id(),
-          entry.file(),
-          buildClipUrl(entry.file())
+          playbackFile,
+          buildClipUrl(playbackFile)
       ));
     }
 
@@ -83,14 +124,57 @@ public class TranslationService {
         safeInput,
         buildSimplifiedSentence(simplification, openAiResult, tokenChoice.source()),
         resolvedTokens,
-        buildAppliedRules(simplification.appliedRules(), openAiResult.isPresent(), tokenChoice.source()),
+        buildAppliedRules(
+            simplification.appliedRules(),
+            openAiResult.isPresent(),
+            tokenChoice.source(),
+            !ruleTokens.equals(fastRuleTokens) || !etriTokens.equals(fastEtriTokens)
+        ),
         simplification.metadata(),
         clips,
         unknown
     );
   }
 
-  private TokenStreamChoice chooseTokenStream(List<String> ruleTokens, List<String> etriTokens, List<String> openAiTokens) {
+  private boolean shouldAttemptOpenAi(String input, List<String> ruleTokens, List<String> etriTokens) {
+    if (input == null || input.isBlank()) {
+      return false;
+    }
+
+    String normalizedInput = input.replaceAll("\\s+", " ").trim();
+    if (COMPLEX_PREDICATE_PATTERN.matcher(normalizedInput).matches()) {
+      return true;
+    }
+
+    return hasUnresolvedTokens(ruleTokens) && hasUnresolvedTokens(etriTokens);
+  }
+
+  private boolean hasUnresolvedTokens(List<String> tokens) {
+    if (tokens == null || tokens.isEmpty()) {
+      return true;
+    }
+
+    for (String token : tokens) {
+      if (token == null || token.isBlank()) {
+        continue;
+      }
+      if (!dictionaryLoader.findByWord(token).isPresent()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private TokenStreamChoice chooseTokenStream(
+      String input,
+      List<String> ruleTokens,
+      List<String> etriTokens,
+      List<String> openAiTokens
+  ) {
+    if (shouldPreferOpenAi(input, openAiTokens)) {
+      return new TokenStreamChoice("openai", openAiTokens);
+    }
+
     List<TokenStreamChoice> choices = new ArrayList<>();
     if (ruleTokens != null && !ruleTokens.isEmpty()) {
       choices.add(new TokenStreamChoice("rule", ruleTokens));
@@ -128,7 +212,7 @@ public class TranslationService {
     return hits;
   }
 
-  private List<String> resolveTokens(List<String> tokens, List<String> contextTokens) {
+  private List<String> resolveTokens(List<String> tokens, List<String> contextTokens, boolean useContextFallback) {
     List<String> resolvedTokens = new ArrayList<>();
     List<String> contextDictionaryWords = buildContextDictionaryWords(contextTokens);
 
@@ -138,13 +222,39 @@ public class TranslationService {
         continue;
       }
 
-      String resolved = unknownTokenResolverService.resolveToken(token).orElse(null);
+      String resolved = fastLemmaResolverService.resolveToken(token).orElse(null);
       if (resolved == null || resolved.isBlank()) {
+        resolved = unknownTokenResolverService.resolveToken(token).orElse(null);
+      }
+      if ((resolved == null || resolved.isBlank()) && useContextFallback) {
         resolved = pickBestContextMatch(token, contextDictionaryWords).orElse(token);
       }
-      resolvedTokens.add(resolved);
+      resolvedTokens.add((resolved == null || resolved.isBlank()) ? token : resolved);
     }
     return resolvedTokens;
+  }
+
+  private boolean shouldPreferOpenAi(String input, List<String> openAiTokens) {
+    if (input == null || input.isBlank() || openAiTokens == null || openAiTokens.isEmpty()) {
+      return false;
+    }
+
+    String normalizedInput = input.replaceAll("\\s+", " ").trim();
+    if (!COMPLEX_PREDICATE_PATTERN.matcher(normalizedInput).matches()) {
+      return false;
+    }
+
+    return openAiTokens.stream().allMatch(this::looksLikeBaseFormToken);
+  }
+
+  private boolean looksLikeBaseFormToken(String token) {
+    if (token == null || token.isBlank()) {
+      return false;
+    }
+    return token.endsWith("\uB2E4")
+        || token.endsWith("\uD558")
+        || token.endsWith("\uC9C0")
+        || token.length() <= 2;
   }
 
   private List<String> mergeContextTokens(List<String> first, List<String> second) {
@@ -184,16 +294,25 @@ public class TranslationService {
     return simplification.simplifiedSentence();
   }
 
-  private List<String> buildAppliedRules(List<String> baseRules, boolean openAiAvailable, String source) {
+  private List<String> buildAppliedRules(
+      List<String> baseRules,
+      boolean openAiAvailable,
+      String source,
+      boolean fastLemmaUsed
+  ) {
     LinkedHashSet<String> rules = new LinkedHashSet<>();
     if (baseRules != null) {
       rules.addAll(baseRules);
+    }
+    if (fastLemmaUsed) {
+      rules.add("fast_lemma_resolution");
     }
     if (openAiAvailable) {
       rules.add("openai_morphology_normalization");
     }
     if ("openai".equals(source)) {
       rules.add("openai_token_stream");
+      rules.add("openai_complex_predicate_override");
     }
     return new ArrayList<>(rules);
   }
@@ -280,6 +399,15 @@ public class TranslationService {
       bi--;
     }
     return count;
+  }
+
+  private String resolvePlaybackFile(SignDictionaryEntry entry) {
+    if (CHOICE_CLIP_FILES.isEmpty()) {
+      return entry.file();
+    }
+
+    int index = Math.floorMod((entry.id() * 17) - 1, CHOICE_CLIP_FILES.size());
+    return CHOICE_CLIP_FILES.get(index);
   }
 
   private String buildClipUrl(String fileName) {

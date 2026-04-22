@@ -32,6 +32,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     registry.addResourceHandler("/clips/**")
         .addResourceLocations(filesystemLocation, "classpath:/static/clips/");
+
+    registry.addResourceHandler("/choicemp4/**")
+        .addResourceLocations("classpath:/static/choicemp4/");
   }
 
   @Override

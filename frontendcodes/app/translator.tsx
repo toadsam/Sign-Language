@@ -444,6 +444,11 @@ export default function TranslatorScreen() {
           <Text style={styles.detectSub}>
             {clips.length > 0 ? `${currentClipIndex + 1} / ${clips.length}` : '0 / 0'} 인식된 수어 (Detected Gesture)
           </Text>
+          {result?.simplifiedSentence ? (
+            <Text style={styles.translationPreview} numberOfLines={2}>
+              변환 결과: {result.simplifiedSentence}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.actionRow}>
@@ -775,6 +780,14 @@ const styles = StyleSheet.create({
   detectWrap: { alignItems: 'center', marginTop: 8 },
   detectTitle: { color: '#111827', fontSize: 34, fontWeight: '800', letterSpacing: -0.3 },
   detectSub: { marginTop: 2, color: '#64748b', fontSize: 13, fontWeight: '500' },
+  translationPreview: {
+    marginTop: 6,
+    paddingHorizontal: 18,
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   actionRow: { marginTop: 28, marginBottom: 6, flexDirection: 'row', justifyContent: 'center', gap: 52 },
   actionItem: { alignItems: 'center', gap: 6 },
   actionIconWrap: {

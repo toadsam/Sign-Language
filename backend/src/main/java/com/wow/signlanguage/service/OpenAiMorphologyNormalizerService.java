@@ -76,7 +76,7 @@ public class OpenAiMorphologyNormalizerService {
       return Optional.of(new MorphologyNormalizationResult(
           normalized.path("simplifiedSentence").asText(String.join(" ", tokens)),
           tokens,
-          normalized.path("tense").asText("")
+          normalized.path("tense").asText("unknown")
       ));
     } catch (Exception ignored) {
       return Optional.empty();
@@ -103,8 +103,14 @@ public class OpenAiMorphologyNormalizerService {
             "You normalize Korean text for a Korean Sign Language lookup system.",
             "Return JSON only.",
             "Extract content words in natural order.",
-            "Convert Korean verbs and adjectives to dictionary form ending in '-다'.",
+            "Convert Korean predicates to dictionary form ending in -da.",
             "Separate messy endings for tense, aspect, guess, intention, and politeness.",
+            "Drop pure grammatical helper nouns or endings when they do not carry standalone sign meaning.",
+            "If the input is a single conjugated predicate, return a single lemma token.",
+            "Examples:",
+            "- had-eoss-da -> {\"simplifiedSentence\":\"하다\",\"tokens\":[\"하다\"],\"tense\":\"past\"}",
+            "- had-eoss-eoss-da -> {\"simplifiedSentence\":\"하다\",\"tokens\":[\"하다\"],\"tense\":\"past\"}",
+            "- had-eoss-eul geos-ida -> {\"simplifiedSentence\":\"하다\",\"tokens\":[\"하다\"],\"tense\":\"past\"}",
             "Do not translate to English.",
             "Do not invent words not supported by the input.",
             "Return this shape exactly: {\"simplifiedSentence\":\"...\",\"tokens\":[\"...\"],\"tense\":\"past|present|future|unknown\"}."));
