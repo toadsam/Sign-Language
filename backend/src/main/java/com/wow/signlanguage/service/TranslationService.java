@@ -4,6 +4,7 @@ import com.wow.signlanguage.dictionary.DictionaryLoader;
 import com.wow.signlanguage.dictionary.SignDictionaryEntry;
 import com.wow.signlanguage.normalizer.TextNormalizer;
 import com.wow.signlanguage.service.OpenAiMorphologyNormalizerService.MorphologyNormalizationResult;
+import com.wow.signlanguage.storage.StorageVideoCache;
 import com.wow.signlanguage.translate.ClipMatch;
 import com.wow.signlanguage.translate.SimplificationResult;
 import com.wow.signlanguage.translate.TranslateResponse;
@@ -23,6 +24,7 @@ public class TranslationService {
   private final UnknownTokenResolverService unknownTokenResolverService;
   private final ExternalLexiconApiClient externalLexiconApiClient;
   private final OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService;
+  private final StorageVideoCache storageVideoCache;
 
   public TranslationService(
       TextNormalizer textNormalizer,
@@ -30,7 +32,8 @@ public class TranslationService {
       SignSentenceSimplifier signSentenceSimplifier,
       UnknownTokenResolverService unknownTokenResolverService,
       ExternalLexiconApiClient externalLexiconApiClient,
-      OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService
+      OpenAiMorphologyNormalizerService openAiMorphologyNormalizerService,
+      StorageVideoCache storageVideoCache
   ) {
     this.textNormalizer = textNormalizer;
     this.dictionaryLoader = dictionaryLoader;
@@ -38,6 +41,7 @@ public class TranslationService {
     this.unknownTokenResolverService = unknownTokenResolverService;
     this.externalLexiconApiClient = externalLexiconApiClient;
     this.openAiMorphologyNormalizerService = openAiMorphologyNormalizerService;
+    this.storageVideoCache = storageVideoCache;
   }
 
   public TranslateResponse translate(String input) {
@@ -63,11 +67,21 @@ public class TranslationService {
 
     List<ClipMatch> clips = new ArrayList<>();
     List<String> unknown = new ArrayList<>();
+    List<String> noVideoWords = new ArrayList<>();
 
     for (String token : resolvedTokens) {
       SignDictionaryEntry entry = dictionaryLoader.findByWord(token).orElse(null);
       if (entry == null) {
+        // 사전에 없는 단어 → unknown
         unknown.add(token);
+        continue;
+      }
+
+      // 사전에는 있음 → Firebase Storage에서 영상 URL 조회
+      String storageUrl = storageVideoCache.findUrl(token);
+      if (storageUrl == null || storageUrl.isBlank()) {
+        // 사전엔 있지만 Storage에 영상 없음 → noVideoWords
+        noVideoWords.add(token);
         continue;
       }
 
@@ -75,7 +89,7 @@ public class TranslationService {
           token,
           entry.id(),
           entry.file(),
-          buildClipUrl(entry.file())
+          storageUrl
       ));
     }
 
@@ -86,7 +100,8 @@ public class TranslationService {
         buildAppliedRules(simplification.appliedRules(), openAiResult.isPresent(), tokenChoice.source()),
         simplification.metadata(),
         clips,
-        unknown
+        unknown,
+        noVideoWords
     );
   }
 

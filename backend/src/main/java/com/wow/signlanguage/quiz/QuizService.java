@@ -8,6 +8,7 @@ import com.wow.signlanguage.quiz.dto.QuizAnswerRequest;
 import com.wow.signlanguage.quiz.dto.QuizAnswerResponse;
 import com.wow.signlanguage.quiz.dto.QuizSessionQuestionResponse;
 import com.wow.signlanguage.quiz.dto.QuizSessionResponse;
+import com.wow.signlanguage.storage.StorageVideoCache;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
@@ -27,9 +28,11 @@ public class QuizService {
   private static final int MAX_COUNT = 50;
 
   private final Firestore firestore;
+  private final StorageVideoCache storageVideoCache;
 
-  public QuizService(Firestore firestore) {
+  public QuizService(Firestore firestore, StorageVideoCache storageVideoCache) {
     this.firestore = firestore;
+    this.storageVideoCache = storageVideoCache;
   }
 
   public QuizSessionResponse getSession(int count) {
@@ -189,10 +192,18 @@ public class QuizService {
     }
 
     String questionText = doc.getString("questionText");
-    String videoUrl = doc.getString("videoUrl");
+    String firestoreVideoUrl = doc.getString("videoUrl");
     List<String> choices = toStringList(doc.get("choices"));
 
-    if (isBlank(questionText) || isBlank(videoUrl) || choices.size() != 4) {
+    if (isBlank(questionText) || choices.size() != 4) {
+      return null;
+    }
+
+    // Storage 캐시에서 단어명으로 동영상 URL 조회, 없으면 Firestore videoUrl로 fallback
+    String storageUrl = storageVideoCache.findUrl(questionText);
+    String videoUrl = (storageUrl != null) ? storageUrl : firestoreVideoUrl;
+
+    if (isBlank(videoUrl)) {
       return null;
     }
 
