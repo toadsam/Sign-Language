@@ -46,6 +46,7 @@
       "expo-video"
     ],
     "experiments": {
+      "baseUrl": "/Sign-Language",
       "typedRoutes": true,
       "reactCompiler": true
     }
