@@ -6,19 +6,15 @@ import { Platform } from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const GITHUB_PAGES_BASE_PATH = '/Sign-Language';
+
 export function useGoogleIdTokenAuthRequest() {
   const isExpoGo = Constants.appOwnership === 'expo';
   const isWeb = Platform.OS === 'web';
   const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const clientId = isExpoGo || isWeb ? webClientId : undefined;
   const hasGoogleClientId = Boolean(webClientId);
-  const redirectUri = AuthSession.makeRedirectUri({
-    // Expo Go must use proxy auth redirect.
-    useProxy: isExpoGo,
-    // Web login should return to local dev server, not auth.expo.io popup.
-    preferLocalhost: isWeb,
-    scheme: 'frontendcodes',
-  });
+  const redirectUri = getRedirectUri(isWeb);
   const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
   const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 
@@ -33,4 +29,17 @@ export function useGoogleIdTokenAuthRequest() {
   });
 
   return { request, response, promptAsync, isExpoGo, hasGoogleClientId };
+}
+
+function getRedirectUri(isWeb: boolean) {
+  if (isWeb && typeof window !== 'undefined') {
+    if (window.location.hostname.endsWith('github.io')) {
+      return `${window.location.origin}${GITHUB_PAGES_BASE_PATH}/login`;
+    }
+    return window.location.origin;
+  }
+
+  return AuthSession.makeRedirectUri({
+    scheme: 'frontendcodes',
+  });
 }
