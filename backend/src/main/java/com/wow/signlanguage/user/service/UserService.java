@@ -22,6 +22,7 @@ import com.wow.signlanguage.user.dto.TranslatorBookmarkResponse;
 import com.wow.signlanguage.user.dto.WrongNoteResponse;
 import com.wow.signlanguage.user.dto.WrongNoteSavedResponse;
 import com.wow.signlanguage.user.model.UserInfo;
+import com.wow.signlanguage.storage.StorageVideoCache;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -49,6 +50,12 @@ public class UserService {
 
     @Value("${google.client-id}")
     private String googleClientId;
+
+    private final StorageVideoCache storageVideoCache;
+
+    public UserService(StorageVideoCache storageVideoCache) {
+        this.storageVideoCache = storageVideoCache;
+    }
 
     private int getNextUserId(Firestore db) throws ExecutionException, InterruptedException {
         DocumentReference counterRef = db.collection(COLLECTION_NAME).document(COUNTER_DOC);
@@ -289,9 +296,9 @@ public class UserService {
         }
 
         String questionText = safeString(quizDoc.getString("questionText"));
-        String videoUrl = safeString(quizDoc.getString("videoUrl"));
         String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
         String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+        String videoUrl = resolveQuizVideoUrl(questionText, word, quizDoc.getString("videoUrl"));
 
         Map<String, Object> bookmarkData = new HashMap<>();
         bookmarkData.put("quizId", quizId);
@@ -371,9 +378,9 @@ public class UserService {
                 continue;
             }
             String questionText = safeString(quizDoc.getString("questionText"));
-            String videoUrl = safeString(quizDoc.getString("videoUrl"));
             String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
             String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+            String videoUrl = resolveQuizVideoUrl(questionText, word, quizDoc.getString("videoUrl"));
             Object wrongAt = incorrectQuestionDates.get(quizId);
             result.add(new WrongNoteResponse(quizId, questionText, word, videoUrl, wrongAt));
         }
@@ -401,9 +408,9 @@ public class UserService {
         Object wrongAt = incorrectQuestionDates.getOrDefault(quizId, new Date());
 
         String questionText = safeString(quizDoc.getString("questionText"));
-        String videoUrl = safeString(quizDoc.getString("videoUrl"));
         String correctChoiceId = normalizeChoiceId(quizDoc.getString("correctChoiceId"));
         String word = resolveCorrectChoiceText(quizDoc.get("choices"), correctChoiceId);
+        String videoUrl = resolveQuizVideoUrl(questionText, word, quizDoc.getString("videoUrl"));
 
         Map<String, Object> data = new HashMap<>();
         data.put("quizId", quizId);
@@ -649,30 +656,33 @@ public class UserService {
     }
 
     private BookmarkResponse toBookmarkResponse(DocumentSnapshot doc) {
+        String word = safeString(doc.getString("word"));
         return new BookmarkResponse(
                 doc.getId(),
                 safeString(doc.getString("questionText")),
-                safeString(doc.getString("word")),
-                safeString(doc.getString("videoUrl")),
+                word,
+                storageVideoCache.findUrlOrFallback(word, doc.getString("videoUrl")),
                 doc.get("savedAt"));
     }
 
     private WrongNoteSavedResponse toWrongNoteSavedResponse(DocumentSnapshot doc) {
+        String word = safeString(doc.getString("word"));
         return new WrongNoteSavedResponse(
                 doc.getId(),
                 safeString(doc.getString("questionText")),
-                safeString(doc.getString("word")),
-                safeString(doc.getString("videoUrl")),
+                word,
+                storageVideoCache.findUrlOrFallback(word, doc.getString("videoUrl")),
                 doc.get("wrongAt"),
                 doc.get("savedAt"));
     }
 
     private TranslatorBookmarkResponse toTranslatorBookmarkResponse(DocumentSnapshot doc) {
+        String word = safeString(doc.getString("word"));
         return new TranslatorBookmarkResponse(
                 doc.getId(),
                 safeString(doc.getString("questionText")),
-                safeString(doc.getString("word")),
-                safeString(doc.getString("videoUrl")),
+                word,
+                storageVideoCache.findUrlOrFallback(word, doc.getString("videoUrl")),
                 doc.get("savedAt"));
     }
 
@@ -683,6 +693,14 @@ public class UserService {
 
     private String safeString(String value) {
         return value == null ? "" : value;
+    }
+
+    private String resolveQuizVideoUrl(String questionText, String word, String fallbackUrl) {
+        String videoUrl = storageVideoCache.findUrl(questionText);
+        if (videoUrl != null && !videoUrl.isBlank()) {
+            return videoUrl;
+        }
+        return storageVideoCache.findUrlOrFallback(word, fallbackUrl);
     }
 
     private String normalizeChoiceId(String value) {

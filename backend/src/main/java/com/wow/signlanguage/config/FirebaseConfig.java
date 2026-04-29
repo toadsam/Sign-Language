@@ -19,9 +19,14 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class FirebaseConfig {
 
-  /** Firestore 프로젝트(signhand-2641) 서비스 계정 키 파일 경로 */
+  @Value("${firebase.project-id:}")
+  private String firebaseProjectId;
+
   @Value("${firebase.service-account-path}")
   private String firestoreServiceAccountPath;
+
+  @Value("${firebase.service-account-key-json:}")
+  private String firestoreServiceAccountKeyJson;
 
   /**
    * Storage 서비스 계정 키 — 로컬 개발 시 파일 경로.
@@ -47,13 +52,16 @@ public class FirebaseConfig {
     if (!FirebaseApp.getApps().isEmpty()) {
       return FirebaseApp.getInstance();
     }
-    try (FileInputStream serviceAccount = new FileInputStream(firestoreServiceAccountPath)) {
-      FirebaseOptions options =
-          FirebaseOptions.builder()
-              .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-              .build();
-      return FirebaseApp.initializeApp(options);
+
+    FirebaseOptions.Builder optionsBuilder =
+        FirebaseOptions.builder()
+            .setCredentials(resolveFirestoreCredentials());
+
+    if (firebaseProjectId != null && !firebaseProjectId.isBlank()) {
+      optionsBuilder.setProjectId(firebaseProjectId);
     }
+
+    return FirebaseApp.initializeApp(optionsBuilder.build());
   }
 
   /** Firestore 빈 */
@@ -93,5 +101,22 @@ public class FirebaseConfig {
     throw new IllegalStateException(
         "Firebase Storage 인증 정보가 없습니다. " +
         "FIREBASE_STORAGE_KEY_JSON 또는 FIREBASE_STORAGE_SERVICE_ACCOUNT_PATH 를 설정하세요.");
+  }
+
+  private GoogleCredentials resolveFirestoreCredentials() throws IOException {
+    if (firestoreServiceAccountKeyJson != null && !firestoreServiceAccountKeyJson.isBlank()) {
+      try (InputStream serviceAccount =
+          new ByteArrayInputStream(firestoreServiceAccountKeyJson.getBytes(StandardCharsets.UTF_8))) {
+        return GoogleCredentials.fromStream(serviceAccount);
+      }
+    }
+
+    if (firestoreServiceAccountPath != null && !firestoreServiceAccountPath.isBlank()) {
+      try (InputStream serviceAccount = new FileInputStream(firestoreServiceAccountPath)) {
+        return GoogleCredentials.fromStream(serviceAccount);
+      }
+    }
+
+    return GoogleCredentials.getApplicationDefault();
   }
 }

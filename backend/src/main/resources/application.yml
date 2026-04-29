@@ -33,10 +33,13 @@ app:
   oauth2-success-url: ${app.frontend-base-url}/
 
 firebase:
+  project-id: ${FIREBASE_PROJECT_ID:}
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
+  service-account-key-json: ${FIREBASE_SERVICE_ACCOUNT_KEY_JSON:${FIREBASE_SERVICE_ACCOUNT_JSON:}}
   storage-service-account-path: ${FIREBASE_STORAGE_SERVICE_ACCOUNT_PATH:}
   storage-key-json: ${FIREBASE_STORAGE_KEY_JSON:${FIREBASE_STORAGE_SERVICE_ACCOUNT:}}
-  storage-bucket: ${FIREBASE_STORAGE_BUCKET:} # Firebase Storage 버킷 이름
+  storage-bucket: ${FIREBASE_STORAGE_BUCKET:} # Firebase Storage bucket name
+  storage-video-prefix: ${FIREBASE_STORAGE_VIDEO_PREFIX:necessory_json_files/Model_videos/}
 
 external:
   api:

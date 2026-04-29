@@ -194,14 +194,14 @@ public class QuizService {
     String questionText = doc.getString("questionText");
     String firestoreVideoUrl = doc.getString("videoUrl");
     List<String> choices = toStringList(doc.get("choices"));
+    String correctChoiceId = normalizeChoiceId(doc.getString("correctChoiceId"));
+    String correctChoiceText = choiceTextById(choices, correctChoiceId);
 
     if (isBlank(questionText) || choices.size() != 4) {
       return null;
     }
 
-    // Storage 캐시에서 단어명으로 동영상 URL 조회, 없으면 Firestore videoUrl로 fallback
-    String storageUrl = storageVideoCache.findUrl(questionText);
-    String videoUrl = (storageUrl != null) ? storageUrl : firestoreVideoUrl;
+    String videoUrl = storageVideoCache.findUrlOrFallback(correctChoiceText, firestoreVideoUrl);
 
     if (isBlank(videoUrl)) {
       return null;
