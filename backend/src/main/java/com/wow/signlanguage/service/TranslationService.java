@@ -71,6 +71,17 @@ public class TranslationService {
 
     for (String token : resolvedTokens) {
       SignDictionaryEntry entry = dictionaryLoader.findByWord(token).orElse(null);
+      String storageUrl = storageVideoCache.findUrl(token);
+      if (storageUrl != null && !storageUrl.isBlank()) {
+        clips.add(new ClipMatch(
+            token,
+            entry == null ? 0 : entry.id(),
+            entry == null ? "" : entry.file(),
+            storageUrl
+        ));
+        continue;
+      }
+
       if (entry == null) {
         // 사전에 없는 단어 → unknown
         unknown.add(token);
@@ -78,7 +89,6 @@ public class TranslationService {
       }
 
       // 사전에는 있음 → Firebase Storage에서 영상 URL 조회
-      String storageUrl = storageVideoCache.findUrl(token);
       if (storageUrl == null || storageUrl.isBlank()) {
         // 사전엔 있지만 Storage에 영상 없음 → noVideoWords
         noVideoWords.add(token);

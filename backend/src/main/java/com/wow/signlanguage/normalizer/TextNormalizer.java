@@ -43,17 +43,55 @@ public class TextNormalizer {
       return "";
     }
 
-    String predicateNormalized = normalizePredicateEnding(token);
-    if (!predicateNormalized.equals(token)) {
-      return predicateNormalized;
-    }
-
     String mapped = REPLACEMENTS.get(token);
     if (mapped != null) {
       return mapped;
     }
 
+    String commonKoreanNormalized = normalizeCommonKoreanEnding(token);
+    if (!commonKoreanNormalized.equals(token)) {
+      return commonKoreanNormalized;
+    }
+
+    String predicateNormalized = normalizePredicateEnding(token);
+    if (!predicateNormalized.equals(token)) {
+      return predicateNormalized;
+    }
+
     return REPLACEMENTS.getOrDefault(token, token);
+  }
+
+  private String normalizeCommonKoreanEnding(String token) {
+    String exact = switch (token) {
+      case "아파", "아파요", "아팠다", "아팠어요", "아프고", "아프면", "아픈" -> "아프다";
+      case "힘들어", "힘들어요", "힘들었다", "힘들었어요", "힘들고", "힘들면", "힘든" -> "힘들다";
+      case "좋아", "좋아요", "좋았다", "좋았어요", "좋고", "좋으면", "좋은" -> "좋다";
+      case "싫어", "싫어요", "싫었다", "싫었어요", "싫고", "싫으면", "싫은" -> "싫다";
+      case "몰라", "몰라요", "몰랐다", "몰랐어요", "모르고", "모르면", "모른" -> "모르다";
+      case "알아", "알아요", "알았다", "알았어요", "알고", "알면", "아는" -> "알다";
+      case "가", "가요", "갔다", "갔어요", "가고", "가면", "가는", "가야" -> "가다";
+      case "걸어", "걸어요", "걸었다", "걸었어요", "걷고", "걸으면", "걷는" -> "걷다";
+      case "받아", "받아요", "받았다", "받았어요", "받고", "받으면", "받는" -> "받다";
+      case "줘", "줘요", "주었다", "줬다", "줬어요", "주고", "주면", "주는" -> "주다";
+      default -> "";
+    };
+    if (!exact.isBlank()) {
+      return exact;
+    }
+
+    String[] endings = {
+        "습니다", "습니까", "ㅂ니다", "어요", "아요", "네요", "고요", "고", "지만", "면서", "면", "는", "은", "ㄴ"
+    };
+    for (String ending : endings) {
+      if (token.endsWith(ending) && token.length() > ending.length()) {
+        String stem = token.substring(0, token.length() - ending.length());
+        if (!stem.isBlank()) {
+          return stem + "다";
+        }
+      }
+    }
+
+    return token;
   }
 
   private String normalizePredicateEnding(String token) {

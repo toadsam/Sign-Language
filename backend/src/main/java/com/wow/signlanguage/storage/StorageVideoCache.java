@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ public class StorageVideoCache {
   private final String storageBucket;
   private final List<String> folderPrefixes;
   private final Map<String, String> cache = new ConcurrentHashMap<>();
+  private final Set<String> missingWords = ConcurrentHashMap.newKeySet();
 
   public StorageVideoCache(
       Storage storage,
@@ -47,9 +49,13 @@ public class StorageVideoCache {
     if (cachedUrl != null) {
       return cachedUrl;
     }
+    if (missingWords.contains(normalizedWord)) {
+      return null;
+    }
 
     String loadedUrl = loadUrl(normalizedWord);
     if (loadedUrl == null || loadedUrl.isBlank()) {
+      missingWords.add(normalizedWord);
       return null;
     }
 

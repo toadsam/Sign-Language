@@ -1,6 +1,5 @@
 ﻿﻿import { Ionicons } from '@expo/vector-icons';
 import { useEventListener } from 'expo';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -50,21 +49,38 @@ export default function TranslatorScreen() {
 
   const player = useVideoPlayer(null, (videoPlayer) => {
     videoPlayer.loop = false;
+    videoPlayer.timeUpdateEventInterval = 0.25;
     // Web autoplay policy blocks programmatic play for unmuted media.
     // Sign clips do not require audio, so keep muted for seamless chaining.
     videoPlayer.muted = true;
   });
   const replaceVersionRef = useRef(0);
   const pendingAutoplayVersionRef = useRef(0);
+  const clipsLengthRef = useRef(0);
+  const currentClipIndexRef = useRef(0);
+  const webActiveSlotRef = useRef<0 | 1>(0);
+  const lastAutoAdvancedIndexRef = useRef(-1);
   const WebVideoTag = 'video' as any;
   const webVideoRefA = useRef<any>(null);
   const webVideoRefB = useRef<any>(null);
   const webPendingSlotRef = useRef<0 | 1 | null>(null);
   const webLastQueuedTokenRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    clipsLengthRef.current = clips.length;
+  }, [clips.length]);
+
+  useEffect(() => {
+    currentClipIndexRef.current = currentClipIndex;
+  }, [currentClipIndex]);
+
+  useEffect(() => {
+    webActiveSlotRef.current = webActiveSlot;
+  }, [webActiveSlot]);
+
   const advanceClip = () => {
-    if (clips.length <= 1) return;
-    setCurrentClipIndex((prev) => Math.min(prev + 1, clips.length - 1));
+    if (clipsLengthRef.current <= 1) return;
+    setCurrentClipIndex((prev) => Math.min(prev + 1, clipsLengthRef.current - 1));
   };
 
   useEventListener(player, 'sourceLoad', () => {
@@ -87,6 +103,20 @@ export default function TranslatorScreen() {
     advanceClip();
   });
 
+  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    const duration = player.duration;
+    if (isWeb || !duration || clipsLengthRef.current <= 1) {
+      return;
+    }
+
+    if (duration - currentTime > 0.2 || lastAutoAdvancedIndexRef.current === currentClipIndexRef.current) {
+      return;
+    }
+
+    lastAutoAdvancedIndexRef.current = currentClipIndexRef.current;
+    advanceClip();
+  });
+
   useEffect(() => {
     if (isWeb) {
       pendingAutoplayVersionRef.current = 0;
@@ -98,6 +128,7 @@ export default function TranslatorScreen() {
       return;
     }
 
+    lastAutoAdvancedIndexRef.current = -1;
     const version = ++replaceVersionRef.current;
     pendingAutoplayVersionRef.current = version;
     let cancelled = false;
@@ -242,10 +273,11 @@ export default function TranslatorScreen() {
         setWebVideoReady([false, false]);
         setWebActiveSlot(0);
       }
-      const nextPlaybackUrlMap = await buildPlaybackUrlMap(next.clips.map((clip) => clip.url));
+      const nextPlaybackUrlMap = buildPlaybackUrlMap(next.clips.map((clip) => clip.url));
       setPlaybackUrlMap(nextPlaybackUrlMap);
       setResult(next);
       setCurrentClipIndex(0);
+      lastAutoAdvancedIndexRef.current = -1;
     } catch (error) {
       if (isWeb) {
         webPendingSlotRef.current = null;
@@ -373,7 +405,7 @@ export default function TranslatorScreen() {
   }
 
   function handleWebSlotEnded(slot: 0 | 1) {
-    if (slot !== webActiveSlot) {
+    if (slot !== webActiveSlotRef.current) {
       return;
     }
     advanceClip();
@@ -637,82 +669,9 @@ export default function TranslatorScreen() {
   );
 }
 
-async function buildPlaybackUrlMap(sourceUrls: string[]): Promise<Record<string, string>> {
+function buildPlaybackUrlMap(sourceUrls: string[]): Record<string, string> {
   const uniqueUrls = Array.from(new Set(sourceUrls.filter((url) => !!url)));
-  const identityMap = Object.fromEntries(uniqueUrls.map((url) => [url, url]));
-
-  if (uniqueUrls.length === 0 || Platform.OS === 'web') {
-    return identityMap;
-  }
-
-  const cacheDirectory = FileSystem.cacheDirectory;
-  if (!cacheDirectory) {
-    return identityMap;
-  }
-
-  const translatorCacheDir = `${cacheDirectory}translator-clips/`;
-  try {
-    await FileSystem.makeDirectoryAsync(translatorCacheDir, { intermediates: true });
-  } catch {
-    // ignore if directory already exists or cannot be created
-  }
-
-  const entries = await Promise.all(
-    uniqueUrls.map(async (url) => {
-      const cached = await cacheClip(url, translatorCacheDir);
-      return [url, cached] as const;
-    })
-  );
-
-  return Object.fromEntries(entries);
-}
-
-async function cacheClip(sourceUrl: string, cacheDir: string): Promise<string> {
-  const fileUri = `${cacheDir}${hashString(sourceUrl)}.mp4`;
-  const tempFileUri = `${fileUri}.tmp`;
-
-  try {
-    const info = await FileSystem.getInfoAsync(fileUri);
-    if (info.exists && info.size > 0) {
-      return fileUri;
-    }
-    if (info.exists && info.size <= 0) {
-      await FileSystem.deleteAsync(fileUri, { idempotent: true });
-    }
-  } catch {
-    // fallback to download
-  }
-
-  try {
-    await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
-    await FileSystem.downloadAsync(sourceUrl, tempFileUri);
-
-    const downloadedInfo = await FileSystem.getInfoAsync(tempFileUri);
-    if (!downloadedInfo.exists || downloadedInfo.size <= 0) {
-      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
-      return sourceUrl;
-    }
-
-    await FileSystem.deleteAsync(fileUri, { idempotent: true });
-    await FileSystem.moveAsync({ from: tempFileUri, to: fileUri });
-    return fileUri;
-  } catch {
-    try {
-      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
-    } catch {
-      // ignore cleanup failure
-    }
-    return sourceUrl;
-  }
-}
-
-function hashString(value: string): string {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash) + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return `clip_${Math.abs(hash)}`;
+  return Object.fromEntries(uniqueUrls.map((url) => [url, url]));
 }
 
 function toVideoSource(uri: string): { uri: string; useCaching?: boolean } {
