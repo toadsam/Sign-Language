@@ -1,4 +1,4 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+﻿﻿import { Ionicons } from '@expo/vector-icons';
 import { useEventListener } from 'expo';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
@@ -38,6 +38,7 @@ export default function TranslatorScreen() {
 
   const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
   const unknownTokens = useMemo<string[]>(() => result?.unknown ?? [], [result]);
+  const noVideoWords = useMemo<string[]>(() => result?.noVideoWords ?? [], [result]);
   const normalizedTokens = useMemo<string[]>(() => result?.normalizedTokens ?? [], [result]);
   const filteredBookmarks = useMemo(() => {
     const q = bookmarkQuery.trim().toLowerCase();
@@ -593,6 +594,22 @@ export default function TranslatorScreen() {
                   )}
                 </View>
               </View>
+              <View style={styles.resultCard}>
+                <Text style={styles.resultTitle}>영상이 없는 단어</Text>
+                <Text style={styles.resultSubTitle}>사전에는 있지만 수어 영상이 준비되지 않은 단어입니다.</Text>
+                <View style={styles.tokenWrap}>
+                  {noVideoWords.length === 0 ? (
+                    <Text style={styles.emptyText}>없음</Text>
+                  ) : (
+                    noVideoWords.map((token, index) => (
+                      <View key={`${token}-${index}`} style={styles.noVideoChip}>
+                        <Ionicons name="videocam-off-outline" size={12} color="#b45309" />
+                        <Text style={styles.noVideoChipText}>{token}</Text>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
             </ScrollView>
           </View>
         )}
@@ -972,6 +989,19 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   unknownChipText: { color: '#b91c1c', fontSize: 11, fontWeight: '700' },
+  noVideoChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  noVideoChipText: { color: '#b45309', fontSize: 11, fontWeight: '700' },
+  resultSubTitle: { color: '#94a3b8', fontSize: 10, fontWeight: '500' },
   emptyText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
   bottomNav: {
     borderTopWidth: 1,

@@ -21,6 +21,8 @@ export type TranslateResponse = {
   metadata: SimplificationMetadata;
   clips: TranslateClip[];
   unknown: string[];
+  /** 사전에는 있지만 Firebase Storage에 영상이 없는 단어 목록 */
+  noVideoWords: string[];
 };
 
 export async function translateText(text: string): Promise<TranslateResponse> {

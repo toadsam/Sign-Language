@@ -510,11 +510,20 @@ export default function QuizScreen() {
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.imageWrap}>
-            <VideoView style={styles.videoPlayer} player={player} nativeControls contentFit="cover" />
-            <Pressable style={styles.replayButton} onPress={handleReplayVideo}>
-              <Ionicons name="play" size={14} color="#4b5563" />
-              <Text style={styles.replayText}>다시 재생</Text>
-            </Pressable>
+            {currentQuestion?.videoUrl ? (
+              <>
+                <VideoView style={styles.videoPlayer} player={player} nativeControls contentFit="cover" />
+                <Pressable style={styles.replayButton} onPress={handleReplayVideo}>
+                  <Ionicons name="play" size={14} color="#4b5563" />
+                  <Text style={styles.replayText}>다시 재생</Text>
+                </Pressable>
+              </>
+            ) : (
+              <View style={styles.noVideoWrap}>
+                <Ionicons name="videocam-off-outline" size={36} color="#94a3b8" />
+                <Text style={styles.noVideoText}>이 단어의 수어 영상이 아직 준비되지 않았습니다.</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.questionWrap}>
@@ -935,6 +944,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: '#000',
+  },
+  noVideoWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
+    gap: 10,
+    paddingHorizontal: 24,
+  },
+  noVideoText: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   replayButton: {
     position: 'absolute',

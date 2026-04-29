@@ -34,6 +34,9 @@ app:
 
 firebase:
   service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:}
+  storage-service-account-path: ${FIREBASE_STORAGE_SERVICE_ACCOUNT_PATH:}
+  storage-key-json: ${FIREBASE_STORAGE_KEY_JSON:${FIREBASE_STORAGE_SERVICE_ACCOUNT:}}
+  storage-bucket: ${FIREBASE_STORAGE_BUCKET:} # Firebase Storage 버킷 이름
 
 external:
   api:
