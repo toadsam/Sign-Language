@@ -45,11 +45,12 @@ function toOptions(question: QuizSessionQuestion | null): Option[] {
 
 export default function QuizScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; title?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; title?: string; category?: string }>();
   const { user } = useAuth();
   const { width, height } = useWindowDimensions();
   const isWrongOnlyMode = params.mode === 'wrong';
   const sessionTitleParam = typeof params.title === 'string' ? params.title : '';
+  const categoryParam = typeof params.category === 'string' ? params.category : undefined;
   const sessionTitle = sessionTitleParam || (isWrongOnlyMode ? '오답 복습 퀴즈' : '오늘의 퀴즈');
 
   const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
@@ -167,7 +168,7 @@ export default function QuizScreen() {
         const session =
           isWrongOnlyMode && user?.id
             ? await fetchWrongQuizSession(user.id, QUIZ_COUNT)
-            : await fetchQuizSession(QUIZ_COUNT);
+            : await fetchQuizSession(QUIZ_COUNT, categoryParam);
         if (!mounted) return;
         setQuestions(session.questions ?? []);
         setCurrentIndex(0);
@@ -182,7 +183,7 @@ export default function QuizScreen() {
     return () => {
       mounted = false;
     };
-  }, [isWrongOnlyMode, user?.id]);
+  }, [categoryParam, isWrongOnlyMode, user?.id]);
 
   function handleSelect(id: ChoiceId) {
     if (!currentQuestion || isAnswered || isChecking) return;
@@ -284,6 +285,7 @@ export default function QuizScreen() {
       pathname: '/quiz',
       params: {
         ...(isWrongOnlyMode ? { mode: 'wrong' } : {}),
+        ...(categoryParam ? { category: categoryParam } : {}),
         ...(sessionTitleParam ? { title: sessionTitleParam } : {}),
       },
     });

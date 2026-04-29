@@ -120,7 +120,7 @@ export default function LearnScreen() {
             icon="school"
             color="#3b82f6"
             lightBg="#eff6ff"
-            onPress={() => router.push({ pathname: '/quiz', params: { title: '기초 단어' } })}
+            onPress={() => router.push({ pathname: '/quiz', params: { title: '기초 단어', category: 'basic' } })}
           />
           <CourseCard
             title="오답 복습 퀴즈"
@@ -138,6 +138,7 @@ export default function LearnScreen() {
             icon="forum-outline"
             color="#a855f7"
             lightBg="#f5f3ff"
+            onPress={() => router.push({ pathname: '/quiz', params: { title: '일상 회화', category: 'daily' } })}
           />
           <CourseCard
             title="상황별 표현"

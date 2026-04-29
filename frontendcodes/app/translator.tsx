@@ -9,7 +9,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { useAuth } from '@/context/auth-context';
 import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
-import { TranslateClip, TranslateResponse, translateText } from '@/lib/api/translate';
+import { TranslateClip, TranslatePlaybackItem, TranslateResponse, translateText } from '@/lib/api/translate';
 
 const PRIMARY = '#2281ea';
 const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v2';
@@ -36,6 +36,10 @@ export default function TranslatorScreen() {
   const [webActiveSlot, setWebActiveSlot] = useState<0 | 1>(0);
 
   const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
+  const playbackItems = useMemo<TranslatePlaybackItem[]>(
+    () => result?.items ?? clips.map((clip) => ({ ...clip, hasVideo: true })),
+    [clips, result?.items]
+  );
   const unknownTokens = useMemo<string[]>(() => result?.unknown ?? [], [result]);
   const noVideoWords = useMemo<string[]>(() => result?.noVideoWords ?? [], [result]);
   const normalizedTokens = useMemo<string[]>(() => result?.normalizedTokens ?? [], [result]);
@@ -44,7 +48,8 @@ export default function TranslatorScreen() {
     if (!q) return bookmarks;
     return bookmarks.filter((item) => (item.questionText ?? '').toLowerCase().includes(q));
   }, [bookmarks, bookmarkQuery]);
-  const currentClip = clips[currentClipIndex] ?? null;
+  const currentPlaybackItem = playbackItems[currentClipIndex] ?? null;
+  const currentClip = currentPlaybackItem?.hasVideo ? currentPlaybackItem : null;
   const currentClipUrl = currentClip ? playbackUrlMap[currentClip.url] ?? currentClip.url : null;
 
   const player = useVideoPlayer(null, (videoPlayer) => {
@@ -67,8 +72,8 @@ export default function TranslatorScreen() {
   const webLastQueuedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    clipsLengthRef.current = clips.length;
-  }, [clips.length]);
+    clipsLengthRef.current = playbackItems.length;
+  }, [playbackItems.length]);
 
   useEffect(() => {
     currentClipIndexRef.current = currentClipIndex;
@@ -109,7 +114,7 @@ export default function TranslatorScreen() {
       return;
     }
 
-    if (duration - currentTime > 0.2 || lastAutoAdvancedIndexRef.current === currentClipIndexRef.current) {
+    if (duration - currentTime > 0.35 || lastAutoAdvancedIndexRef.current === currentClipIndexRef.current) {
       return;
     }
 
@@ -125,6 +130,11 @@ export default function TranslatorScreen() {
 
     if (!currentClipUrl) {
       pendingAutoplayVersionRef.current = 0;
+      try {
+        player.pause();
+      } catch {
+        // ignore pause race
+      }
       return;
     }
 
@@ -151,7 +161,7 @@ export default function TranslatorScreen() {
           } catch {
             // ignore play race
           }
-        }, 120);
+        }, 40);
       } catch {
         try {
           player.replace(toVideoSource(currentClipUrl), true);
@@ -169,7 +179,7 @@ export default function TranslatorScreen() {
             } catch {
               // ignore play race
             }
-          }, 120);
+          }, 40);
         } catch {
           // player replacement failure should not crash the screen
         }
@@ -210,6 +220,21 @@ export default function TranslatorScreen() {
       return next;
     });
   }, [isWeb, currentClipIndex, currentClipUrl, webActiveSlot]);
+
+  useEffect(() => {
+    if (!currentPlaybackItem || currentClipUrl) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (currentClipIndexRef.current !== currentClipIndex) {
+        return;
+      }
+      advanceClip();
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [currentClipIndex, currentClipUrl, currentPlaybackItem]);
 
   useEffect(() => {
     let mounted = true;
@@ -273,7 +298,7 @@ export default function TranslatorScreen() {
         setWebVideoReady([false, false]);
         setWebActiveSlot(0);
       }
-      const nextPlaybackUrlMap = buildPlaybackUrlMap(next.clips.map((clip) => clip.url));
+      const nextPlaybackUrlMap = buildPlaybackUrlMap((next.items ?? next.clips).map((item) => item.url));
       setPlaybackUrlMap(nextPlaybackUrlMap);
       setResult(next);
       setCurrentClipIndex(0);
@@ -304,8 +329,8 @@ export default function TranslatorScreen() {
       if (user?.id) {
         const saved = await saveTranslatorBookmark(user.id, {
           sentence,
-          word: currentClip?.word ?? '',
-          videoUrl: currentClip?.url ?? '',
+          word: currentPlaybackItem?.word ?? '',
+          videoUrl: currentPlaybackItem?.url ?? '',
         });
         const next = [saved, ...bookmarks.filter((item) => item.quizId !== saved.quizId)].slice(0, MAX_BOOKMARKS);
         setBookmarks(next);
@@ -316,8 +341,8 @@ export default function TranslatorScreen() {
       const fallbackItem: TranslatorBookmarkItem = {
         quizId: `local_${Date.now()}`,
         questionText: sentence,
-        word: currentClip?.word ?? '',
-        videoUrl: currentClip?.url ?? '',
+        word: currentPlaybackItem?.word ?? '',
+        videoUrl: currentPlaybackItem?.url ?? '',
         savedAt: new Date().toISOString(),
       };
       const next = [fallbackItem, ...bookmarks.filter((item) => item.questionText !== sentence)].slice(0, MAX_BOOKMARKS);
@@ -341,11 +366,11 @@ export default function TranslatorScreen() {
   }
 
   function moveClip(step: -1 | 1) {
-    if (clips.length === 0) return;
+    if (playbackItems.length === 0) return;
     setCurrentClipIndex((prev) => {
       const next = prev + step;
       if (next < 0) return 0;
-      if (next >= clips.length) return clips.length - 1;
+      if (next >= playbackItems.length) return playbackItems.length - 1;
       return next;
     });
   }
@@ -460,6 +485,12 @@ export default function TranslatorScreen() {
             ) : (
               <VideoView style={styles.avatarVideo} player={player} nativeControls contentFit="cover" useExoShutter={false} />
             )
+          ) : currentPlaybackItem ? (
+            <View style={styles.textAvatar}>
+              <Text style={styles.textAvatarWord} adjustsFontSizeToFit numberOfLines={1}>
+                {currentPlaybackItem.word}
+              </Text>
+            </View>
           ) : (
             <View style={styles.emptyAvatar}>
               <Ionicons name="chatbubble-ellipses-outline" size={30} color="#94a3b8" />
@@ -473,9 +504,9 @@ export default function TranslatorScreen() {
         </View>
 
         <View style={styles.detectWrap}>
-          <Text style={styles.detectTitle}>{currentClip?.word ?? '나 (I/Me)'}</Text>
+          <Text style={styles.detectTitle}>{currentPlaybackItem?.word ?? '나 (I/Me)'}</Text>
           <Text style={styles.detectSub}>
-            {clips.length > 0 ? `${currentClipIndex + 1} / ${clips.length}` : '0 / 0'} 인식된 수어 (Detected Gesture)
+            {playbackItems.length > 0 ? `${currentClipIndex + 1} / ${playbackItems.length}` : '0 / 0'} 인식된 수어 (Detected Gesture)
           </Text>
         </View>
 
@@ -565,9 +596,9 @@ export default function TranslatorScreen() {
               <Ionicons name="play-back" size={14} color="#334155" />
             </Pressable>
             <Pressable
-              style={[styles.smallControlButton, currentClipIndex >= clips.length - 1 && styles.smallControlButtonDisabled]}
+              style={[styles.smallControlButton, currentClipIndex >= playbackItems.length - 1 && styles.smallControlButtonDisabled]}
               onPress={() => moveClip(1)}
-              disabled={currentClipIndex >= clips.length - 1}>
+              disabled={currentClipIndex >= playbackItems.length - 1}>
               <Ionicons name="play-forward" size={14} color="#334155" />
             </Pressable>
           </View>
@@ -732,6 +763,20 @@ const styles = StyleSheet.create({
   },
   avatarVideo: { width: '100%', height: '100%', backgroundColor: '#000' },
   webVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: '#e5e7eb' },
+  textAvatar: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 28,
+  },
+  textAvatarWord: {
+    width: '100%',
+    color: '#0f172a',
+    fontSize: 54,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
   emptyAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eef2f7', gap: 8, paddingHorizontal: 14 },
   emptyAvatarText: { color: '#64748b', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   liveBadge: {

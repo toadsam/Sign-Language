@@ -7,6 +7,10 @@ export type TranslateClip = {
   url: string;
 };
 
+export type TranslatePlaybackItem = TranslateClip & {
+  hasVideo: boolean;
+};
+
 export type SimplificationMetadata = {
   question: boolean;
   negative: boolean;
@@ -20,8 +24,8 @@ export type TranslateResponse = {
   appliedRules: string[];
   metadata: SimplificationMetadata;
   clips: TranslateClip[];
+  items?: TranslatePlaybackItem[];
   unknown: string[];
-  /** 사전에는 있지만 Firebase Storage에 영상이 없는 단어 목록 */
   noVideoWords: string[];
 };
 
@@ -39,11 +43,26 @@ export async function translateText(text: string): Promise<TranslateResponse> {
   }
 
   const data = (await response.json()) as TranslateResponse;
+  const clips = (data.clips ?? []).map((clip) => ({
+    ...clip,
+    url: resolveOptionalVideoUrl(clip.url),
+  }));
+  const items = (data.items ?? clips.map((clip) => ({ ...clip, hasVideo: true }))).map((item) => ({
+    ...item,
+    url: resolveOptionalVideoUrl(item.url),
+    hasVideo: item.hasVideo && !!item.url,
+  }));
+
   return {
     ...data,
-    clips: (data.clips ?? []).map((clip) => ({
-      ...clip,
-      url: resolveBackendUrl(clip.url),
-    })),
+    clips,
+    items,
   };
+}
+
+function resolveOptionalVideoUrl(url: string | undefined | null): string {
+  if (!url) {
+    return '';
+  }
+  return resolveBackendUrl(url);
 }

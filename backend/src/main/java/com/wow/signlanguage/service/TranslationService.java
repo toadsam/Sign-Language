@@ -7,6 +7,7 @@ import com.wow.signlanguage.service.OpenAiMorphologyNormalizerService.Morphology
 import com.wow.signlanguage.storage.StorageVideoCache;
 import com.wow.signlanguage.translate.ClipMatch;
 import com.wow.signlanguage.translate.SimplificationResult;
+import com.wow.signlanguage.translate.TranslatePlaybackItem;
 import com.wow.signlanguage.translate.TranslateResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -66,6 +67,7 @@ public class TranslationService {
     List<String> resolvedTokens = resolveTokens(tokens, mergeContextTokens(etriTokens, openAiTokens));
 
     List<ClipMatch> clips = new ArrayList<>();
+    List<TranslatePlaybackItem> items = new ArrayList<>();
     List<String> unknown = new ArrayList<>();
     List<String> noVideoWords = new ArrayList<>();
 
@@ -79,12 +81,20 @@ public class TranslationService {
             entry == null ? "" : entry.file(),
             storageUrl
         ));
+        items.add(new TranslatePlaybackItem(
+            token,
+            entry == null ? 0 : entry.id(),
+            entry == null ? "" : entry.file(),
+            storageUrl,
+            true
+        ));
         continue;
       }
 
       if (entry == null) {
         // 사전에 없는 단어 → unknown
         unknown.add(token);
+        items.add(new TranslatePlaybackItem(token, 0, "", "", false));
         continue;
       }
 
@@ -92,6 +102,7 @@ public class TranslationService {
       if (storageUrl == null || storageUrl.isBlank()) {
         // 사전엔 있지만 Storage에 영상 없음 → noVideoWords
         noVideoWords.add(token);
+        items.add(new TranslatePlaybackItem(token, entry.id(), entry.file(), "", false));
         continue;
       }
 
@@ -101,6 +112,7 @@ public class TranslationService {
           entry.file(),
           storageUrl
       ));
+      items.add(new TranslatePlaybackItem(token, entry.id(), entry.file(), storageUrl, true));
     }
 
     return new TranslateResponse(
@@ -110,6 +122,7 @@ public class TranslationService {
         buildAppliedRules(simplification.appliedRules(), openAiResult.isPresent(), tokenChoice.source()),
         simplification.metadata(),
         clips,
+        items,
         unknown,
         noVideoWords
     );
