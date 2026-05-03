@@ -27,8 +27,12 @@ export type QuizAnswerResponse = {
   correctChoiceText: string;
 };
 
-export async function fetchQuizSession(count = 10): Promise<QuizSessionResponse> {
-  const response = await fetch(`${getBaseUrl()}/api/quiz/session?count=${count}`);
+export async function fetchQuizSession(count = 10, category?: string): Promise<QuizSessionResponse> {
+  const params = new URLSearchParams({ count: String(count) });
+  if (category?.trim()) {
+    params.set('category', category.trim());
+  }
+  const response = await fetch(`${getBaseUrl()}/api/quiz/session?${params.toString()}`);
   if (!response.ok) {
     throw new Error(`Failed to load quiz session: ${response.status}`);
   }

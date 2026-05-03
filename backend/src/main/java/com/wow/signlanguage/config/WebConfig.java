@@ -19,8 +19,13 @@ public class WebConfig implements WebMvcConfigurer {
   @Override
   public void addCorsMappings(CorsRegistry registry) {
     registry.addMapping("/**")
-        .allowedOrigins("http://localhost:5173", "http://localhost:8081", "http://localhost:19006")
-        .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
+        .allowedOrigins(
+            "https://toadsam.github.io",
+            "http://localhost:5173",
+            "http://localhost:8081",
+            "http://localhost:19006")
+        .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+        .allowedHeaders("*");
   }
 
   @Override

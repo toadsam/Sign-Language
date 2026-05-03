@@ -1,7 +1,7 @@
 ﻿﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ImageBackground, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
@@ -12,9 +12,10 @@ export default function LoginScreen() {
   const apiBaseUrl = getBaseUrl();
   const router = useRouter();
   const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
-  const { request, response, promptAsync, isExpoGo, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
+  const { request, response, promptAsync, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const processedIdTokenRef = useRef<string | null>(null);
 
   // accessToken이나 isGuest가 이미 있으면 홈으로 이동하는 로직을 제거
   // (회원가입 미완료 시 signup으로 이동해야 하므로)
@@ -23,6 +24,94 @@ export default function LoginScreen() {
   //     router.replace('/home');
   //   }
   // }, [accessToken, isGuest, router]);
+
+  const processGoogleIdToken = useCallback(async (idToken: string) => {
+    if (processedIdTokenRef.current === idToken) {
+      return;
+    }
+    processedIdTokenRef.current = idToken;
+
+    try {
+      setIsSubmitting(true);
+      setErrorMessage(null);
+
+      const loginResponse = await fetch(`${apiBaseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      const loginData = await loginResponse.json();
+      console.log('로그인 응답:', loginData);
+      console.log('isRegistered 값:', loginData.isRegistered);
+      console.log('user.isRegistered 값:', loginData.user?.isRegistered);
+
+      if (loginResponse.ok && loginData.success) {
+        console.log('로그인 성공, 백엔드 응답:', loginData);
+
+        if (loginData.isRegistered === true) {
+          console.log('회원가입 완료 유저 -> 백엔드 유저 정보로 로그인, 홈으로 이동');
+          console.log('백엔드 유저 정보:', loginData.user);
+
+          await signInWithBackendUser(loginData.accessToken, loginData.user);
+          router.replace('/home');
+        } else {
+          console.log('회원가입 미완료 유저 -> 회원가입 화면으로 이동');
+
+          await signInWithBackendUser(loginData.accessToken, loginData.user);
+
+          const googleId = loginData.user.id;
+          const email = loginData.user.email || '';
+
+          console.log('이동할 경로:', '/signup', '파라미터:', { googleId, email });
+
+          router.push({
+            pathname: '/signup' as any,
+            params: {
+              googleId,
+              email,
+            },
+          } as any);
+        }
+      } else if (loginResponse.status === 404 && loginData.needsSignup) {
+        console.log('유저 없음 -> 회원가입 시도');
+        const signupResponse = await fetch(`${apiBaseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+
+        const signupData = await signupResponse.json();
+        console.log('회원가입 응답:', signupData);
+
+        if (signupResponse.ok && signupData.success) {
+          await signInWithBackendUser(signupData.accessToken, signupData.user);
+
+          const googleId = signupData.user.id;
+          const email = signupData.user.email || '';
+
+          console.log('회원가입 성공 -> 회원가입 화면으로 이동, googleId:', googleId);
+          router.push({
+            pathname: '/signup' as any,
+            params: {
+              googleId,
+              email,
+            },
+          } as any);
+        } else {
+          setErrorMessage(signupData.message || '회원가입에 실패했습니다.');
+        }
+      } else {
+        setErrorMessage(loginData.message || '로그인에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error(error);
+      setErrorMessage('로그인에 실패했습니다. 다시 시도해 주세요.');
+      processedIdTokenRef.current = null;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [apiBaseUrl, router, signInWithBackendUser]);
 
   useEffect(() => {
     const login = async () => {
@@ -50,96 +139,56 @@ export default function LoginScreen() {
         return;
       }
 
-      try {
-        setIsSubmitting(true);
-        setErrorMessage(null);
-
-        // 1. 먼저 로그인 시도
-        const loginResponse = await fetch(`${apiBaseUrl}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        });
-
-        const loginData = await loginResponse.json();
-        console.log('로그인 응답:', loginData);
-        console.log('isRegistered 값:', loginData.isRegistered);
-        console.log('user.isRegistered 값:', loginData.user?.isRegistered);
-
-        if (loginResponse.ok && loginData.success) {
-          // 로그인 성공
-          console.log('로그인 성공, 백엔드 응답:', loginData);
-
-          if (loginData.isRegistered === true) {
-            // 회원가입 완료된 유저 -> 백엔드 유저 정보로 AuthContext 업데이트 후 홈으로
-            console.log('회원가입 완료 유저 -> 백엔드 유저 정보로 로그인, 홈으로 이동');
-            console.log('백엔드 유저 정보:', loginData.user);
-
-            await signInWithBackendUser(loginData.accessToken, loginData.user);
-            router.replace('/home');
-          } else {
-            // 회원가입 미완료 유저 -> 회원가입 화면으로
-            console.log('회원가입 미완료 유저 -> 회원가입 화면으로 이동');
-
-            // 임시로 토큰만 저장 (회원가입 완료 후 다시 업데이트됨)
-            await signInWithBackendUser(loginData.accessToken, loginData.user);
-
-            const googleId = loginData.user.id;
-            const email = loginData.user.email || '';
-
-            console.log('이동할 경로:', '/signup', '파라미터:', { googleId, email });
-
-            router.push({
-              pathname: '/signup' as any,
-              params: {
-                googleId,
-                email,
-              },
-            } as any);
-          }
-        } else if (loginResponse.status === 404 && loginData.needsSignup) {
-          // 2. 유저가 없으면 회원가입 시도
-          console.log('유저 없음 -> 회원가입 시도');
-          const signupResponse = await fetch(`${apiBaseUrl}/api/auth/signup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken }),
-          });
-
-          const signupData = await signupResponse.json();
-          console.log('회원가입 응답:', signupData);
-
-          if (signupResponse.ok && signupData.success) {
-            // 회원가입 성공 -> 백엔드 유저 정보로 AuthContext 업데이트 후 회원가입 화면으로
-            await signInWithBackendUser(signupData.accessToken, signupData.user);
-
-            const googleId = signupData.user.id;
-            const email = signupData.user.email || '';
-
-            console.log('회원가입 성공 -> 회원가입 화면으로 이동, googleId:', googleId);
-            router.push({
-              pathname: '/signup' as any,
-              params: {
-                googleId,
-                email,
-              },
-            } as any);
-          } else {
-            setErrorMessage(signupData.message || '회원가입에 실패했습니다.');
-          }
-        } else {
-          setErrorMessage(loginData.message || '로그인에 실패했습니다.');
-        }
-      } catch (error) {
-        console.error(error);
-        setErrorMessage('로그인에 실패했습니다. 다시 시도해 주세요.');
-      } finally {
-        setIsSubmitting(false);
-      }
+      await processGoogleIdToken(idToken);
     };
 
     void login();
-  }, [apiBaseUrl, response, router, signInWithBackendUser]);
+  }, [processGoogleIdToken, response]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      if (event.data?.type !== 'sign-language.google-auth' || typeof event.data.idToken !== 'string') {
+        return;
+      }
+
+      void processGoogleIdToken(event.data.idToken);
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [processGoogleIdToken]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.hash.includes('id_token=')) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const idToken = params.get('id_token');
+    if (!idToken) {
+      return;
+    }
+
+    window.history.replaceState(null, '', window.location.pathname);
+    if (window.opener && window.opener !== window) {
+      try {
+        window.opener.postMessage({ type: 'sign-language.google-auth', idToken }, window.location.origin);
+        window.close();
+        return;
+      } catch {
+        // Complete login in this window if the popup cannot reach its opener.
+      }
+    }
+
+    void processGoogleIdToken(idToken);
+  }, [processGoogleIdToken]);
 
   const handleGooglePress = async () => {
     if (!hasGoogleClientId) {
@@ -154,10 +203,7 @@ export default function LoginScreen() {
 
     setErrorMessage(null);
 
-    const result =
-      Platform.OS === 'web'
-        ? await promptAsync({ useProxy: false })
-        : await promptAsync({ useProxy: isExpoGo });
+    const result = await promptAsync();
 
     if (result.type === 'cancel' || result.type === 'dismiss') {
       setErrorMessage('Google 로그인 창이 닫혔습니다.');

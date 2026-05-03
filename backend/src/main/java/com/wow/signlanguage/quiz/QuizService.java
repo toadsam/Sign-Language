@@ -35,9 +35,9 @@ public class QuizService {
     this.storageVideoCache = storageVideoCache;
   }
 
-  public QuizSessionResponse getSession(int count) {
+  public QuizSessionResponse getSession(int count, String category) {
     int safeCount = normalizeCount(count);
-    List<QuizSessionQuestionResponse> questions = getActiveQuestions();
+    List<QuizSessionQuestionResponse> questions = getActiveQuestions(category);
     Collections.shuffle(questions);
 
     if (questions.size() > safeCount) {
@@ -98,13 +98,16 @@ public class QuizService {
         choiceTextById(choices, correctChoiceId));
   }
 
-  private List<QuizSessionQuestionResponse> getActiveQuestions() {
+  private List<QuizSessionQuestionResponse> getActiveQuestions(String category) {
     try {
       QuerySnapshot snapshot =
           firestore.collection(COLLECTION_NAME).whereEqualTo("isActive", true).get().get();
 
       List<QuizSessionQuestionResponse> questions = new ArrayList<>();
       for (DocumentSnapshot doc : snapshot.getDocuments()) {
+        if (!matchesCategory(doc, category)) {
+          continue;
+        }
         QuizSessionQuestionResponse question = toSessionQuestion(doc);
         if (question != null) {
           questions.add(question);
@@ -233,6 +236,15 @@ public class QuizService {
 
   private boolean isBlank(String value) {
     return value == null || value.trim().isEmpty();
+  }
+
+  private boolean matchesCategory(DocumentSnapshot doc, String category) {
+    if (isBlank(category)) {
+      return true;
+    }
+
+    String docCategory = doc.getString("category");
+    return !isBlank(docCategory) && docCategory.trim().equalsIgnoreCase(category.trim());
   }
 
   private List<String> toStringList(Object value) {

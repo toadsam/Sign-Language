@@ -20,8 +20,10 @@ public class QuizController {
   }
 
   @GetMapping("/session")
-  public QuizSessionResponse session(@RequestParam(defaultValue = "10") int count) {
-    return quizService.getSession(count);
+  public QuizSessionResponse session(
+      @RequestParam(defaultValue = "10") int count,
+      @RequestParam(required = false) String category) {
+    return quizService.getSession(count, category);
   }
 
   @GetMapping("/session/wrong")

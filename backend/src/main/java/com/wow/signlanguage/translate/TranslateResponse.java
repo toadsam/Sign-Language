@@ -9,8 +9,8 @@ public record TranslateResponse(
     List<String> appliedRules,
     SimplificationMetadata metadata,
     List<ClipMatch> clips,
+    List<TranslatePlaybackItem> items,
     List<String> unknown,
-    /** 사전에는 있지만 Firebase Storage에 영상이 없는 단어 목록 */
     List<String> noVideoWords
 ) {
 }
