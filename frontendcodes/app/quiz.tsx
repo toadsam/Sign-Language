@@ -67,8 +67,10 @@ export default function QuizScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
+  const [isQuestionTransitioning, setIsQuestionTransitioning] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progressTrackWidth, setProgressTrackWidth] = useState(0);
+  const [displayedCorrectRate, setDisplayedCorrectRate] = useState(0);
   const badgeScale = useRef(new Animated.Value(1)).current;
   const comboScale = useRef(new Animated.Value(1)).current;
   const comboTranslateY = useRef(new Animated.Value(0)).current;
@@ -77,6 +79,16 @@ export default function QuizScreen() {
   const feedbackTranslateY = useRef(new Animated.Value(52)).current;
   const feedbackScale = useRef(new Animated.Value(0.96)).current;
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
+  const saveButtonScale = useRef(new Animated.Value(1)).current;
+  const saveSuccessOpacity = useRef(new Animated.Value(0)).current;
+  const saveSuccessTranslateY = useRef(new Animated.Value(8)).current;
+  const savingSpin = useRef(new Animated.Value(0)).current;
+  const questionOpacity = useRef(new Animated.Value(1)).current;
+  const questionTranslateX = useRef(new Animated.Value(0)).current;
+  const difficultyPanelReveal = useRef(new Animated.Value(1)).current;
+  const difficultyChipPulse = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const optionRevealAnims = useRef(Array.from({ length: 4 }, () => new Animated.Value(1))).current;
   const prevStreakRef = useRef(0);
   const prevComboStreakRef = useRef(0);
   const sessionStartedAtRef = useRef(Date.now());
@@ -103,6 +115,10 @@ export default function QuizScreen() {
   const progressText = `${Math.min(currentIndex + 1, Math.max(questions.length, 1))} / ${Math.max(questions.length, 1)}`;
   const progressPercent =
     questions.length > 0 ? Math.min(((currentIndex + 1) / questions.length) * 100, 100) : 0;
+  const progressFillWidth = progressAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
   const comboLabel = `콤보 x${currentStreak}`;
   const comboLabelWidth = 86 + Math.max(0, String(currentStreak).length - 1) * 10;
   const comboLabelLeft = useMemo(() => {
@@ -147,6 +163,22 @@ export default function QuizScreen() {
   const accuracy = answeredCount <= 0 ? 0 : Math.round((correctCount / answeredCount) * 100);
   const summarySeconds = Math.max(elapsedSeconds, 1);
   const summaryMinutesText = `${Math.floor(summarySeconds / 60)}분 ${summarySeconds % 60}초`;
+  const savingRotation = savingSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+  const difficultyPanelTranslateY = difficultyPanelReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [14, 0],
+  });
+  const difficultyPanelScale = difficultyPanelReveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.98, 1],
+  });
+  const difficultyChipScale = difficultyChipPulse.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.94, 1.08, 1],
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -244,6 +276,8 @@ export default function QuizScreen() {
   }
 
   function handleNext() {
+    if (isQuestionTransitioning) return;
+
     if (currentIndex + 1 >= questions.length) {
       const elapsed = Math.round((Date.now() - sessionStartedAtRef.current) / 1000);
       setElapsedSeconds(Math.max(elapsed, 1));
@@ -251,17 +285,40 @@ export default function QuizScreen() {
       return;
     }
 
-    setCurrentIndex((prev) => prev + 1);
-    setSelectedId(null);
-    setAnswerResult(null);
-    setIsSaved(false);
-    setErrorMessage(null);
+    setIsQuestionTransitioning(true);
+    Animated.parallel([
+      Animated.timing(questionOpacity, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.timing(questionTranslateX, {
+        toValue: -Math.min(width * 0.22, 92),
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prev) => prev + 1);
+      setSelectedId(null);
+      setAnswerResult(null);
+      setIsSaved(false);
+      setErrorMessage(null);
+    });
   }
 
   function handleSaveFeedback() {
     if (!isAnswered || !user?.id || !currentQuestion) return;
     if (isSaving || isSaved) return;
     setErrorMessage(null);
+    saveButtonScale.setValue(0.96);
+    Animated.spring(saveButtonScale, {
+      toValue: 1,
+      tension: 170,
+      friction: 9,
+      useNativeDriver: false,
+    }).start();
     setIsSaving(true);
     void saveWrongNote(user.id, currentQuestion.quizId)
       .then(() => setIsSaved(true))
@@ -300,6 +357,109 @@ export default function QuizScreen() {
       // Ignore autoplay failures; user can still replay manually.
     }
   }, [currentQuestion, player]);
+
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: progressPercent,
+      duration: 360,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progressAnim, progressPercent]);
+
+  useEffect(() => {
+    if (questionCorrectRate === null) {
+      setDisplayedCorrectRate(0);
+      return;
+    }
+
+    setDisplayedCorrectRate(0);
+    let frameId: number | null = null;
+    const timerId = setTimeout(() => {
+      const startedAt = Date.now();
+      const duration = 560;
+
+      const animateRate = () => {
+        const progress = Math.min((Date.now() - startedAt) / duration, 1);
+        const easedProgress = 1 - Math.pow(1 - progress, 3);
+        setDisplayedCorrectRate(Math.round(questionCorrectRate * easedProgress));
+
+        if (progress < 1) {
+          frameId = requestAnimationFrame(animateRate);
+        }
+      };
+
+      animateRate();
+    }, 110);
+
+    return () => {
+      clearTimeout(timerId);
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [currentIndex, questionCorrectRate]);
+
+  useEffect(() => {
+    if (!currentQuestion) return;
+
+    questionOpacity.setValue(0);
+    questionTranslateX.setValue(Math.min(width * 0.22, 92));
+    difficultyPanelReveal.setValue(0);
+    difficultyChipPulse.setValue(0);
+    optionRevealAnims.forEach((anim) => anim.setValue(0));
+
+    Animated.parallel([
+      Animated.timing(questionOpacity, {
+        toValue: 1,
+        duration: 210,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.spring(questionTranslateX, {
+        toValue: 0,
+        tension: 125,
+        friction: 13,
+        useNativeDriver: false,
+      }),
+      Animated.sequence([
+        Animated.delay(80),
+        Animated.parallel([
+          Animated.timing(difficultyPanelReveal, {
+            toValue: 1,
+            duration: 260,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(difficultyChipPulse, {
+            toValue: 1,
+            duration: 420,
+            easing: Easing.out(Easing.back(1.4)),
+            useNativeDriver: false,
+          }),
+        ]),
+      ]),
+      Animated.stagger(
+        55,
+        optionRevealAnims.map((anim) =>
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 260,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          })
+        )
+      ),
+    ]).start(() => setIsQuestionTransitioning(false));
+  }, [
+    currentQuestion,
+    difficultyChipPulse,
+    difficultyPanelReveal,
+    optionRevealAnims,
+    questionOpacity,
+    questionTranslateX,
+    width,
+  ]);
 
   useEffect(() => {
     const prev = prevStreakRef.current;
@@ -387,6 +547,53 @@ export default function QuizScreen() {
       ]).start();
     });
   }, [comboScale, comboTranslateY, currentStreak]);
+
+  useEffect(() => {
+    if (!isSaving) {
+      savingSpin.stopAnimation();
+      savingSpin.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.timing(savingSpin, {
+        toValue: 1,
+        duration: 850,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isSaving, savingSpin]);
+
+  useEffect(() => {
+    if (!isSaved) return;
+
+    saveButtonScale.setValue(0.9);
+    saveSuccessOpacity.setValue(0);
+    saveSuccessTranslateY.setValue(8);
+    Animated.parallel([
+      Animated.spring(saveButtonScale, {
+        toValue: 1,
+        tension: 190,
+        friction: 7,
+        useNativeDriver: false,
+      }),
+      Animated.timing(saveSuccessOpacity, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.spring(saveSuccessTranslateY, {
+        toValue: 0,
+        tension: 130,
+        friction: 10,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [isSaved, saveButtonScale, saveSuccessOpacity, saveSuccessTranslateY]);
 
   if (isLoading) {
     return (
@@ -489,7 +696,7 @@ export default function QuizScreen() {
             </Pressable>
             <View style={styles.progressWrap}>
               <View style={styles.progressTrack} onLayout={(event) => setProgressTrackWidth(event.nativeEvent.layout.width)}>
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                <Animated.View style={[styles.progressFill, { width: progressFillWidth }]} />
               </View>
               {currentStreak >= 2 && (
                 <Animated.Text
@@ -511,6 +718,7 @@ export default function QuizScreen() {
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Animated.View style={{ opacity: questionOpacity, transform: [{ translateX: questionTranslateX }] }}>
           <View style={styles.imageWrap}>
             {currentQuestion?.videoUrl ? (
               <>
@@ -529,18 +737,29 @@ export default function QuizScreen() {
           </View>
 
           <View style={styles.questionWrap}>
-            <View style={styles.difficultyPanel}>
-              <View style={[styles.difficultyChip, { backgroundColor: difficultyTone.chipBg }]}>
+            <Animated.View
+              style={[
+                styles.difficultyPanel,
+                {
+                  opacity: difficultyPanelReveal,
+                  transform: [{ translateY: difficultyPanelTranslateY }, { scale: difficultyPanelScale }],
+                },
+              ]}>
+              <Animated.View
+                style={[
+                  styles.difficultyChip,
+                  { backgroundColor: difficultyTone.chipBg, transform: [{ scale: difficultyChipScale }] },
+                ]}>
                 <Ionicons name="pulse" size={12} color={difficultyTone.chipText} />
                 <Text style={[styles.difficultyChipText, { color: difficultyTone.chipText }]}>
                   난이도 {difficultyText || '미정'}
                 </Text>
-              </View>
+              </Animated.View>
               {questionCorrectRate !== null ? (
                 <Text style={styles.difficultyDescription}>
                   이 문제는 전체 사용자의{' '}
                   <Text style={[styles.correctRateValue, { color: difficultyTone.percent }]}>
-                    {questionCorrectRate}%
+                    {displayedCorrectRate}%
                   </Text>
                   가 맞춘 퀴즈입니다.
                 </Text>
@@ -550,13 +769,15 @@ export default function QuizScreen() {
               {questionAttemptCount !== null && questionAttemptCount < 20 ? (
                 <Text style={styles.difficultyHint}>표본이 적어 통계가 달라질 수 있습니다.</Text>
               ) : null}
-            </View>
+            </Animated.View>
             <Text style={styles.questionTitle}>{currentQuestion.questionText}</Text>
             <Text style={styles.questionSub}>알맞은 답을 선택해주세요.</Text>
           </View>
 
           <View style={styles.optionsWrap}>
             {options.map((option) => {
+              const optionIndex = CHOICE_IDS.indexOf(option.id);
+              const optionAnim = optionRevealAnims[optionIndex] ?? optionRevealAnims[0];
               const isPicked = selectedId === option.id;
               const isCorrectOption = isAnswered && answerResult?.correctChoiceId === option.id;
               const isWrongPicked = isAnswered && isPicked && !isCorrect;
@@ -564,8 +785,20 @@ export default function QuizScreen() {
               const isWaitingPicked = !isAnswered && isPicked;
 
               return (
-                <Pressable
+                <Animated.View
                   key={option.id}
+                  style={{
+                    opacity: optionAnim,
+                    transform: [
+                      {
+                        translateY: optionAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [12, 0],
+                        }),
+                      },
+                    ],
+                  }}>
+                <Pressable
                   style={[
                     styles.optionButton,
                     shouldFade && styles.optionDisabled,
@@ -573,7 +806,8 @@ export default function QuizScreen() {
                     isCorrectOption && styles.optionCorrect,
                     isWrongPicked && styles.optionWrong,
                   ]}
-                  onPress={() => handleSelect(option.id)}>
+                  onPress={() => handleSelect(option.id)}
+                  disabled={isQuestionTransitioning}>
                   <View
                     style={[
                       styles.optionBadge,
@@ -605,6 +839,7 @@ export default function QuizScreen() {
                   {isCorrectOption && <Ionicons name="checkmark" size={20} color="#22c55e" />}
                   {isWrongPicked && <Ionicons name="close" size={20} color="#ef4444" />}
                 </Pressable>
+                </Animated.View>
               );
             })}
           </View>
@@ -652,27 +887,58 @@ export default function QuizScreen() {
                 </View>
               </View>
 
-              <Pressable
-                style={[styles.saveButton, isCorrect ? styles.saveButtonCorrect : styles.saveButtonWrong]}
-                onPress={handleSaveFeedback}
-                disabled={isSaving || isSaved}>
-                <MaterialCommunityIcons name="bookmark" size={15} color={isCorrect ? '#16a34a' : '#ef4444'} />
-                <Text style={[styles.saveButtonText, isCorrect ? styles.saveTextCorrect : styles.saveTextWrong]}>
-                  {isSaved ? '저장됨' : isSaving ? '저장 중...' : '오답노트에 저장'}
-                </Text>
-              </Pressable>
+              <Animated.View style={{ transform: [{ scale: saveButtonScale }] }}>
+                <Pressable
+                  style={[
+                    styles.saveButton,
+                    isCorrect ? styles.saveButtonCorrect : styles.saveButtonWrong,
+                    isSaved && styles.saveButtonSaved,
+                  ]}
+                  onPress={handleSaveFeedback}
+                  disabled={isSaving || isSaved}>
+                  <Animated.View style={isSaving ? { transform: [{ rotate: savingRotation }] } : undefined}>
+                    <MaterialCommunityIcons
+                      name={isSaved ? 'check-circle' : isSaving ? 'sync' : 'bookmark'}
+                      size={15}
+                      color={isSaved ? '#1d4ed8' : isCorrect ? '#16a34a' : '#ef4444'}
+                    />
+                  </Animated.View>
+                  <Text
+                    style={[
+                      styles.saveButtonText,
+                      isCorrect ? styles.saveTextCorrect : styles.saveTextWrong,
+                      isSaved && styles.saveTextSaved,
+                    ]}>
+                    {isSaved ? '저장됨' : isSaving ? '저장 중...' : '오답노트에 저장'}
+                  </Text>
+                </Pressable>
+              </Animated.View>
 
-              {isSaved && <Text style={styles.savedFeedback}>저장되었습니다</Text>}
+              {isSaved && (
+                <Animated.View
+                  style={[
+                    styles.savedToast,
+                    {
+                      opacity: saveSuccessOpacity,
+                      transform: [{ translateY: saveSuccessTranslateY }],
+                    },
+                  ]}>
+                  <Ionicons name="checkmark-circle" size={14} color="#1d4ed8" />
+                  <Text style={styles.savedFeedback}>오답노트에 저장되었습니다</Text>
+                </Animated.View>
+              )}
 
               <Pressable
                 style={[styles.nextButton, isCorrect ? styles.nextButtonCorrect : styles.nextButtonWrong]}
-                onPress={handleNext}>
+                onPress={handleNext}
+                disabled={isQuestionTransitioning}>
                 <Text style={styles.nextButtonText}>
                   {currentIndex + 1 >= questions.length ? '퀴즈 종료' : '다음 문제로'}
                 </Text>
               </Pressable>
             </Animated.View>
           )}
+          </Animated.View>
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -1244,6 +1510,10 @@ const styles = StyleSheet.create({
   saveButtonWrong: {
     borderColor: '#fca5a5',
   },
+  saveButtonSaved: {
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+  },
   saveButtonText: {
     fontSize: 15,
     fontWeight: '700',
@@ -1254,12 +1524,27 @@ const styles = StyleSheet.create({
   saveTextWrong: {
     color: '#dc2626',
   },
-  savedFeedback: {
+  saveTextSaved: {
+    color: '#1d4ed8',
+  },
+  savedToast: {
+    alignSelf: 'center',
     marginTop: 8,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  savedFeedback: {
     textAlign: 'center',
-    color: '#374151',
+    color: '#1d4ed8',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   nextButton: {
     marginTop: 10,

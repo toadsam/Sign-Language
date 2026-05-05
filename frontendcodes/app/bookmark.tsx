@@ -1,7 +1,7 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
@@ -23,6 +23,36 @@ export default function BookmarkScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const searchReveal = useRef(new Animated.Value(0)).current;
+  const listRevealAnims = useRef(Array.from({ length: 40 }, () => new Animated.Value(0))).current;
+  const feedbackOpacity = useRef(new Animated.Value(0)).current;
+  const feedbackTranslateY = useRef(new Animated.Value(8)).current;
+  const deleteSpin = useRef(new Animated.Value(0)).current;
+  const emptyPulse = useRef(new Animated.Value(1)).current;
+  const topStretch = useRef(new Animated.Value(0)).current;
+  const topStretchValueRef = useRef(0);
+  const isTopStretchingRef = useRef(false);
+  const bottomStretch = useRef(new Animated.Value(0)).current;
+  const bottomStretchValueRef = useRef(0);
+  const isBottomStretchingRef = useRef(false);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollMetricsRef = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
+  const stretchTouchStartYRef = useRef<number | null>(null);
+  const wheelReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteRotation = deleteSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+  const topStretchHeight = topStretch.interpolate({
+    inputRange: [0, 220],
+    outputRange: [0, 220],
+    extrapolate: 'clamp',
+  });
+  const bottomStretchHeight = bottomStretch.interpolate({
+    inputRange: [0, 220],
+    outputRange: [0, 220],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -57,10 +87,35 @@ export default function BookmarkScreen() {
   }, [user?.id]);
 
   useEffect(() => {
+    Animated.spring(searchReveal, {
+      toValue: 1,
+      tension: 115,
+      friction: 11,
+      useNativeDriver: false,
+    }).start();
+  }, [searchReveal]);
+
+  useEffect(() => {
     if (!feedbackMessage) return;
+    feedbackOpacity.setValue(0);
+    feedbackTranslateY.setValue(8);
+    Animated.parallel([
+      Animated.timing(feedbackOpacity, {
+        toValue: 1,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.spring(feedbackTranslateY, {
+        toValue: 0,
+        tension: 130,
+        friction: 10,
+        useNativeDriver: false,
+      }),
+    ]).start();
     const timer = setTimeout(() => setFeedbackMessage(null), 1400);
     return () => clearTimeout(timer);
-  }, [feedbackMessage]);
+  }, [feedbackMessage, feedbackOpacity, feedbackTranslateY]);
 
   function formatSavedDate(value: unknown): string {
     if (value && typeof value === 'object' && 'seconds' in value && typeof (value as { seconds?: unknown }).seconds === 'number') {
@@ -79,6 +134,185 @@ export default function BookmarkScreen() {
       return questionText.includes(trimmed);
     });
   }, [bookmarks, query]);
+
+  useEffect(() => {
+    listRevealAnims.forEach((anim) => anim.setValue(0));
+    Animated.stagger(
+      55,
+      filteredBookmarks.slice(0, listRevealAnims.length).map((_, index) =>
+        Animated.timing(listRevealAnims[index], {
+          toValue: 1,
+          duration: 280,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        })
+      )
+    ).start();
+  }, [filteredBookmarks, listRevealAnims]);
+
+  useEffect(() => {
+    if (!deletingId) {
+      deleteSpin.stopAnimation();
+      deleteSpin.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.timing(deleteSpin, {
+        toValue: 1,
+        duration: 780,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [deleteSpin, deletingId]);
+
+  useEffect(() => {
+    if (isLoading || filteredBookmarks.length > 0) {
+      emptyPulse.stopAnimation();
+      emptyPulse.setValue(1);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(emptyPulse, {
+          toValue: 1.08,
+          duration: 760,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(emptyPulse, {
+          toValue: 1,
+          duration: 760,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [emptyPulse, filteredBookmarks.length, isLoading]);
+
+  function listItemAppearStyle(index: number) {
+    const anim = listRevealAnims[index] ?? listRevealAnims[listRevealAnims.length - 1];
+    return {
+      opacity: anim,
+      transform: [
+        {
+          translateY: anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [10, 0],
+          }),
+        },
+      ],
+    };
+  }
+
+  function handleScrollStretch(event: any) {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    scrollMetricsRef.current = {
+      contentHeight: contentSize.height,
+      viewportHeight: layoutMeasurement.height,
+      offsetY: contentOffset.y,
+    };
+    if (isTopStretchingRef.current || isBottomStretchingRef.current) {
+      return;
+    }
+    setTopStretchValue(Math.min(Math.max(0, -contentOffset.y), 220));
+    const overscroll = Math.max(0, contentOffset.y + layoutMeasurement.height - contentSize.height);
+    setBottomStretchValue(Math.min(overscroll, 220));
+  }
+
+  function setTopStretchValue(value: number) {
+    const next = Math.max(0, Math.min(value, 220));
+    topStretchValueRef.current = next;
+    topStretch.setValue(next);
+  }
+
+  function setBottomStretchValue(value: number) {
+    const next = Math.max(0, Math.min(value, 220));
+    bottomStretchValueRef.current = next;
+    bottomStretch.setValue(next);
+  }
+
+  function scrollToStretchEnd() {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: false });
+    });
+  }
+
+  function isScrollAtBottom() {
+    const { contentHeight, viewportHeight, offsetY } = scrollMetricsRef.current;
+    return contentHeight <= viewportHeight || offsetY + viewportHeight >= contentHeight - 2;
+  }
+
+  function isScrollAtTop() {
+    return scrollMetricsRef.current.offsetY <= 2;
+  }
+
+  function handleStretchTouchStart(event: any) {
+    stretchTouchStartYRef.current = event.nativeEvent.pageY ?? null;
+  }
+
+  function handleStretchTouchMove(event: any) {
+    if (stretchTouchStartYRef.current == null) return;
+    const currentY = event.nativeEvent.pageY ?? stretchTouchStartYRef.current;
+    const topPullDistance = Math.max(0, currentY - stretchTouchStartYRef.current);
+    if (isScrollAtTop() && topPullDistance > 0) {
+      isTopStretchingRef.current = true;
+      setTopStretchValue(topPullDistance * 0.95);
+      return;
+    }
+    const bottomPullDistance = Math.max(0, stretchTouchStartYRef.current - currentY);
+    if (isScrollAtBottom() && bottomPullDistance > 0) {
+      isBottomStretchingRef.current = true;
+      setBottomStretchValue(bottomPullDistance * 0.95);
+      scrollToStretchEnd();
+    }
+  }
+
+  function handleStretchWheel(event: any) {
+    const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
+    if (deltaY < 0 && isScrollAtTop()) {
+      isTopStretchingRef.current = true;
+      setTopStretchValue(topStretchValueRef.current + Math.abs(deltaY) * 0.62);
+    } else if (deltaY > 0 && isScrollAtBottom()) {
+      isBottomStretchingRef.current = true;
+      setBottomStretchValue(bottomStretchValueRef.current + deltaY * 0.62);
+      scrollToStretchEnd();
+    } else {
+      return;
+    }
+    if (wheelReleaseTimerRef.current) {
+      clearTimeout(wheelReleaseTimerRef.current);
+    }
+    wheelReleaseTimerRef.current = setTimeout(releaseScrollStretch, 120);
+  }
+
+  function releaseScrollStretch() {
+    topStretchValueRef.current = 0;
+    bottomStretchValueRef.current = 0;
+    Animated.parallel([
+      Animated.spring(topStretch, {
+        toValue: 0,
+        tension: 120,
+        friction: 12,
+        useNativeDriver: false,
+      }),
+      Animated.spring(bottomStretch, {
+        toValue: 0,
+        tension: 120,
+        friction: 12,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      isTopStretchingRef.current = false;
+      isBottomStretchingRef.current = false;
+    });
+  }
 
   async function handleDeleteBookmark(bookmarkId: string) {
     if (!user?.id || deletingId) return;
@@ -107,7 +341,21 @@ export default function BookmarkScreen() {
           <View style={styles.headerButton} />
         </View>
 
-        <View style={styles.searchWrap}>
+        <Animated.View
+          style={[
+            styles.searchWrap,
+            {
+              opacity: searchReveal,
+              transform: [
+                {
+                  translateY: searchReveal.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [12, 0],
+                  }),
+                },
+              ],
+            },
+          ]}>
           <Ionicons name="search" size={18} color="#94a3b8" />
           <TextInput
             value={query}
@@ -116,18 +364,53 @@ export default function BookmarkScreen() {
             placeholderTextColor="#9ca3af"
             style={styles.searchInput}
           />
-        </View>
+        </Animated.View>
 
-        <ScrollView contentContainerStyle={styles.listWrap} showsVerticalScrollIndicator={false}>
-          {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.listWrap}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleScrollStretch}
+          onTouchStart={handleStretchTouchStart}
+          onTouchMove={handleStretchTouchMove}
+          onTouchEnd={releaseScrollStretch}
+          {...({ onWheel: handleStretchWheel } as any)}
+          onScrollEndDrag={releaseScrollStretch}
+          onMomentumScrollEnd={releaseScrollStretch}
+          scrollEventThrottle={16}>
+          <Animated.View pointerEvents="none" style={[styles.bottomStretch, styles.topStretch, { height: topStretchHeight }]}>
+            <View style={styles.topStretchHandle} />
+          </Animated.View>
+          {feedbackMessage ? (
+            <Animated.View
+              style={[
+                styles.feedbackToast,
+                {
+                  opacity: feedbackOpacity,
+                  transform: [{ translateY: feedbackTranslateY }],
+                },
+              ]}>
+              <Ionicons name="checkmark-circle" size={14} color="#1d4ed8" />
+              <Text style={styles.feedbackText}>{feedbackMessage}</Text>
+            </Animated.View>
+          ) : null}
           {isLoading ? <Text style={styles.wordMeaning}>불러오는 중...</Text> : null}
           {!isLoading && errorMessage ? <Text style={styles.wordMeaning}>{errorMessage}</Text> : null}
           {!isLoading && !errorMessage && filteredBookmarks.length === 0 ? (
-            <Text style={styles.wordMeaning}>저장된 문장이 없습니다.</Text>
+            <Animated.View style={[styles.emptyState, { transform: [{ scale: emptyPulse }] }]}>
+              <Ionicons name="bookmark-outline" size={28} color="#94a3b8" />
+              <Text style={styles.wordMeaning}>저장된 문장이 없습니다.</Text>
+            </Animated.View>
           ) : null}
 
-          {filteredBookmarks.map((item) => (
-            <View key={item.quizId} style={styles.wordCard}>
+          {filteredBookmarks.map((item, index) => (
+            <Animated.View
+              key={item.quizId}
+              style={[
+                styles.wordCard,
+                listItemAppearStyle(index),
+                deletingId === item.quizId && styles.wordCardDeleting,
+              ]}>
               <View style={styles.wordLeft}>
                 <Text style={styles.wordDate}>{formatSavedDate(item.savedAt)}</Text>
                 <Text style={styles.sentenceText}>{item.questionText || '-'}</Text>
@@ -139,10 +422,15 @@ export default function BookmarkScreen() {
                   void handleDeleteBookmark(item.quizId);
                 }}
                 disabled={deletingId === item.quizId}>
-                <Ionicons name="trash-outline" size={17} color="#ef4444" />
+                <Animated.View style={deletingId === item.quizId ? { transform: [{ rotate: deleteRotation }] } : undefined}>
+                  <Ionicons name={deletingId === item.quizId ? 'sync' : 'trash-outline'} size={17} color="#ef4444" />
+                </Animated.View>
               </Pressable>
-            </View>
+            </Animated.View>
           ))}
+          <Animated.View pointerEvents="none" style={[styles.bottomStretch, { height: bottomStretchHeight }]}>
+            <View style={styles.bottomStretchHandle} />
+          </Animated.View>
         </ScrollView>
 
         <View style={styles.bottomNav}>
@@ -223,6 +511,18 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
     gap: 10,
   },
+  feedbackToast: {
+    alignSelf: 'center',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   feedbackText: {
     textAlign: 'center',
     color: '#1d4ed8',
@@ -246,6 +546,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
+  wordCardDeleting: {
+    opacity: 0.52,
+  },
   wordLeft: {
     flex: 1,
     paddingRight: 8,
@@ -267,6 +570,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
     fontWeight: '500',
+    textAlign: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    gap: 6,
   },
   deleteBtn: {
     width: 40,
@@ -279,6 +589,30 @@ const styles = StyleSheet.create({
     borderColor: '#fecdd3',
   },
   deleteBtnDisabled: { opacity: 0.5 },
+  bottomStretch: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  topStretch: {
+    justifyContent: 'flex-start',
+  },
+  topStretchHandle: {
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#cbd5e1',
+    opacity: 0.7,
+    marginTop: 10,
+  },
+  bottomStretchHandle: {
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#cbd5e1',
+    opacity: 0.7,
+    marginBottom: 10,
+  },
   bottomNav: {
     position: 'absolute',
     left: 0,
