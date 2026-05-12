@@ -1,23 +1,30 @@
 ﻿﻿import { Ionicons } from '@expo/vector-icons';
 import { useEventListener } from 'expo';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { useAuth } from '@/context/auth-context';
+import { Fonts } from '@/constants/theme';
 import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
 import { TranslateClip, TranslatePlaybackItem, TranslateResponse, translateText } from '@/lib/api/translate';
 
-const PRIMARY = '#2281ea';
+const PRIMARY = '#1f80e3';
+const ACCENT = '#7c6cf2';
+const FONT = Fonts.rounded;
 const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v2';
 const MAX_BOOKMARKS = 20;
+const PRELOAD_NEXT_SECONDS = 1.1;
+const SWITCH_READY_SECONDS = 0.18;
 
 export default function TranslatorScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { width: screenWidth } = useWindowDimensions();
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingDotCount, setLoadingDotCount] = useState(1);
@@ -31,9 +38,12 @@ export default function TranslatorScreen() {
   const [bookmarks, setBookmarks] = useState<TranslatorBookmarkItem[]>([]);
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const isWeb = Platform.OS === 'web';
+  const [webActiveSlot, setWebActiveSlot] = useState<0 | 1>(0);
   const [webVideoSources, setWebVideoSources] = useState<[string | null, string | null]>([null, null]);
   const [webVideoReady, setWebVideoReady] = useState<[boolean, boolean]>([false, false]);
-  const [webActiveSlot, setWebActiveSlot] = useState<0 | 1>(0);
+  const [nativeActiveSlot, setNativeActiveSlot] = useState<0 | 1>(0);
+  const [nativeVideoReady, setNativeVideoReady] = useState<[boolean, boolean]>([false, false]);
+  const [transitionPreviousSlot, setTransitionPreviousSlot] = useState<0 | 1 | null>(null);
 
   const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
   const playbackItems = useMemo<TranslatePlaybackItem[]>(
@@ -51,12 +61,18 @@ export default function TranslatorScreen() {
   const currentPlaybackItem = playbackItems[currentClipIndex] ?? null;
   const currentClip = currentPlaybackItem?.hasVideo ? currentPlaybackItem : null;
   const currentClipUrl = currentClip ? playbackUrlMap[currentClip.url] ?? currentClip.url : null;
+  const progressFraction = playbackItems.length > 0 ? (currentClipIndex + 1) / playbackItems.length : 0;
 
-  const player = useVideoPlayer(null, (videoPlayer) => {
+  const nativePlayerA = useVideoPlayer(null, (videoPlayer) => {
     videoPlayer.loop = false;
-    videoPlayer.timeUpdateEventInterval = 0.25;
+    videoPlayer.timeUpdateEventInterval = 0.08;
     // Web autoplay policy blocks programmatic play for unmuted media.
     // Sign clips do not require audio, so keep muted for seamless chaining.
+    videoPlayer.muted = true;
+  });
+  const nativePlayerB = useVideoPlayer(null, (videoPlayer) => {
+    videoPlayer.loop = false;
+    videoPlayer.timeUpdateEventInterval = 0.08;
     videoPlayer.muted = true;
   });
   const replaceVersionRef = useRef(0);
@@ -64,12 +80,63 @@ export default function TranslatorScreen() {
   const clipsLengthRef = useRef(0);
   const currentClipIndexRef = useRef(0);
   const webActiveSlotRef = useRef<0 | 1>(0);
+  const nativeActiveSlotRef = useRef<0 | 1>(0);
   const lastAutoAdvancedIndexRef = useRef(-1);
   const WebVideoTag = 'video' as any;
   const webVideoRefA = useRef<any>(null);
   const webVideoRefB = useRef<any>(null);
   const webPendingSlotRef = useRef<0 | 1 | null>(null);
   const webLastQueuedTokenRef = useRef<string | null>(null);
+  const webPreloadVideoRef = useRef<any>(null);
+  const nativeSlotSourcesRef = useRef<[string | null, string | null]>([null, null]);
+  const nativePreparedIndexRef = useRef<number | null>(null);
+  const nativeReplacingTokenRef = useRef<[string | null, string | null]>([null, null]);
+  const avatarOpacity = useRef(new Animated.Value(1)).current;
+  const avatarScale = useRef(new Animated.Value(1)).current;
+  const wordOpacity = useRef(new Animated.Value(1)).current;
+  const wordTranslateY = useRef(new Animated.Value(0)).current;
+  const wordTranslateX = useRef(new Animated.Value(0)).current;
+  const translateButtonScale = useRef(new Animated.Value(1)).current;
+  const loadingSpin = useRef(new Animated.Value(0)).current;
+  const progressFill = useRef(new Animated.Value(0)).current;
+  const feedbackOpacity = useRef(new Animated.Value(0)).current;
+  const feedbackTranslateY = useRef(new Animated.Value(8)).current;
+  const bookmarkSheetAnim = useRef(new Animated.Value(0)).current;
+  const resultSheetAnim = useRef(new Animated.Value(0)).current;
+  const saveButtonScale = useRef(new Animated.Value(1)).current;
+  const videoSlideAnim = useRef(new Animated.Value(1)).current;
+  const avatarAnimationKey = `${currentClipIndex}:${currentPlaybackItem?.word ?? ''}:${currentClipUrl ?? 'text'}`;
+  const avatarSlideWidth = Math.max(screenWidth - 16, 1);
+  const spinRotation = loadingSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+  const progressWidth = progressFill.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+  const bookmarkSheetStyle = {
+    opacity: bookmarkSheetAnim,
+    transform: [
+      {
+        translateY: bookmarkSheetAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [24, 0],
+        }),
+      },
+    ],
+  };
+  const resultSheetStyle = {
+    opacity: resultSheetAnim,
+    transform: [
+      {
+        translateY: resultSheetAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [28, 0],
+        }),
+      },
+    ],
+  };
 
   useEffect(() => {
     clipsLengthRef.current = playbackItems.length;
@@ -83,44 +150,195 @@ export default function TranslatorScreen() {
     webActiveSlotRef.current = webActiveSlot;
   }, [webActiveSlot]);
 
+  useEffect(() => {
+    nativeActiveSlotRef.current = nativeActiveSlot;
+  }, [nativeActiveSlot]);
+
   const advanceClip = () => {
     if (clipsLengthRef.current <= 1) return;
     setCurrentClipIndex((prev) => Math.min(prev + 1, clipsLengthRef.current - 1));
   };
 
-  useEventListener(player, 'sourceLoad', () => {
-    const version = pendingAutoplayVersionRef.current;
-    if (version <= 0 || version !== replaceVersionRef.current) {
+  function getNativePlayer(slot: 0 | 1) {
+    return slot === 0 ? nativePlayerA : nativePlayerB;
+  }
+
+  function getPlaybackUrlAt(index: number) {
+    const item = playbackItems[index];
+    if (!item?.hasVideo) {
+      return null;
+    }
+    return playbackUrlMap[item.url] ?? item.url;
+  }
+
+  function pauseNativeSlot(slot: 0 | 1) {
+    try {
+      getNativePlayer(slot).pause();
+    } catch {
+      // ignore pause race
+    }
+  }
+
+  function runVideoSlideTransition(previousSlot: 0 | 1) {
+    setTransitionPreviousSlot(previousSlot);
+    videoSlideAnim.stopAnimation();
+    videoSlideAnim.setValue(0);
+    Animated.timing(videoSlideAnim, {
+      toValue: 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(() => setTransitionPreviousSlot(null));
+  }
+
+  async function replaceNativeSlot(slot: 0 | 1, url: string, autoPlay: boolean) {
+    const token = `${slot}:${url}:${autoPlay ? 'play' : 'preload'}`;
+    if (nativeReplacingTokenRef.current[slot] === token) {
+      return;
+    }
+    nativeReplacingTokenRef.current[slot] = token;
+
+    try {
+      const player = getNativePlayer(slot);
+      setNativeVideoReady((prev) => {
+        const next: [boolean, boolean] = [prev[0], prev[1]];
+        next[slot] = false;
+        return next;
+      });
+      await player.replaceAsync(toVideoSource(url));
+      if (nativeReplacingTokenRef.current[slot] !== token) {
+        return;
+      }
+      nativeSlotSourcesRef.current[slot] = url;
+      setNativeVideoReady((prev) => {
+        const next: [boolean, boolean] = [prev[0], prev[1]];
+        next[slot] = true;
+        return next;
+      });
+      player.currentTime = 0;
+      if (autoPlay) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    } catch {
+      try {
+        const player = getNativePlayer(slot);
+        player.replace(toVideoSource(url), true);
+        if (nativeReplacingTokenRef.current[slot] !== token) {
+          return;
+        }
+        nativeSlotSourcesRef.current[slot] = url;
+        setNativeVideoReady((prev) => {
+          const next: [boolean, boolean] = [prev[0], prev[1]];
+          next[slot] = true;
+          return next;
+        });
+        player.currentTime = 0;
+        if (autoPlay) {
+          player.play();
+        } else {
+          player.pause();
+        }
+      } catch {
+        setErrorMessage('영상 재생 준비 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      }
+    } finally {
+      if (nativeReplacingTokenRef.current[slot] === token) {
+        nativeReplacingTokenRef.current[slot] = null;
+      }
+    }
+  }
+
+  function preloadNextNativeClip(fromIndex = currentClipIndexRef.current) {
+    if (isWeb) {
+      return;
+    }
+    const nextIndex = fromIndex + 1;
+    const nextUrl = getPlaybackUrlAt(nextIndex);
+    if (!nextUrl) {
+      nativePreparedIndexRef.current = null;
       return;
     }
 
+    const preloadSlot: 0 | 1 = nativeActiveSlotRef.current === 0 ? 1 : 0;
+    if (nativePreparedIndexRef.current === nextIndex && nativeSlotSourcesRef.current[preloadSlot] === nextUrl) {
+      return;
+    }
+
+    nativePreparedIndexRef.current = nextIndex;
+    void replaceNativeSlot(preloadSlot, nextUrl, false);
+  }
+
+  function switchToPreparedNativeClip() {
+    if (isWeb || clipsLengthRef.current <= 1) {
+      return false;
+    }
+    const currentIndex = currentClipIndexRef.current;
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= clipsLengthRef.current || lastAutoAdvancedIndexRef.current === currentIndex) {
+      return false;
+    }
+
+    const nextSlot: 0 | 1 = nativeActiveSlotRef.current === 0 ? 1 : 0;
+    const nextUrl = getPlaybackUrlAt(nextIndex);
+    if (!nextUrl || nativePreparedIndexRef.current !== nextIndex || nativeSlotSourcesRef.current[nextSlot] !== nextUrl) {
+      return false;
+    }
+    if (!nativeVideoReady[nextSlot]) {
+      return false;
+    }
+
+    lastAutoAdvancedIndexRef.current = currentIndex;
+    const previousSlot = nativeActiveSlotRef.current;
+    pauseNativeSlot(previousSlot);
+    runVideoSlideTransition(previousSlot);
+    setNativeActiveSlot(nextSlot);
+    nativeActiveSlotRef.current = nextSlot;
     try {
-      player.currentTime = 0;
-      player.play();
-      pendingAutoplayVersionRef.current = 0;
+      const nextPlayer = getNativePlayer(nextSlot);
+      nextPlayer.currentTime = 0;
+      nextPlayer.play();
     } catch {
       // ignore play race
     }
-  });
+    setCurrentClipIndex(nextIndex);
+    return true;
+  }
 
-  useEventListener(player, 'playToEnd', () => {
-    if (isWeb) return;
-    advanceClip();
-  });
-
-  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
-    const duration = player.duration;
-    if (isWeb || !duration || clipsLengthRef.current <= 1) {
+  function handleNativeTimeUpdate(slot: 0 | 1, currentTime: number) {
+    if (isWeb || slot !== nativeActiveSlotRef.current || clipsLengthRef.current <= 1) {
       return;
     }
 
-    if (duration - currentTime > 0.35 || lastAutoAdvancedIndexRef.current === currentClipIndexRef.current) {
+    const duration = getNativePlayer(slot).duration;
+    if (!duration) {
       return;
     }
 
-    lastAutoAdvancedIndexRef.current = currentClipIndexRef.current;
-    advanceClip();
-  });
+    const remaining = duration - currentTime;
+    if (remaining <= PRELOAD_NEXT_SECONDS) {
+      preloadNextNativeClip();
+    }
+    if (remaining <= SWITCH_READY_SECONDS) {
+      switchToPreparedNativeClip();
+    }
+  }
+
+  function handleNativePlayToEnd(slot: 0 | 1) {
+    if (isWeb || slot !== nativeActiveSlotRef.current) {
+      return;
+    }
+    if (!switchToPreparedNativeClip()) {
+      advanceClip();
+    }
+  }
+
+  useEventListener(nativePlayerA, 'playToEnd', () => handleNativePlayToEnd(0));
+  useEventListener(nativePlayerB, 'playToEnd', () => handleNativePlayToEnd(1));
+
+  useEventListener(nativePlayerA, 'timeUpdate', ({ currentTime }) => handleNativeTimeUpdate(0, currentTime));
+  useEventListener(nativePlayerB, 'timeUpdate', ({ currentTime }) => handleNativeTimeUpdate(1, currentTime));
 
   useEffect(() => {
     if (isWeb) {
@@ -131,7 +349,8 @@ export default function TranslatorScreen() {
     if (!currentClipUrl) {
       pendingAutoplayVersionRef.current = 0;
       try {
-        player.pause();
+        nativePlayerA.pause();
+        nativePlayerB.pause();
       } catch {
         // ignore pause race
       }
@@ -144,52 +363,34 @@ export default function TranslatorScreen() {
     let cancelled = false;
 
     (async () => {
-      try {
-        await player.replaceAsync(toVideoSource(currentClipUrl));
-        if (cancelled || version !== replaceVersionRef.current) {
-          return;
-        }
-        // Fallback: some environments may not emit sourceLoad reliably.
-        setTimeout(() => {
-          if (cancelled || pendingAutoplayVersionRef.current !== version || version !== replaceVersionRef.current) {
-            return;
-          }
-          try {
-            player.currentTime = 0;
-            player.play();
-            pendingAutoplayVersionRef.current = 0;
-          } catch {
-            // ignore play race
-          }
-        }, 40);
-      } catch {
+      const activeSlot = nativeActiveSlotRef.current;
+      if (nativeSlotSourcesRef.current[activeSlot] !== currentClipUrl) {
+        await replaceNativeSlot(activeSlot, currentClipUrl, true);
+      } else {
         try {
-          player.replace(toVideoSource(currentClipUrl), true);
-          if (cancelled || version !== replaceVersionRef.current) {
-            return;
-          }
-          setTimeout(() => {
-            if (cancelled || pendingAutoplayVersionRef.current !== version || version !== replaceVersionRef.current) {
-              return;
-            }
-            try {
-              player.currentTime = 0;
-              player.play();
-              pendingAutoplayVersionRef.current = 0;
-            } catch {
-              // ignore play race
-            }
-          }, 40);
+          const activePlayer = getNativePlayer(activeSlot);
+          activePlayer.currentTime = 0;
+          activePlayer.play();
+          setNativeVideoReady((prev) => {
+            const next: [boolean, boolean] = [prev[0], prev[1]];
+            next[activeSlot] = true;
+            return next;
+          });
         } catch {
-          // player replacement failure should not crash the screen
+          // ignore play race
         }
       }
+      if (cancelled || version !== replaceVersionRef.current) {
+        return;
+      }
+      pendingAutoplayVersionRef.current = 0;
+      preloadNextNativeClip(currentClipIndex);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [currentClipUrl, isWeb, player]);
+  }, [currentClipIndex, currentClipUrl, isWeb, nativePlayerA, nativePlayerB]);
 
   useEffect(() => {
     if (!isWeb) {
@@ -220,6 +421,32 @@ export default function TranslatorScreen() {
       return next;
     });
   }, [isWeb, currentClipIndex, currentClipUrl, webActiveSlot]);
+
+  useEffect(() => {
+    if (!isWeb) {
+      return;
+    }
+
+    const nextUrl = getPlaybackUrlAt(currentClipIndex + 1);
+    if (!nextUrl || typeof document === 'undefined') {
+      return;
+    }
+
+    const preloadVideo = webPreloadVideoRef.current ?? document.createElement('video');
+    webPreloadVideoRef.current = preloadVideo;
+    preloadVideo.muted = true;
+    preloadVideo.defaultMuted = true;
+    preloadVideo.preload = 'auto';
+    preloadVideo.playsInline = true;
+    if (preloadVideo.src !== nextUrl) {
+      preloadVideo.src = nextUrl;
+      try {
+        preloadVideo.load?.();
+      } catch {
+        // ignore browser preload differences
+      }
+    }
+  }, [currentClipIndex, isWeb, playbackItems, playbackUrlMap]);
 
   useEffect(() => {
     if (!currentPlaybackItem || currentClipUrl) {
@@ -276,10 +503,138 @@ export default function TranslatorScreen() {
   }, [loading]);
 
   useEffect(() => {
+    if (!loading) {
+      loadingSpin.stopAnimation();
+      loadingSpin.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.timing(loadingSpin, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      })
+    );
+    loop.start();
+
+    return () => loop.stop();
+  }, [loading, loadingSpin]);
+
+  useEffect(() => {
+    avatarOpacity.setValue(0.35);
+    avatarScale.setValue(0.985);
+    wordOpacity.setValue(0);
+    wordTranslateY.setValue(8);
+    wordTranslateX.setValue(16);
+
+    Animated.parallel([
+      Animated.timing(avatarOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.spring(avatarScale, {
+        toValue: 1,
+        tension: 120,
+        friction: 10,
+        useNativeDriver: false,
+      }),
+      Animated.timing(wordOpacity, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.spring(wordTranslateY, {
+        toValue: 0,
+        tension: 115,
+        friction: 9,
+        useNativeDriver: false,
+      }),
+      Animated.spring(wordTranslateX, {
+        toValue: 0,
+        tension: 115,
+        friction: 10,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [avatarAnimationKey, avatarOpacity, avatarScale, wordOpacity, wordTranslateX, wordTranslateY]);
+
+  useEffect(() => {
+    Animated.timing(progressFill, {
+      toValue: progressFraction,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progressFill, progressFraction]);
+
+  useEffect(() => {
+    if (!bookmarksOpen) return;
+    bookmarkSheetAnim.setValue(0);
+    Animated.spring(bookmarkSheetAnim, {
+      toValue: 1,
+      tension: 120,
+      friction: 11,
+      useNativeDriver: false,
+    }).start();
+  }, [bookmarkSheetAnim, bookmarksOpen]);
+
+  useEffect(() => {
+    if (!resultOpen) return;
+    resultSheetAnim.setValue(0);
+    Animated.spring(resultSheetAnim, {
+      toValue: 1,
+      tension: 120,
+      friction: 11,
+      useNativeDriver: false,
+    }).start();
+  }, [resultOpen, resultSheetAnim]);
+
+  useEffect(() => {
     if (!feedbackMessage) return;
+    feedbackOpacity.setValue(0);
+    feedbackTranslateY.setValue(8);
+    Animated.parallel([
+      Animated.timing(feedbackOpacity, {
+        toValue: 1,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      Animated.spring(feedbackTranslateY, {
+        toValue: 0,
+        tension: 130,
+        friction: 10,
+        useNativeDriver: false,
+      }),
+    ]).start();
     const timer = setTimeout(() => setFeedbackMessage(null), 1600);
     return () => clearTimeout(timer);
-  }, [feedbackMessage]);
+  }, [feedbackMessage, feedbackOpacity, feedbackTranslateY]);
+
+  function pressTranslateButton(active: boolean) {
+    Animated.spring(translateButtonScale, {
+      toValue: active ? 0.97 : 1,
+      tension: 180,
+      friction: 12,
+      useNativeDriver: false,
+    }).start();
+  }
+
+  function animateSavedFeedback() {
+    saveButtonScale.setValue(0.9);
+    Animated.spring(saveButtonScale, {
+      toValue: 1,
+      tension: 190,
+      friction: 7,
+      useNativeDriver: false,
+    }).start();
+  }
+
   async function handleTranslate(overrideText?: string) {
     const text = (overrideText ?? inputText).trim();
     if (!text || loading) return;
@@ -297,6 +652,17 @@ export default function TranslatorScreen() {
         setWebVideoSources([null, null]);
         setWebVideoReady([false, false]);
         setWebActiveSlot(0);
+        setTransitionPreviousSlot(null);
+        videoSlideAnim.setValue(1);
+      } else {
+        nativePreparedIndexRef.current = null;
+        nativeSlotSourcesRef.current = [null, null];
+        nativeReplacingTokenRef.current = [null, null];
+        setNativeVideoReady([false, false]);
+        setNativeActiveSlot(0);
+        nativeActiveSlotRef.current = 0;
+        setTransitionPreviousSlot(null);
+        videoSlideAnim.setValue(1);
       }
       const nextPlaybackUrlMap = buildPlaybackUrlMap((next.items ?? next.clips).map((item) => item.url));
       setPlaybackUrlMap(nextPlaybackUrlMap);
@@ -310,6 +676,17 @@ export default function TranslatorScreen() {
         setWebVideoSources([null, null]);
         setWebVideoReady([false, false]);
         setWebActiveSlot(0);
+        setTransitionPreviousSlot(null);
+        videoSlideAnim.setValue(1);
+      } else {
+        nativePreparedIndexRef.current = null;
+        nativeSlotSourcesRef.current = [null, null];
+        nativeReplacingTokenRef.current = [null, null];
+        setNativeVideoReady([false, false]);
+        setNativeActiveSlot(0);
+        nativeActiveSlotRef.current = 0;
+        setTransitionPreviousSlot(null);
+        videoSlideAnim.setValue(1);
       }
       setResult(null);
       setPlaybackUrlMap({});
@@ -334,6 +711,7 @@ export default function TranslatorScreen() {
         });
         const next = [saved, ...bookmarks.filter((item) => item.quizId !== saved.quizId)].slice(0, MAX_BOOKMARKS);
         setBookmarks(next);
+        animateSavedFeedback();
         setFeedbackMessage('저장되었습니다!');
         return;
       }
@@ -348,6 +726,7 @@ export default function TranslatorScreen() {
       const next = [fallbackItem, ...bookmarks.filter((item) => item.questionText !== sentence)].slice(0, MAX_BOOKMARKS);
       setBookmarks(next);
       await writeBookmarks(next);
+      animateSavedFeedback();
       setFeedbackMessage('저장되었습니다!');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '북마크 저장에 실패했습니다.');
@@ -425,6 +804,7 @@ export default function TranslatorScreen() {
       }
     }
 
+    runVideoSlideTransition(previousSlot);
     setWebActiveSlot(slot);
     webPendingSlotRef.current = null;
   }
@@ -447,43 +827,72 @@ export default function TranslatorScreen() {
           <View style={styles.headerIcon} />
         </View>
 
-        <View style={styles.avatarCard}>
+        <Animated.View style={[styles.avatarCard, { opacity: avatarOpacity, transform: [{ scale: avatarScale }] }]}>
           {currentClipUrl ? (
             isWeb ? (
               <View style={styles.webVideoStack}>
-                <WebVideoTag
-                  ref={webVideoRefA}
-                  src={webVideoSources[0] || undefined}
-                  muted
-                  autoPlay
-                  playsInline
-                  controls={webActiveSlot === 0}
-                  preload="auto"
-                  onLoadedData={() => handleWebSlotLoaded(0)}
-                  onCanPlay={() => handleWebSlotCanPlay(0)}
-                  onPlaying={() => handleWebSlotPlaying(0)}
-                  onError={() => handleWebSlotError(0)}
-                  onEnded={() => handleWebSlotEnded(0)}
-                  style={getWebVideoStyle(0, webActiveSlot, webVideoReady)}
-                />
-                <WebVideoTag
-                  ref={webVideoRefB}
-                  src={webVideoSources[1] || undefined}
-                  muted
-                  autoPlay
-                  playsInline
-                  controls={webActiveSlot === 1}
-                  preload="auto"
-                  onLoadedData={() => handleWebSlotLoaded(1)}
-                  onCanPlay={() => handleWebSlotCanPlay(1)}
-                  onPlaying={() => handleWebSlotPlaying(1)}
-                  onError={() => handleWebSlotError(1)}
-                  onEnded={() => handleWebSlotEnded(1)}
-                  style={getWebVideoStyle(1, webActiveSlot, webVideoReady)}
-                />
+                <Animated.View
+                  style={getVideoSlotContainerStyle(0, webActiveSlot, webVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+                  <WebVideoTag
+                    ref={webVideoRefA}
+                    src={webVideoSources[0] || undefined}
+                    muted
+                    autoPlay
+                    playsInline
+                    controls={webActiveSlot === 0}
+                    preload="auto"
+                    onLoadedData={() => handleWebSlotLoaded(0)}
+                    onCanPlay={() => handleWebSlotCanPlay(0)}
+                    onPlaying={() => handleWebSlotPlaying(0)}
+                    onError={() => handleWebSlotError(0)}
+                    onEnded={() => handleWebSlotEnded(0)}
+                    style={styles.webVideoElement as any}
+                  />
+                </Animated.View>
+                <Animated.View
+                  style={getVideoSlotContainerStyle(1, webActiveSlot, webVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+                  <WebVideoTag
+                    ref={webVideoRefB}
+                    src={webVideoSources[1] || undefined}
+                    muted
+                    autoPlay
+                    playsInline
+                    controls={webActiveSlot === 1}
+                    preload="auto"
+                    onLoadedData={() => handleWebSlotLoaded(1)}
+                    onCanPlay={() => handleWebSlotCanPlay(1)}
+                    onPlaying={() => handleWebSlotPlaying(1)}
+                    onError={() => handleWebSlotError(1)}
+                    onEnded={() => handleWebSlotEnded(1)}
+                    style={styles.webVideoElement as any}
+                  />
+                </Animated.View>
               </View>
             ) : (
-              <VideoView style={styles.avatarVideo} player={player} nativeControls contentFit="cover" useExoShutter={false} />
+              <View style={styles.nativeVideoStack}>
+                <Animated.View
+                  style={getVideoSlotContainerStyle(0, nativeActiveSlot, nativeVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+                  <VideoView
+                    style={styles.avatarVideo}
+                    player={nativePlayerA}
+                    nativeControls={nativeActiveSlot === 0}
+                    contentFit="cover"
+                    surfaceType="textureView"
+                    useExoShutter={false}
+                  />
+                </Animated.View>
+                <Animated.View
+                  style={getVideoSlotContainerStyle(1, nativeActiveSlot, nativeVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+                  <VideoView
+                    style={styles.avatarVideo}
+                    player={nativePlayerB}
+                    nativeControls={nativeActiveSlot === 1}
+                    contentFit="cover"
+                    surfaceType="textureView"
+                    useExoShutter={false}
+                  />
+                </Animated.View>
+              </View>
             )
           ) : currentPlaybackItem ? (
             <View style={styles.textAvatar}>
@@ -501,20 +910,41 @@ export default function TranslatorScreen() {
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>Live</Text>
           </View>
-        </View>
+          {loading ? (
+            <View style={styles.avatarLoadingOverlay} pointerEvents="none">
+              <Animated.View style={[styles.avatarLoadingIcon, { transform: [{ rotate: spinRotation }] }]}>
+                <Ionicons name="sync" size={18} color="#fff" />
+              </Animated.View>
+            </View>
+          ) : null}
+        </Animated.View>
 
         <View style={styles.detectWrap}>
-          <Text style={styles.detectTitle}>{currentPlaybackItem?.word ?? '나 (I/Me)'}</Text>
+          <Animated.Text
+            style={[
+              styles.detectTitle,
+              {
+                opacity: wordOpacity,
+                transform: [{ translateX: wordTranslateX }, { translateY: wordTranslateY }],
+              },
+            ]}>
+            {currentPlaybackItem?.word ?? '나 (I/Me)'}
+          </Animated.Text>
           <Text style={styles.detectSub}>
             {playbackItems.length > 0 ? `${currentClipIndex + 1} / ${playbackItems.length}` : '0 / 0'} 인식된 수어 (Detected Gesture)
           </Text>
+          <View style={styles.progressTrack}>
+            <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+          </View>
         </View>
 
         <View style={styles.actionRow}>
           <View style={styles.actionItem}>
-            <Pressable style={styles.actionIconWrap} onPress={handleSaveSentence} accessibilityLabel="현재 문장 저장">
-              <Ionicons name="bookmark" size={16} color="#111827" />
-            </Pressable>
+            <Animated.View style={{ transform: [{ scale: saveButtonScale }] }}>
+              <Pressable style={styles.actionIconWrap} onPress={handleSaveSentence} accessibilityLabel="현재 문장 저장">
+                <Ionicons name="bookmark" size={16} color="#111827" />
+              </Pressable>
+            </Animated.View>
             <Text style={styles.actionLabel}>저장</Text>
           </View>
           <View style={styles.actionItem}>
@@ -528,9 +958,21 @@ export default function TranslatorScreen() {
           </View>
         </View>
 
-        {feedbackMessage ? <Text style={styles.feedbackText}>{feedbackMessage}</Text> : null}
+        {feedbackMessage ? (
+          <Animated.View
+            style={[
+              styles.feedbackToast,
+              {
+                opacity: feedbackOpacity,
+                transform: [{ translateY: feedbackTranslateY }],
+              },
+            ]}>
+            <Ionicons name="checkmark-circle" size={14} color="#1d4ed8" />
+            <Text style={styles.feedbackText}>{feedbackMessage}</Text>
+          </Animated.View>
+        ) : null}
         {bookmarksOpen && (
-          <View style={styles.bookmarkSheet}>
+          <Animated.View style={[styles.bookmarkSheet, bookmarkSheetStyle]}>
             <View style={styles.bookmarkSheetHeader}>
               <Text style={styles.bookmarkTitle}>내 북마크 문장</Text>
               <Pressable style={styles.bookmarkCloseBtn} onPress={handleToggleBookmarks}>
@@ -570,7 +1012,7 @@ export default function TranslatorScreen() {
                 ))
               )}
             </ScrollView>
-          </View>
+          </Animated.View>
         )}
 
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
@@ -603,21 +1045,30 @@ export default function TranslatorScreen() {
             </Pressable>
           </View>
 
-          <Pressable style={[styles.translateButton, loading && styles.translateButtonDisabled]} onPress={() => void handleTranslate()} disabled={loading}>
-            <Ionicons name="language-outline" size={18} color="#fff" />
-            <Text style={styles.translateButtonText}>
-              {loading ? `번역중${'.'.repeat(loadingDotCount)}` : '번역하기 (Translate)'}
-            </Text>
-          </Pressable>
+          <Animated.View style={{ transform: [{ scale: translateButtonScale }] }}>
+            <Pressable
+              style={[styles.translateButton, loading && styles.translateButtonDisabled]}
+              onPress={() => void handleTranslate()}
+              onPressIn={() => pressTranslateButton(true)}
+              onPressOut={() => pressTranslateButton(false)}
+              disabled={loading}>
+              <Animated.View style={loading ? { transform: [{ rotate: spinRotation }] } : undefined}>
+                <Ionicons name={loading ? 'sync' : 'language-outline'} size={18} color="#fff" />
+              </Animated.View>
+              <Text style={styles.translateButtonText}>
+                {loading ? `번역중${'.'.repeat(loadingDotCount)}` : '번역하기 (Translate)'}
+              </Text>
+            </Pressable>
+          </Animated.View>
 
           <Pressable style={styles.detailButton} onPress={() => setResultOpen(true)}>
-            <Ionicons name="list-outline" size={16} color={PRIMARY} />
+            <Ionicons name="list-outline" size={16} color={ACCENT} />
             <Text style={styles.detailButtonText}>세부 결과</Text>
           </Pressable>
         </View>
 
         {resultOpen && (
-          <View style={styles.resultSheet}>
+          <Animated.View style={[styles.resultSheet, resultSheetStyle]}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>번역 결과</Text>
               <Pressable onPress={() => setResultOpen(false)}>
@@ -674,24 +1125,32 @@ export default function TranslatorScreen() {
                 </View>
               </View>
             </ScrollView>
-          </View>
+          </Animated.View>
         )}
 
         <View style={styles.bottomNav}>
           <Pressable style={styles.navItem} onPress={() => router.push('/home')}>
-            <Ionicons name="home-outline" size={18} color="#94a3b8" />
+            <View style={styles.navIconBubble}>
+              <Ionicons name="home-outline" size={18} color="#94a3b8" />
+            </View>
             <Text style={styles.navText}>홈</Text>
           </Pressable>
           <Pressable style={styles.navItem} onPress={() => router.push('/learn')}>
-            <Ionicons name="school-outline" size={18} color="#94a3b8" />
+            <View style={styles.navIconBubble}>
+              <Ionicons name="school-outline" size={18} color="#94a3b8" />
+            </View>
             <Text style={styles.navText}>학습하기</Text>
           </Pressable>
           <Pressable style={styles.navItem}>
-            <Ionicons name="language" size={18} color={PRIMARY} />
+            <View style={[styles.navIconBubble, styles.navIconBubbleActive]}>
+              <MaterialCommunityIcons name="sign-language" size={18} color={PRIMARY} />
+            </View>
             <Text style={[styles.navText, styles.navTextActive]}>통역기</Text>
           </Pressable>
           <Pressable style={styles.navItem} onPress={() => router.push('/mypage')}>
-            <Ionicons name="person-outline" size={18} color="#94a3b8" />
+            <View style={styles.navIconBubble}>
+              <Ionicons name="person-outline" size={18} color="#94a3b8" />
+            </View>
             <Text style={styles.navText}>마이페이지</Text>
           </Pressable>
         </View>
@@ -711,6 +1170,38 @@ function toVideoSource(uri: string): { uri: string; useCaching?: boolean } {
     return { uri: trimmed };
   }
   return { uri: trimmed, useCaching: true };
+}
+
+function getVideoSlotContainerStyle(
+  slot: 0 | 1,
+  activeSlot: 0 | 1,
+  ready: [boolean, boolean],
+  previousSlot: 0 | 1 | null,
+  slideAnim: Animated.Value,
+  slideWidth: number
+) {
+  const isActive = slot === activeSlot && ready[slot];
+  const isPrevious = previousSlot === slot;
+  const translateX = isActive && previousSlot !== null
+    ? slideAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [slideWidth, 0],
+      })
+    : isPrevious
+    ? slideAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -slideWidth],
+      })
+    : isActive
+    ? 0
+    : slideWidth;
+
+  return {
+    ...StyleSheet.absoluteFillObject,
+    opacity: isActive || isPrevious ? 1 : 0,
+    transform: [{ translateX }],
+    zIndex: isActive ? 2 : isPrevious ? 1 : 0,
+  } as any;
 }
 
 function getWebVideoStyle(
@@ -746,23 +1237,28 @@ function tryPlayVideo(videoEl: any) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f5f7fb' },
-  root: { flex: 1, backgroundColor: '#f5f7fb', paddingHorizontal: 8, paddingTop: 4 },
+  safeArea: { flex: 1, backgroundColor: '#f8f7ff' },
+  root: { flex: 1, backgroundColor: '#f8f7ff', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 84 },
   header: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', color: '#111827', fontSize: 20, fontWeight: '800' },
+  headerIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, textAlign: 'center', color: '#111827', fontFamily: FONT, fontSize: 20, fontWeight: '900' },
   avatarCard: {
-    marginTop: 6,
+    marginTop: 8,
     height: '39%',
-    borderRadius: 16,
+    borderRadius: 24,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
     backgroundColor: '#e5e7eb',
     position: 'relative',
+    shadowColor: '#d5d7ec',
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   avatarVideo: { width: '100%', height: '100%', backgroundColor: '#000' },
+  webVideoElement: { width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#e5e7eb' } as any,
   webVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: '#e5e7eb' },
+  nativeVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: '#000' },
   textAvatar: {
     flex: 1,
     alignItems: 'center',
@@ -773,12 +1269,33 @@ const styles = StyleSheet.create({
   textAvatarWord: {
     width: '100%',
     color: '#0f172a',
+    fontFamily: FONT,
     fontSize: 54,
     fontWeight: '900',
     textAlign: 'center',
   },
   emptyAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eef2f7', gap: 8, paddingHorizontal: 14 },
-  emptyAvatarText: { color: '#64748b', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  emptyAvatarText: { color: '#64748b', fontFamily: FONT, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  avatarLoadingOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+  },
+  avatarLoadingIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(124, 108, 242, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
   liveBadge: {
     position: 'absolute',
     right: 12,
@@ -792,10 +1309,23 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' },
-  liveText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  liveText: { color: '#fff', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
   detectWrap: { alignItems: 'center', marginTop: 8 },
-  detectTitle: { color: '#111827', fontSize: 34, fontWeight: '800', letterSpacing: -0.3 },
-  detectSub: { marginTop: 2, color: '#64748b', fontSize: 13, fontWeight: '500' },
+  detectTitle: { color: '#111827', fontFamily: FONT, fontSize: 34, fontWeight: '900' },
+  detectSub: { marginTop: 2, color: '#64748b', fontFamily: FONT, fontSize: 13, fontWeight: '600' },
+  progressTrack: {
+    marginTop: 8,
+    width: '54%',
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: ACCENT,
+  },
   actionRow: { marginTop: 28, marginBottom: 6, flexDirection: 'row', justifyContent: 'center', gap: 52 },
   actionItem: { alignItems: 'center', gap: 6 },
   actionIconWrap: {
@@ -811,8 +1341,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#bfdbfe',
   },
-  actionLabel: { color: '#64748b', fontSize: 11, fontWeight: '600' },
-  feedbackText: { marginTop: 2, textAlign: 'center', color: '#1d4ed8', fontSize: 12, fontWeight: '700' },
+  actionLabel: { color: '#64748b', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
+  feedbackToast: {
+    alignSelf: 'center',
+    marginTop: 2,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  feedbackText: { textAlign: 'center', color: '#1d4ed8', fontFamily: FONT, fontSize: 12, fontWeight: '700' },
   bookmarkSheet: {
     position: 'absolute',
     left: 8,
@@ -829,7 +1372,7 @@ const styles = StyleSheet.create({
     zIndex: 35,
   },
   bookmarkSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  bookmarkTitle: { color: '#334155', fontSize: 15, fontWeight: '900' },
+  bookmarkTitle: { color: '#334155', fontFamily: FONT, fontSize: 15, fontWeight: '900' },
   bookmarkCloseBtn: {
     width: 24,
     height: 24,
@@ -850,7 +1393,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  bookmarkSearchInput: { flex: 1, color: '#0f172a', fontSize: 13, paddingVertical: 7 },
+  bookmarkSearchInput: { flex: 1, color: '#0f172a', fontFamily: FONT, fontSize: 13, paddingVertical: 7 },
   bookmarkList: { flex: 1 },
   bookmarkListContent: { gap: 8, paddingBottom: 4 },
   bookmarkItemRow: {
@@ -864,7 +1407,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  bookmarkItemText: { flex: 1, color: '#0f172a', fontSize: 12, fontWeight: '600' },
+  bookmarkItemText: { flex: 1, color: '#0f172a', fontFamily: FONT, fontSize: 12, fontWeight: '600' },
   bookmarkPlayButton: {
     width: 28,
     height: 28,
@@ -875,27 +1418,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bookmarkEmpty: { color: '#94a3b8', fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 12 },
-  errorText: { marginTop: 6, textAlign: 'center', color: '#b91c1c', fontSize: 12, fontWeight: '700' },
+  bookmarkEmpty: { color: '#94a3b8', fontFamily: FONT, fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 12 },
+  errorText: { marginTop: 6, textAlign: 'center', color: '#b91c1c', fontFamily: FONT, fontSize: 12, fontWeight: '700' },
   inputPanel: {
     marginTop: 'auto',
-    marginBottom: 10,
-    borderRadius: 16,
+    marginBottom: 12,
+    borderRadius: 24,
     backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 8,
+    padding: 10,
+    shadowColor: '#d8daee',
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   inputWrap: {
-    minHeight: 44,
-    borderRadius: 10,
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 10,
+    minHeight: 48,
+    borderRadius: 18,
+    backgroundColor: '#f8f9ff',
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  input: { flex: 1, color: '#111827', fontSize: 14, paddingVertical: 10 },
+  input: { flex: 1, color: '#111827', fontFamily: FONT, fontSize: 14, paddingVertical: 10 },
   clipControlRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
   smallControlButton: {
     width: 30,
@@ -910,29 +1456,34 @@ const styles = StyleSheet.create({
   smallControlButtonDisabled: { opacity: 0.45 },
   translateButton: {
     marginTop: 8,
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: PRIMARY,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 6,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 4,
   },
   translateButtonDisabled: { opacity: 0.6 },
-  translateButtonText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  translateButtonText: { color: '#fff', fontFamily: FONT, fontSize: 17, fontWeight: '900' },
   detailButton: {
     marginTop: 8,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
+    borderColor: '#d8d2ff',
+    backgroundColor: '#f5f3ff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
-  detailButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '800' },
+  detailButtonText: { color: ACCENT, fontFamily: FONT, fontSize: 14, fontWeight: '900' },
   resultSheet: {
     position: 'absolute',
     left: 8,
@@ -960,7 +1511,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  sheetTitle: { color: '#111827', fontSize: 14, fontWeight: '800' },
+  sheetTitle: { color: '#111827', fontFamily: FONT, fontSize: 14, fontWeight: '800' },
   sheetBody: { flex: 1 },
   sheetBodyContent: { padding: 10, gap: 8 },
   resultCard: {
@@ -972,8 +1523,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 6,
   },
-  resultTitle: { color: '#334155', fontSize: 12, fontWeight: '800' },
-  resultValue: { color: '#0f172a', fontSize: 14, fontWeight: '600' },
+  resultTitle: { color: '#334155', fontFamily: FONT, fontSize: 12, fontWeight: '800' },
+  resultValue: { color: '#0f172a', fontFamily: FONT, fontSize: 14, fontWeight: '600' },
   tokenWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tokenChip: {
     borderRadius: 999,
@@ -983,7 +1534,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
-  tokenChipText: { color: '#1d4ed8', fontSize: 11, fontWeight: '700' },
+  tokenChipText: { color: '#1d4ed8', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
   unknownChip: {
     borderRadius: 999,
     borderWidth: 1,
@@ -992,7 +1543,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
-  unknownChipText: { color: '#b91c1c', fontSize: 11, fontWeight: '700' },
+  unknownChipText: { color: '#b91c1c', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
   noVideoChip: {
     borderRadius: 999,
     borderWidth: 1,
@@ -1004,22 +1555,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  noVideoChipText: { color: '#b45309', fontSize: 11, fontWeight: '700' },
-  resultSubTitle: { color: '#94a3b8', fontSize: 10, fontWeight: '500' },
-  emptyText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
+  noVideoChipText: { color: '#b45309', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
+  resultSubTitle: { color: '#94a3b8', fontFamily: FONT, fontSize: 10, fontWeight: '500' },
+  emptyText: { color: '#94a3b8', fontFamily: FONT, fontSize: 11, fontWeight: '600' },
   bottomNav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
     backgroundColor: '#fff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: 68,
+    height: 70,
     paddingBottom: 4,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     zIndex: 20,
   },
   navItem: { alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 58 },
-  navText: { fontSize: 10, color: '#94a3b8', fontWeight: '600' },
+  navIconBubble: {
+    width: 30,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconBubbleActive: {
+    backgroundColor: '#e8f2ff',
+  },
+  navText: { fontFamily: FONT, fontSize: 10, color: '#94a3b8', fontWeight: '600' },
   navTextActive: { color: PRIMARY },
 });
 
