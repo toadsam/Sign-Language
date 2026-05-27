@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { BookOpenTextIcon } from 'phosphor-react-native/lib/module/icons/BookOpenText';
+import { BookOpenTextIcon } from 'phosphor-react-native';
 import { useAuth } from '@/context/auth-context';
 import { Fonts } from '@/constants/theme';
 import {
