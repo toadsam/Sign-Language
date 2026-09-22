@@ -15,6 +15,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from common.data import load_data, make_split
 from common.skeleton import BODY, FACE, FEAT_DIM, L_HAND_ROOT, LHAND, N_JOINTS, R_HAND_ROOT, RHAND, all_edges
 from vq.model import MotionVQVAE
 
@@ -23,18 +24,9 @@ VIEWER_TEMPLATE = os.path.join(os.path.dirname(ROOT), "viewer", "skeleton_viewer
 
 
 # ---------------------------------------------------------------- 데이터
-def load_data(data_dir):
-    metas = [json.loads(l) for l in open(os.path.join(data_dir, "meta.jsonl"), encoding="utf-8")]
-    for m in metas:
-        m["x"] = np.load(os.path.join(data_dir, "npy", f"{m['clip']}.npy")).reshape(-1, FEAT_DIM)
-    return metas
-
-
-def split(metas, holdout):
-    """샘플은 수행자가 1명이라 단어 단위로 나눈다. 정식 데이터에서는 수행자 단위로 나눈다."""
-    items = sorted({m["item"] for m in metas})
-    test_items = set(items[-holdout:]) if holdout > 0 else set()
-    return [m for m in metas if m["item"] not in test_items], [m for m in metas if m["item"] in test_items]
+def split(metas, cfg):
+    """샘플(수행자 1명)은 단어 단위, 정식 데이터는 --split signer 로 수행자 단위로 나눈다."""
+    return make_split(metas, cfg.get("split", "item"), cfg.get("holdout", 4), cfg.get("test_signers", 2), cfg.get("seed", 0))
 
 
 def sample_batch(clips, batch, window, rng):
@@ -139,7 +131,10 @@ def main():
     ap.add_argument("--lam-hand", type=float, default=1.0)
     ap.add_argument("--commit", type=float, default=0.02)
     ap.add_argument("--beta", type=float, default=0.02, help="Smooth L1 경계 (정규화 단위, 약 7mm)")
-    ap.add_argument("--holdout", type=int, default=4, help="평가용으로 빼 둘 단어 수")
+    ap.add_argument("--split", choices=["item", "signer"], default="item",
+                    help="item: 단어 단위(샘플용), signer: 수행자 단위(정식 데이터)")
+    ap.add_argument("--holdout", type=int, default=4, help="item 분할에서 평가용으로 빼 둘 단어 수")
+    ap.add_argument("--test-signers", type=int, default=2, help="signer 분할에서 평가용 수행자 수")
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -150,7 +145,7 @@ def main():
     json.dump(vars(args), open(os.path.join(args.run, "config.json"), "w"), indent=2)
 
     metas = load_data(args.data)
-    train_clips, test_clips = split(metas, args.holdout)
+    train_clips, test_clips = split(metas, vars(args))
     print(f"학습 클립 {len(train_clips)}개, 평가 클립 {len(test_clips)}개")
 
     model = MotionVQVAE(FEAT_DIM, args.width, args.code_dim, args.nb_code, depth=args.depth)

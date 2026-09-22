@@ -140,7 +140,7 @@ def main():
     args = ap.parse_args()
 
     model, cfg = load_model(args.run)
-    train, test = split(load_data(args.data), cfg["holdout"])
+    train, test = split(load_data(args.data), cfg)
     clips = {m["clip"]: (m, "train") for m in train} | {m["clip"]: (m, "test") for m in test}
     out_dir = os.path.join(args.run, "figures")
     os.makedirs(out_dir, exist_ok=True)

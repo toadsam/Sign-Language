@@ -11,6 +11,7 @@
 
 사용:
   python -m prep.preprocess --src "<01_real_word_keypoint 폴더>" --out data/sample
+  python -m prep.preprocess --src "<정식 라벨링데이터 폴더>" --out data/full --types WORD,SEN --workers 8
 """
 import argparse
 import json
@@ -21,6 +22,7 @@ import sys
 import numpy as np
 from scipy.signal import savgol_filter
 
+from common.fs import long_path
 from common.skeleton import (
     FACE, HAND_PARENTS, L_HAND_ROOT, L_SHOULDER, L_WRIST, N_JOINTS, NECK,
     POSE_KEEP, R_HAND_ROOT, R_SHOULDER, R_WRIST,
@@ -34,6 +36,7 @@ def load_clip(folder):
 
     파일 번호가 건너뛰는 경우(예: WORD1515_L)가 있어 번호가 아니라 정렬 순서를 쓴다.
     """
+    folder = long_path(folder)
     files = sorted(f for f in os.listdir(folder) if f.endswith("_keypoints.json"))
     frames = np.full((len(files), N_JOINTS, 3), np.nan)
     for t, name in enumerate(files):
@@ -124,58 +127,122 @@ def active_range(y, thresh=0.25, pad=3, n_rest=5):
     return [int(max(idx[0] - pad, 0)), int(min(idx[-1] + pad, len(y) - 1))]
 
 
+def find_clips(src, view, types):
+    """src 아래를 모두 뒤져 해당 방향의 클립 폴더를 찾는다 (정식 데이터는 폴더가 여러 겹이다)."""
+    found = []
+    for root, dirs, _ in os.walk(long_path(src)):
+        keep = []
+        for d in dirs:
+            m = CLIP_RE.match(d)
+            if m is None:
+                keep.append(d)
+            elif m["view"] == view and (not types or re.sub(r"\d+", "", m["item"]) in types):
+                found.append(os.path.join(root, d))
+        dirs[:] = keep  # 클립 폴더 안(프레임 JSON)으로는 들어가지 않는다
+    return sorted(found)
+
+
+def process(path, out, max_missing):
+    """클립 하나 처리. 결과 meta와 점검값을 돌려준다(제외하면 None)."""
+    m = CLIP_RE.match(os.path.basename(path))
+    clip_id = f"{m['item']}_{m['signer']}"
+    raw = load_clip(path)
+    raw, miss = fill_missing(raw)
+    if miss > max_missing or len(raw) < 16:
+        return None, f"제외 {clip_id}: 결측 {miss:.1%}, {len(raw)}프레임"
+
+    # 손 데이터의 왼/오른이 몸 기준과 맞는지 확인 (손목끼리 거리, m)
+    gap_r = float(np.linalg.norm(raw[:, R_WRIST] - raw[:, R_HAND_ROOT], axis=-1).mean())
+    gap_l = float(np.linalg.norm(raw[:, L_WRIST] - raw[:, L_HAND_ROOT], axis=-1).mean())
+    b0 = hand_bone_lengths(raw, R_HAND_ROOT)
+    x = fix_hand_bones(smooth(raw))
+    b1 = hand_bone_lengths(x, R_HAND_ROOT)
+    y, norm = normalize(x)
+    act = active_range(y)
+
+    np.save(os.path.join(out, "npy", f"{clip_id}.npy"), y.astype(np.float32))
+    cv = lambda b: float((b.std(0) / b.mean(0)).mean())
+    meta = {
+        "clip": clip_id, "item": m["item"], "signer": m["signer"], "view": m["view"],
+        "type": re.sub(r"\d+", "", m["item"]), "frames": int(len(y)), "active": act,
+        "missing": round(miss, 4), "norm": norm,
+        "check": {"wrist_gap_cm": [round(gap_r * 100, 2), round(gap_l * 100, 2)],
+                  "bone_cv": [round(cv(b0), 4), round(cv(b1), 4)]},
+    }
+    with open(os.path.join(out, "npy", f"{clip_id}.json"), "w", encoding="utf-8") as fh:
+        json.dump(meta, fh, ensure_ascii=False)
+    return meta, None
+
+
+def _job(a):
+    try:
+        return process(*a)
+    except Exception as e:  # 깨진 클립 하나 때문에 전체가 멈추지 않게
+        return None, f"오류 {os.path.basename(a[0])}: {e}"
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True, help="클립 폴더들이 들어 있는 키포인트 폴더")
+    ap.add_argument("--src", required=True, help="키포인트 폴더 (하위 폴더까지 모두 찾음)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--view", default="F")
+    ap.add_argument("--types", default="", help="쉼표로 구분 (예: WORD,SEN). 비우면 전부")
     ap.add_argument("--max-missing", type=float, default=0.2)
+    ap.add_argument("--workers", type=int, default=1)
+    ap.add_argument("--overwrite", action="store_true", help="이미 변환한 클립도 다시 변환")
     args = ap.parse_args()
 
-    os.makedirs(os.path.join(args.out, "npy"), exist_ok=True)
-    clips = sorted(d for d in os.listdir(args.src)
-                   if (m := CLIP_RE.match(d)) and m["view"] == args.view)
+    npy_dir = os.path.join(args.out, "npy")
+    os.makedirs(npy_dir, exist_ok=True)
+    types = set(filter(None, args.types.split(",")))
+    clips = find_clips(args.src, args.view, types)
     if not clips:
-        sys.exit(f"{args.src} 에 {args.view} 방향 클립 폴더가 없습니다.")
+        sys.exit(f"{args.src} 아래에 {args.view} 방향 클립 폴더가 없습니다.")
 
-    metas, report = [], []
-    for name in clips:
-        m = CLIP_RE.match(name)
-        raw = load_clip(os.path.join(args.src, name))
-        raw, miss = fill_missing(raw)
-        if miss > args.max_missing:
-            print(f"  제외 {name}: 결측 {miss:.1%}")
-            continue
+    def done(p):
+        m = CLIP_RE.match(os.path.basename(p))
+        return os.path.exists(os.path.join(npy_dir, f"{m['item']}_{m['signer']}.json"))
+    todo = clips if args.overwrite else [p for p in clips if not done(p)]
+    print(f"클립 {len(clips)}개 중 새로 변환 {len(todo)}개 (작업자 {args.workers})")
 
-        # 손 데이터의 왼/오른이 몸 기준과 맞는지 확인 (손목끼리 거리, m)
-        wrist_gap_r = float(np.linalg.norm(raw[:, R_WRIST] - raw[:, R_HAND_ROOT], axis=-1).mean())
-        wrist_gap_l = float(np.linalg.norm(raw[:, L_WRIST] - raw[:, L_HAND_ROOT], axis=-1).mean())
+    jobs = [(p, args.out, args.max_missing) for p in todo]
+    if args.workers > 1:
+        from multiprocessing import Pool
+        with Pool(args.workers) as pool:
+            results = pool.imap_unordered(_job, jobs, chunksize=8)
+            for i, (_, msg) in enumerate(results, 1):
+                if msg:
+                    print(" ", msg)
+                if i % 500 == 0:
+                    print(f"  {i}/{len(jobs)}")
+    else:
+        for i, j in enumerate(jobs, 1):
+            _, msg = _job(j)
+            if msg:
+                print(" ", msg)
+            if i % 500 == 0:
+                print(f"  {i}/{len(jobs)}")
 
-        bones_before = hand_bone_lengths(raw, R_HAND_ROOT)
-        x = fix_hand_bones(smooth(raw))
-        bones_after = hand_bone_lengths(x, R_HAND_ROOT)
-        y, norm = normalize(x)
-        act = active_range(y)
-
-        clip_id = f"{m['item']}_{m['signer']}"
-        np.save(os.path.join(args.out, "npy", f"{clip_id}.npy"), y.astype(np.float32))
-        meta = {
-            "clip": clip_id, "item": m["item"], "signer": m["signer"], "view": m["view"],
-            "type": re.sub(r"\d+", "", m["item"]), "frames": int(len(y)), "active": act,
-            "missing": round(miss, 4), "norm": norm,
-        }
-        metas.append(meta)
-        cv = lambda b: float((b.std(0) / b.mean(0)).mean())
-        report.append((clip_id, len(y), act, wrist_gap_r, wrist_gap_l, cv(bones_before), cv(bones_after)))
-
+    # 클립별 meta를 모아 meta.jsonl 다시 쓰기 (이어서 변환해도 전체가 들어간다)
+    metas = []
+    for f in sorted(os.listdir(npy_dir)):
+        if f.endswith(".json"):
+            with open(os.path.join(npy_dir, f), encoding="utf-8") as fh:
+                metas.append(json.load(fh))
     with open(os.path.join(args.out, "meta.jsonl"), "w", encoding="utf-8") as fh:
         for mt in metas:
             fh.write(json.dumps(mt, ensure_ascii=False) + "\n")
 
-    print(f"{'clip':22s} {'T':>4s}  active     손목간격R/L(cm)  오른손 뼈길이 변동(전→후)")
-    for cid, T, act, gr, gl, b0, b1 in report:
-        print(f"{cid:22s} {T:4d}  {act[0]:3d}–{act[1]:3d}   {gr*100:5.1f}/{gl*100:5.1f}      {b0:.3f} → {b1:.4f}")
-    print(f"\n저장: {len(metas)}개 클립 → {args.out}")
+    if not metas:
+        sys.exit("변환된 클립이 없습니다.")
+    if len(metas) <= 40:
+        print(f"{'clip':22s} {'T':>4s}  active     손목간격R/L(cm)  오른손 뼈길이 변동(전→후)")
+        for mt in metas:
+            c = mt["check"]
+            print(f"{mt['clip']:22s} {mt['frames']:4d}  {mt['active'][0]:3d}–{mt['active'][1]:3d}   "
+                  f"{c['wrist_gap_cm'][0]:5.1f}/{c['wrist_gap_cm'][1]:5.1f}      {c['bone_cv'][0]:.3f} → {c['bone_cv'][1]:.4f}")
+    gaps = [max(mt["check"]["wrist_gap_cm"]) for mt in metas]
+    print(f"\n저장: {len(metas)}개 클립 → {args.out}  (손목 간격 최대 {max(gaps):.1f}cm — 5cm를 넘으면 손 좌우가 뒤바뀐 클립일 수 있음)")
 
 
 if __name__ == "__main__":
