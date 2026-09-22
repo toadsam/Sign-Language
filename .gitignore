@@ -1,7 +1,14 @@
 frontend/node_modules
 frontend/dist
+frontendcodes/node_modules/
+frontendcodes/.expo/
+frontendcodes/dist/
+frontendcodes/.env
+frontendcodes/.env.*
 backend/target
 backend/.gradle
 backend/build
 .env
 backend/.env
+.DS_Store
+backend/bin/

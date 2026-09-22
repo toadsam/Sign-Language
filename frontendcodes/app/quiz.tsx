@@ -1,4 +1,4 @@
-﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -20,6 +20,52 @@ import { useAuth } from '@/context/auth-context';
 const PRIMARY = '#1f80e3';
 const QUIZ_COUNT = 10;
 const CHOICE_IDS: ChoiceId[] = ['A', 'B', 'C', 'D'];
+
+const QUIZ_WORD_MAP: Record<string, string> = {
+  q001: '가다',
+  q002: '눈',
+  q003: '좋다',
+  q004: '모르다',
+  q005: '우유',
+  q006: '하늘',
+  q007: '지도',
+  q008: '복습',
+  q009: '십',
+  q010: '가깝다',
+  q011: '공항',
+  q012: '서울역',
+  q013: '보건소',
+  q014: '대출',
+  q015: '지불하다',
+  q016: '에어컨',
+  q017: '배고프다',
+  q018: '막차',
+  q019: '알려주다',
+  q020: '포기',
+};
+
+function extractWordFromQuestion(question: QuizSessionQuestion | null): string {
+  if (!question) return '';
+  if (question.quizId && QUIZ_WORD_MAP[question.quizId]) {
+    return QUIZ_WORD_MAP[question.quizId];
+  }
+  if (question.videoUrl) {
+    try {
+      const decoded = decodeURIComponent(question.videoUrl);
+      const filenameMatch = decoded.match(/\/([^/?#]+)\.mp4/i);
+      if (filenameMatch && filenameMatch[1]) {
+        const rawName = filenameMatch[1];
+        const wordPart = rawName.split('_')[0];
+        if (wordPart && wordPart.trim()) {
+          return wordPart.trim();
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return question.choices?.[0] ?? '수어 단어';
+}
 
 type Option = {
   id: ChoiceId;
@@ -53,6 +99,7 @@ export default function QuizScreen() {
   const categoryParam = typeof params.category === 'string' ? params.category : undefined;
   const sessionTitle = sessionTitleParam || (isWrongOnlyMode ? '오답 복습 퀴즈' : '오늘의 퀴즈');
 
+  const [isStudyMode, setIsStudyMode] = useState(!isWrongOnlyMode && params.mode !== 'quiz');
   const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<ChoiceId | null>(null);
@@ -94,6 +141,7 @@ export default function QuizScreen() {
   const sessionStartedAtRef = useRef(Date.now());
 
   const currentQuestion = questions[currentIndex] ?? null;
+  const currentWord = useMemo(() => extractWordFromQuestion(currentQuestion), [currentQuestion]);
   const options = useMemo(() => toOptions(currentQuestion), [currentQuestion]);
   const player = useVideoPlayer(currentQuestion?.videoUrl ?? null, (videoPlayer) => {
     videoPlayer.loop = true;
@@ -335,6 +383,14 @@ export default function QuizScreen() {
     } catch {
       setErrorMessage('영상을 다시 재생하지 못했습니다.');
     }
+  }
+
+  function handleStartQuizFromStudy() {
+    setIsStudyMode(false);
+    setCurrentIndex(0);
+    setSelectedId(null);
+    setAnswerResult(null);
+    sessionStartedAtRef.current = Date.now();
   }
 
   function handleRestartSession() {
@@ -698,7 +754,7 @@ export default function QuizScreen() {
               <View style={styles.progressTrack} onLayout={(event) => setProgressTrackWidth(event.nativeEvent.layout.width)}>
                 <Animated.View style={[styles.progressFill, { width: progressFillWidth }]} />
               </View>
-              {currentStreak >= 2 && (
+              {!isStudyMode && currentStreak >= 2 && (
                 <Animated.Text
                   style={[
                     styles.streakProgressText,
@@ -713,7 +769,15 @@ export default function QuizScreen() {
                 </Animated.Text>
               )}
             </View>
-            <Text style={styles.progressText}>{progressText}</Text>
+            <Text style={styles.progressText}>
+              {isStudyMode ? `학습 ${currentIndex + 1}/${questions.length}` : progressText}
+            </Text>
+            {isStudyMode && (
+              <Pressable style={styles.skipToQuizButton} onPress={handleStartQuizFromStudy}>
+                <Text style={styles.skipToQuizText}>퀴즈 풀기</Text>
+                <Ionicons name="arrow-forward" size={13} color="#1f80e3" />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -736,6 +800,65 @@ export default function QuizScreen() {
             )}
           </View>
 
+          {isStudyMode ? (
+            <View style={styles.studyWrap}>
+              <View style={styles.studyCard}>
+                <View style={styles.studyBadgeRow}>
+                  <View style={styles.studyBadge}>
+                    <Ionicons name="book" size={13} color="#2563eb" />
+                    <Text style={styles.studyBadgeText}>단어 미리보기</Text>
+                  </View>
+                  <Text style={styles.studyCategoryText}>{sessionTitle}</Text>
+                </View>
+
+                <Text style={styles.studyWordTitle}>{currentWord}</Text>
+
+                <View style={styles.studySentenceBox}>
+                  <Text style={styles.studySentenceText}>
+                    이 수어 동작은 <Text style={styles.studyWordHighlight}>"{currentWord}"</Text>을(를) 의미합니다.
+                  </Text>
+                </View>
+
+                <View style={styles.studyTipBox}>
+                  <Ionicons name="bulb-outline" size={16} color="#d97706" />
+                  <Text style={styles.studyTipText}>
+                    영상을 반복해서 보며 손 모양과 움직임을 눈에 익혀보세요!
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.studyNavRow}>
+                <Pressable
+                  style={[styles.studyNavButton, currentIndex === 0 && styles.studyNavButtonDisabled]}
+                  onPress={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                  disabled={currentIndex === 0}>
+                  <Ionicons name="chevron-back" size={18} color={currentIndex === 0 ? '#94a3b8' : '#334155'} />
+                  <Text style={[styles.studyNavText, currentIndex === 0 && styles.studyNavTextDisabled]}>이전 단어</Text>
+                </Pressable>
+
+                {currentIndex < questions.length - 1 ? (
+                  <Pressable
+                    style={styles.studyNextButton}
+                    onPress={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}>
+                    <Text style={styles.studyNextText}>다음 단어</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#ffffff" />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={styles.studyStartQuizMainButton}
+                    onPress={handleStartQuizFromStudy}>
+                    <Text style={styles.studyStartQuizMainText}>퀴즈 풀기</Text>
+                    <Ionicons name="sparkles" size={16} color="#ffffff" />
+                  </Pressable>
+                )}
+              </View>
+
+              <Pressable style={styles.studyDirectQuizButton} onPress={handleStartQuizFromStudy}>
+                <Text style={styles.studyDirectQuizText}>배운 단어로 퀴즈 풀기 🎯</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.quizContentWrap}>
           <View style={styles.questionWrap}>
             <Animated.View
               style={[
@@ -937,6 +1060,8 @@ export default function QuizScreen() {
                 </Text>
               </Pressable>
             </Animated.View>
+          )}
+            </View>
           )}
           </Animated.View>
         </ScrollView>
@@ -1563,5 +1688,200 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '800',
+  },
+  quizContentWrap: {
+    width: '100%',
+  },
+  skipToQuizButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#eff6ff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    gap: 4,
+    marginLeft: 8,
+  },
+  skipToQuizText: {
+    color: '#1f80e3',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  studyWrap: {
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  studyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+    marginBottom: 16,
+  },
+  studyBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  studyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+  },
+  studyBadgeText: {
+    color: '#2563eb',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  studyCategoryText: {
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  studyWordTitle: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#0f172a',
+    textAlign: 'center',
+    marginVertical: 10,
+    letterSpacing: -0.5,
+  },
+  studySentenceBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  studySentenceText: {
+    fontSize: 16,
+    color: '#334155',
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  studyWordHighlight: {
+    color: '#1f80e3',
+    fontWeight: '800',
+  },
+  studyTipBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#fef3c7',
+  },
+  studyTipText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400e',
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  studyNavRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  studyNavButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  studyNavButtonDisabled: {
+    opacity: 0.45,
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+  },
+  studyNavText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  studyNavTextDisabled: {
+    color: '#94a3b8',
+  },
+  studyNextButton: {
+    flex: 1.3,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#1f80e3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    shadowColor: '#1f80e3',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  studyNextText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  studyStartQuizMainButton: {
+    flex: 1.3,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#16a34a',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  studyStartQuizMainText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  studyDirectQuizButton: {
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#1f80e3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  studyDirectQuizText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f80e3',
   },
 });
