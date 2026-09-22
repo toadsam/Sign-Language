@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>수어 동작 뷰어</title>
+<style>
+  :root { --bg:#111318; --panel:#181b22; --line:#2a2e38; --ink:#e7e8ec; --dim:#8b92a3;
+          --body:#e7e8ec; --lh:#6fd0ae; --rh:#e08a55; --face:#7b8394; --accent:#9a92f0; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; padding:16px }
+  h1 { font-size:16px; font-weight:600; margin:0 0 12px }
+  .bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-bottom:12px }
+  select, button { font:inherit; background:var(--panel); color:var(--ink); border:1px solid var(--line);
+                   border-radius:6px; padding:4px 10px; cursor:pointer }
+  button[aria-pressed="true"] { background:var(--accent); color:#111; border-color:var(--accent) }
+  label { color:var(--dim); display:inline-flex; gap:6px; align-items:center }
+  input[type=range] { width:220px }
+  .views { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px }
+  .view { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden }
+  .view h2 { font-size:13px; font-weight:500; margin:0; padding:8px 12px; border-bottom:1px solid var(--line);
+             display:flex; justify-content:space-between; color:var(--dim) }
+  canvas { display:block; width:100%; height:440px; cursor:grab }
+  .tokens { margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px }
+  .tokens .t { display:inline-block; font:12px ui-monospace,Consolas,monospace; padding:1px 5px; margin:2px;
+               border-radius:4px; background:#232935; color:#b7b1f5 }
+  .tokens .t.now { background:var(--accent); color:#111 }
+  .tokens .t.rest { opacity:.45 }
+  .legend { display:flex; gap:14px; color:var(--dim); font-size:12px }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:-1px }
+  .hint { color:var(--dim); font-size:12px; margin-top:8px }
+</style>
+</head>
+<body>
+<h1>수어 동작 뷰어 — 원본과 자모표 복원 비교</h1>
+<div class="bar">
+  <label>클립 <select id="clip"></select></label>
+  <button id="play" aria-pressed="true">일시정지</button>
+  <label>프레임 <input id="frame" type="range" min="0" value="0"> <span id="fnum">0</span></label>
+  <label>속도 <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option></select></label>
+  <label>시점 <select id="cam"><option value="front">정면</option><option value="side">측면</option><option value="top">위</option></select></label>
+  <button id="t-body" aria-pressed="true">몸</button>
+  <button id="t-hand" aria-pressed="true">손</button>
+  <button id="t-face" aria-pressed="true">얼굴</button>
+</div>
+<div class="legend">
+  <span><span class="sw" style="background:var(--body)"></span>몸</span>
+  <span><span class="sw" style="background:var(--lh)"></span>왼손 데이터</span>
+  <span><span class="sw" style="background:var(--rh)"></span>오른손 데이터</span>
+  <span><span class="sw" style="background:var(--face)"></span>얼굴</span>
+</div>
+<div class="views" style="margin-top:10px">
+  <div class="view"><h2><span>원본</span><span id="info-o"></span></h2><canvas id="c-orig"></canvas></div>
+  <div class="view"><h2><span>자모표로 바꿨다 되돌린 것</span><span id="info-r"></span></h2><canvas id="c-recon"></canvas></div>
+</div>
+<div class="tokens"><div style="color:var(--dim);font-size:12px;margin-bottom:4px">토큰 열 (토큰 1개 = 4프레임, 흐린 것은 손 내린 대기 구간)</div><div id="tokens"></div></div>
+<p class="hint">그림을 끌어서 돌려볼 수 있습니다. 좌표는 목을 원점으로, 어깨너비를 1로 맞춘 값입니다.</p>
+
+<script>
+const DATA = /*__DATA__*/null;
+(function () {
+  if (!DATA) { document.body.insertAdjacentHTML("beforeend", "<p>데이터가 없습니다. vq.train 이 만든 viewer.html 을 여세요.</p>"); return; }
+  const $ = id => document.getElementById(id);
+  const clipSel = $("clip"), frameIn = $("frame");
+  DATA.clips.forEach((c, i) => clipSel.add(new Option(`${c.name} (${c.split === "test" ? "평가" : "학습"})`, i)));
+  const P = DATA.parts, J = 125;
+  const partOf = j => j < P.body[1] ? "body" : j < P.lhand[1] ? "lh" : j < P.rhand[1] ? "rh" : "face";
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const color = { body: css("--body"), lh: css("--lh"), rh: css("--rh"), face: css("--face") };
+  const show = { body: true, hand: true, face: true };
+  const visible = p => p === "body" ? show.body : p === "face" ? show.face : show.hand;
+
+  let clip = DATA.clips[0], f = 0, playing = true, speed = 1, acc = 0;
+  let yaw = 0, pitch = 0;
+  const cams = { front: [0, 0], side: [Math.PI / 2, 0], top: [0, -Math.PI / 2 + 0.01] };
+
+  function setClip(i) {
+    clip = DATA.clips[i]; f = 0;
+    frameIn.max = clip.frames - 1;
+    $("tokens").innerHTML = clip.tokens.map((t, k) => {
+      const rest = (k + 1) * DATA.down <= clip.active[0] || k * DATA.down >= clip.active[1];
+      return `<span class="t${rest ? " rest" : ""}" data-k="${k}">${t}</span>`;
+    }).join("");
+  }
+
+  function drawOne(cv, arr) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = css("--panel"); g.fillRect(0, 0, w, h);
+    const s = h / 3.6, cx = w / 2, cy = h * 0.28;
+    const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const o = f * J * 3, pts = new Array(J);
+    for (let j = 0; j < J; j++) {
+      const x = arr[o + 3 * j], y = arr[o + 3 * j + 1], z = arr[o + 3 * j + 2];
+      const x1 = cyw * x + syw * z, z1 = -syw * x + cyw * z;
+      const y2 = cp * y - sp * z1;
+      pts[j] = [cx + x1 * s, cy + y2 * s];
+    }
+    g.lineCap = "round";
+    for (const [a, b] of DATA.edges) {
+      const p = partOf(b); if (!visible(p)) continue;
+      g.strokeStyle = color[p]; g.lineWidth = p === "body" ? 3 : p === "face" ? 1 : 1.6;
+      g.beginPath(); g.moveTo(...pts[a]); g.lineTo(...pts[b]); g.stroke();
+    }
+    for (let j = P.lhand[0]; j < P.rhand[1]; j++) {
+      if (!show.hand) break;
+      g.fillStyle = color[partOf(j)];
+      g.beginPath(); g.arc(pts[j][0], pts[j][1], 2, 0, 7); g.fill();
+    }
+  }
+
+  function render() {
+    drawOne($("c-orig"), clip.orig);
+    drawOne($("c-recon"), clip.recon);
+    frameIn.value = f; $("fnum").textContent = `${f} / ${clip.frames - 1}`;
+    const k = Math.floor(f / DATA.down);
+    document.querySelectorAll("#tokens .t").forEach(el => el.classList.toggle("now", +el.dataset.k === k));
+    const inAct = f >= clip.active[0] && f <= clip.active[1];
+    $("info-o").textContent = inAct ? "움직임 구간" : "대기 자세";
+    $("info-r").textContent = `토큰 ${clip.tokens[k] ?? "-"}`;
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = (now - last) / 1000; last = now;
+    if (playing) { acc += dt * DATA.fps * speed; while (acc >= 1) { f = (f + 1) % clip.frames; acc -= 1; } }
+    render(); requestAnimationFrame(loop);
+  }
+
+  clipSel.onchange = e => setClip(+e.target.value);
+  frameIn.oninput = e => { f = +e.target.value; playing = false; $("play").setAttribute("aria-pressed", "false"); $("play").textContent = "재생"; };
+  $("play").onclick = e => { playing = !playing; e.target.setAttribute("aria-pressed", String(playing)); e.target.textContent = playing ? "일시정지" : "재생"; };
+  $("speed").onchange = e => speed = +e.target.value;
+  $("cam").onchange = e => [yaw, pitch] = cams[e.target.value];
+  for (const k of ["body", "hand", "face"]) $("t-" + k).onclick = e => { show[k] = !show[k]; e.target.setAttribute("aria-pressed", String(show[k])); };
+  for (const cv of [$("c-orig"), $("c-recon")]) {
+    let drag = null;
+    cv.onpointerdown = e => { drag = [e.clientX, e.clientY, yaw, pitch]; cv.setPointerCapture(e.pointerId); };
+    cv.onpointermove = e => { if (!drag) return; yaw = drag[2] + (e.clientX - drag[0]) * 0.01; pitch = Math.max(-1.5, Math.min(1.5, drag[3] - (e.clientY - drag[1]) * 0.01)); };
+    cv.onpointerup = () => drag = null;
+  }
+  setClip(0); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
