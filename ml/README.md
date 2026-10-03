@@ -8,7 +8,9 @@
 | – | 정식 데이터 확인 | `prep/inspect_dataset.py` | 샘플·가짜 라벨로 확인 |
 | 2 | 자모표 학습기 (VQ-VAE) | `vq/` | 샘플 과적합 테스트 완료 |
 | 3 | 읽는 모델 (단어 인식) | `recog/` | 샘플로 코드 동작 확인 |
-| 4 | 받아쓰기 모델 | – | 정식 데이터(문장·라벨) 필요 |
+| 4 | 받아쓰기 모델 (단어) | `gen/train_word.py` | 샘플로 학습·비교 |
+| 4 | 받아쓰기 모델 (문장) | `gen/train_sentence.py` | 코드 완료, 문장 데이터 필요 |
+| – | 비교 기준선 ①② · 비교 실험 | `gen/baselines.py`, `gen/compare.py` | 샘플로 확인 |
 | 5 | 아바타 연결기 | `../viewer/` (막대인간) | 뷰어만 |
 
 `data/`, `runs/`는 AI Hub 데이터와 그 파생물이라 git에 올리지 않는다.
@@ -36,6 +38,15 @@ python -m recog.train --data data/full --run runs/recog --types WORD --max-class
 
 # 2+3) 읽는 모델로 자모표 복원 동작 채점 (역번역)
 python -m recog.backtranslate --recog runs/recog --vq runs/vq --data data/full
+
+# 4) 받아쓰기 모델 — 모든 클립을 자모 토큰으로 바꾼 뒤 학습
+python -m gen.tokenize --vq runs/vq --data data/full --out data/full/tokens.json
+python -m gen.train_word --model gpt     --tokens data/full/tokens.json --data data/full --run runs/gen_gpt
+python -m gen.train_word --model regress --tokens data/full/tokens.json --data data/full --run runs/gen_regress   # 기준선 ②
+python -m gen.train_sentence --tokens data/full/tokens.json --sentences data/full/sentences.jsonl --run runs/gen_sent
+
+# 비교 실험 — 우리 방법 vs 기준선 ① 이어붙이기 vs 기준선 ② 좌표 직접 예측
+python -m gen.compare --data data/full --vq runs/vq --recog runs/recog --gpt runs/gen_gpt --regress runs/gen_regress --out runs/compare
 
 # 발표용 그림
 python -m vq.render_figures --run runs/vq --data data/full --pair <클립>:<프레임> --timeline <클립>

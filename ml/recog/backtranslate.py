@@ -13,24 +13,9 @@ import torch
 
 from common.data import load_data
 from recog.features import joint_index, prepare
-from recog.model import SignRecognizer
-from vq.model import MotionVQVAE
+from recog.model import load_recognizer
+from vq.model import load_vqvae
 from vq.train import split
-
-
-def load_recog(path):
-    ck = torch.load(path, map_location="cpu")
-    m = SignRecognizer(ck["in_dim"], len(ck["classes"]))
-    m.load_state_dict(ck["model"])
-    return m.eval(), ck
-
-
-def load_vq(path):
-    ck = torch.load(path, map_location="cpu")
-    c = ck["config"]
-    m = MotionVQVAE(375, c["width"], c["code_dim"], c["nb_code"], depth=c["depth"])
-    m.load_state_dict(ck["model"])
-    return m.eval(), c
 
 
 @torch.no_grad()
@@ -43,8 +28,8 @@ def main():
                     help="자모표 학습 기준 어느 클립으로 볼지")
     args = ap.parse_args()
 
-    recog, rc = load_recog(f"{args.recog}/model.pt")
-    vq, vc = load_vq(f"{args.vq}/model.pt")
+    recog, rc = load_recognizer(f"{args.recog}/model.pt")
+    vq, vc = load_vqvae(f"{args.vq}/model.pt")
     classes, joints, L = rc["classes"], joint_index(rc["with_face"]), rc["length"]
 
     metas = load_data(args.data)

@@ -136,3 +136,12 @@ class MotionVQVAE(nn.Module):
     def decode(self, idx):  # idx [B, T']
         zq = F.embedding(idx, self.quantizer.codebook).permute(0, 2, 1)
         return self.decoder(zq).permute(0, 2, 1)
+
+
+def load_vqvae(path):
+    """학습된 자모표 불러오기. (model, config)"""
+    ck = torch.load(path, map_location="cpu")
+    c = ck["config"]
+    m = MotionVQVAE(375, c["width"], c["code_dim"], c["nb_code"], depth=c["depth"])
+    m.load_state_dict(ck["model"])
+    return m.eval(), c

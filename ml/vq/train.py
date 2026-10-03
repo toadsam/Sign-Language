@@ -16,11 +16,9 @@ import torch
 import torch.nn.functional as F
 
 from common.data import load_data, make_split
-from common.skeleton import BODY, FACE, FEAT_DIM, L_HAND_ROOT, LHAND, N_JOINTS, R_HAND_ROOT, RHAND, all_edges
+from common.viewer import write_viewer
+from common.skeleton import BODY, FACE, FEAT_DIM, L_HAND_ROOT, LHAND, N_JOINTS, R_HAND_ROOT, RHAND
 from vq.model import MotionVQVAE
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VIEWER_TEMPLATE = os.path.join(os.path.dirname(ROOT), "viewer", "skeleton_viewer.html")
 
 
 # ---------------------------------------------------------------- 데이터
@@ -87,27 +85,13 @@ def evaluate(model, clips, down):
 
 # ---------------------------------------------------------------- 뷰어 내보내기
 def export_viewer(run_dir, train_clips, test_clips, recon, down, per_split=4):
-    if not os.path.exists(VIEWER_TEMPLATE):
-        print(f"뷰어 템플릿이 없어 건너뜀: {VIEWER_TEMPLATE}")
-        return
     chosen = [("test", m) for m in test_clips[:per_split]] + [("train", m) for m in train_clips[:per_split]]
-    data = {"edges": all_edges(), "down": down, "fps": 30, "parts": {
-        "body": [BODY.start, BODY.stop], "lhand": [LHAND.start, LHAND.stop],
-        "rhand": [RHAND.start, RHAND.stop], "face": [FACE.start, FACE.stop]}, "clips": []}
+    clips = []
     for sp, m in chosen:
         xh, tokens = recon[m["clip"]]
-        T = len(xh)
-        data["clips"].append({
-            "name": m["clip"], "split": sp, "frames": T, "active": m["active"], "tokens": tokens,
-            "orig": np.round(m["x"][:T].reshape(-1), 3).tolist(),
-            "recon": np.round(xh.reshape(-1), 3).tolist(),
-        })
-    html = open(VIEWER_TEMPLATE, encoding="utf-8").read()
-    html = html.replace("/*__DATA__*/null", json.dumps(data, separators=(",", ":")))
-    path = os.path.join(run_dir, "viewer.html")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(html)
-    print(f"뷰어: {path}")
+        clips.append({"name": m["clip"], "split": sp, "a": m["x"][:len(xh)], "b": xh,
+                      "tokens": tokens, "active": m["active"]})
+    write_viewer(os.path.join(run_dir, "viewer.html"), clips, down=down)
 
 
 # ---------------------------------------------------------------- 학습

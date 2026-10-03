@@ -34,3 +34,11 @@ class SignRecognizer(nn.Module):
     def topk(self, x, k=5):
         p = F.softmax(self.forward(x), dim=-1)
         return p.topk(min(k, p.shape[-1]), dim=-1)
+
+
+def load_recognizer(path):
+    """학습된 읽는 모델 불러오기. (model, checkpoint: classes · with_face · length 포함)"""
+    ck = torch.load(path, map_location="cpu")
+    m = SignRecognizer(ck["in_dim"], len(ck["classes"]))
+    m.load_state_dict(ck["model"])
+    return m.eval(), ck
