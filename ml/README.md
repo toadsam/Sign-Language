@@ -30,8 +30,12 @@ python -m prep.inspect_dataset --root "<받은 폴더>" --out data/inspect_repor
 # 1) 정면 키포인트 → 정규화된 3D 동작 npy (하위 폴더 자동 탐색, 중간에 멈춰도 이어서 됨)
 python -m prep.preprocess --src "<라벨링데이터 폴더>" --out data/full --types WORD,SEN --workers 8
 
-# 2) 자모표 학습 — 수행자 단위로 나눠 처음 보는 사람으로 평가
-python -m vq.train --data data/full --run runs/vq --split signer --nb-code 512 --iters 100000
+# 2) 자모표 학습 — 수행자 단위로 나눠 처음 보는 사람으로 평가. 끝나면 experiments.md 에 한 줄이 붙는다
+#    E1 상체+손 55점 (Ours-H, 얼굴은 평균 고정) / E2 얼굴 포함 125점 (Ours-HF)
+python -m vq.train --data data/full --run runs/vq_e1 --split signer --nb-code 512 --iters 100000 --parts body_hand --note "E1"
+python -m vq.train --data data/full --run runs/vq_e2 --split signer --nb-code 512 --iters 100000 --parts all --note "E2"
+#    Colab 등에서 끊기면 같은 명령에 --resume 을 붙이면 runs/<이름>/ckpt.pt 에서 이어 간다 (--save-every 로 저장 간격)
+#    노트북에서 돌려 다른 작업이 느려지면 --threads 4
 
 # 3) 읽는 모델 — 처음엔 단어 100개로 시작
 python -m recog.train --data data/full --run runs/recog --types WORD --max-classes 100

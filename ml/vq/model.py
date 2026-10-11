@@ -112,36 +112,53 @@ class QuantizeEMAReset(nn.Module):
         return xq, commit, self.perplexity(idx, self.nb_code), idx.view(B, Tq)
 
 
+# 자모표가 맡는 관절. 상체(0–12)와 양손(13–54)이 앞쪽에 붙어 있어서 "body_hand"는 앞 55점이다.
+PARTS = {"all": 125, "body_hand": 55}
+
+
 class MotionVQVAE(nn.Module):
-    def __init__(self, feat_dim=375, width=256, code_dim=256, nb_code=512, down_t=2, depth=2):
+    """입출력은 항상 [B, T, 375]. parts="body_hand"면 앞 55점만 자모표로 만들고,
+    얼굴 70점은 학습 데이터의 평균 얼굴(rest)로 채워 돌려준다 (실행 계획의 Ours-H 조건)."""
+
+    def __init__(self, feat_dim=375, width=256, code_dim=256, nb_code=512, down_t=2, depth=2, parts="all"):
         super().__init__()
         self.down = 2 ** down_t
-        self.encoder = Encoder(feat_dim, width, code_dim, down_t, depth)
+        self.parts = parts
+        self.n_in = PARTS[parts] * 3
+        self.encoder = Encoder(self.n_in, width, code_dim, down_t, depth)
         self.quantizer = QuantizeEMAReset(nb_code, code_dim)
-        self.decoder = Decoder(feat_dim, width, code_dim, down_t, depth)
+        self.decoder = Decoder(self.n_in, width, code_dim, down_t, depth)
+        self.register_buffer("rest", torch.zeros(feat_dim))  # 자모표가 맡지 않는 관절에 채울 자세
 
-    def forward(self, x):  # x [B, T, F], T는 self.down의 배수
-        z = self.encoder(x.permute(0, 2, 1))
+    def _fill(self, out):  # [B, T, n_in] → [B, T, 375]
+        if out.shape[-1] == self.rest.shape[0]:
+            return out
+        rest = self.rest[self.n_in:].expand(*out.shape[:2], -1)
+        return torch.cat([out, rest], -1)
+
+    def forward(self, x):  # x [B, T, 375], T는 self.down의 배수
+        z = self.encoder(x[..., :self.n_in].permute(0, 2, 1))
         zq, commit, ppl, idx = self.quantizer(z)
         out = self.decoder(zq).permute(0, 2, 1)
-        return out, commit, ppl, idx
+        return self._fill(out), commit, ppl, idx
 
     @torch.no_grad()
     def encode(self, x):
-        z = self.encoder(x.permute(0, 2, 1))
+        z = self.encoder(x[..., :self.n_in].permute(0, 2, 1))
         B, D, Tq = z.shape
         return self.quantizer.quantize(z.permute(0, 2, 1).reshape(-1, D)).view(B, Tq)
 
     @torch.no_grad()
-    def decode(self, idx):  # idx [B, T']
+    def decode(self, idx):  # idx [B, T'] → [B, T'×down, 375]
         zq = F.embedding(idx, self.quantizer.codebook).permute(0, 2, 1)
-        return self.decoder(zq).permute(0, 2, 1)
+        return self._fill(self.decoder(zq).permute(0, 2, 1))
 
 
 def load_vqvae(path):
     """학습된 자모표 불러오기. (model, config)"""
     ck = torch.load(path, map_location="cpu")
     c = ck["config"]
-    m = MotionVQVAE(375, c["width"], c["code_dim"], c["nb_code"], depth=c["depth"])
+    m = MotionVQVAE(375, c["width"], c["code_dim"], c["nb_code"], depth=c["depth"], parts=c.get("parts", "all"))
+    ck["model"].setdefault("rest", torch.zeros(375))  # rest 이전에 저장한 체크포인트
     m.load_state_dict(ck["model"])
     return m.eval(), c

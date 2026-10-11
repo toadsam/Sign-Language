@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from common.skeleton import BODY, FACE, FEAT_DIM, LHAND, N_JOINTS, RHAND, all_edges
-from vq.model import MotionVQVAE
+from common.skeleton import BODY, FACE, LHAND, N_JOINTS, RHAND, all_edges
+from vq.model import load_vqvae
 from vq.train import load_data, split
 
 plt.rcParams["font.family"] = ["Malgun Gothic", "sans-serif"]
@@ -51,11 +51,7 @@ def draw(ax, pose):
 
 
 def load_model(run):
-    ck = torch.load(os.path.join(run, "model.pt"), map_location="cpu")
-    c = ck["config"]
-    m = MotionVQVAE(FEAT_DIM, c["width"], c["code_dim"], c["nb_code"], depth=c["depth"])
-    m.load_state_dict(ck["model"])
-    return m.eval(), c
+    return load_vqvae(os.path.join(run, "model.pt"))
 
 
 @torch.no_grad()
