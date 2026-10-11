@@ -30,6 +30,10 @@ python -m prep.inspect_dataset --root "<받은 폴더>" --out data/inspect_repor
 # 1) 정면 키포인트 → 정규화된 3D 동작 npy (하위 폴더 자동 탐색, 중간에 멈춰도 이어서 됨)
 python -m prep.preprocess --src "<라벨링데이터 폴더>" --out data/full --types WORD,SEN --workers 8
 
+# 1-1) 고정 분할표 — 수행자 33/4/4명으로 한 번 나눠 ml/splits/full.json 에 저장하고 커밋한다.
+#      자모표·받아쓰기·읽는 모델이 모두 이 파일로 같은 test 수행자를 쓴다 (형식은 docs/contracts.md ①)
+python -m prep.make_split --data data/full --val-signers 4 --test-signers 4
+
 # 2) 자모표 학습 — 수행자 단위로 나눠 처음 보는 사람으로 평가. 끝나면 experiments.md 에 한 줄이 붙는다
 #    E1 상체+손 55점 (Ours-H, 얼굴은 평균 고정) / E2 얼굴 포함 125점 (Ours-HF)
 python -m vq.train --data data/full --run runs/vq_e1 --split signer --nb-code 512 --iters 100000 --parts body_hand --note "E1"

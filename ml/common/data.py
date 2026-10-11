@@ -37,7 +37,46 @@ def split_by_signer(metas, n_test, seed=0):
     return [m for m in metas if m["signer"] not in test], [m for m in metas if m["signer"] in test]
 
 
-def make_split(metas, mode, holdout=4, test_signers=2, seed=0):
+# ---------------------------------------------------------------- 고정 분할표
+# 모든 모델(자모표 · 받아쓰기 · 읽는 모델)이 같은 test 수행자로 평가하도록, 분할을 한 번 정해 파일로 커밋한다.
+# 파일 이름은 데이터 폴더 이름을 따른다: data/full → ml/splits/full.json. 만드는 명령은 prep/make_split.py
+SPLIT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "splits")
+
+
+def split_path(data_dir):
+    return os.path.join(SPLIT_DIR, os.path.basename(os.path.normpath(data_dir)) + ".json")
+
+
+def load_split(data_dir):
+    """data_dir에 맞는 고정 분할표. 없으면 None."""
+    p = split_path(data_dir)
+    return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else None
+
+
+def apply_split(metas, sp):
+    """고정 분할표대로 나눈다 → (train, val, test). 분할표에 없는 수행자의 클립은 어디에도 넣지 않는다."""
+    if sp["mode"] == "signer":
+        part = {s: k for k, v in sp["signers"].items() for s in v}
+        key = lambda m: part.get(m["signer"])
+    else:
+        test_items = set(sp["test_items"])
+        key = lambda m: "test" if m["item"] in test_items else "train"
+    out = {"train": [], "val": [], "test": []}
+    for m in metas:
+        k = key(m)
+        if k:
+            out[k].append(m)
+    return out["train"], out["val"], out["test"]
+
+
+def make_split(metas, mode, holdout=4, test_signers=2, seed=0, data_dir=None):
+    """(train, test). data_dir에 고정 분할표가 있으면 그것을 따르고(val은 빼 둔다), 없으면 그때그때 나눈다."""
+    sp = load_split(data_dir) if data_dir else None
+    if sp is not None:
+        train, val, test = apply_split(metas, sp)
+        print(f"고정 분할표 {os.path.relpath(split_path(data_dir))} ({sp['mode']}): "
+              f"학습 {len(train)} · 검증 {len(val)}(학습에서 제외) · 평가 {len(test)} 클립")
+        return train, test
     if mode == "signer":
         s = split_by_signer(metas, test_signers, seed)
         if s is not None:

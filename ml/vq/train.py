@@ -23,7 +23,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from common.data import load_data, make_split
+from common.data import load_data, load_split, make_split
 from common.viewer import write_viewer
 from common.skeleton import BODY, FACE, FEAT_DIM, L_HAND_ROOT, LHAND, N_JOINTS, R_HAND_ROOT, RHAND
 from vq.model import PARTS, MotionVQVAE
@@ -35,8 +35,10 @@ FIXED_KEYS = ["data", "parts", "width", "code_dim", "nb_code", "depth", "window"
 
 # ---------------------------------------------------------------- 데이터
 def split(metas, cfg):
-    """샘플(수행자 1명)은 단어 단위, 정식 데이터는 --split signer 로 수행자 단위로 나눈다."""
-    return make_split(metas, cfg.get("split", "item"), cfg.get("holdout", 4), cfg.get("test_signers", 2), cfg.get("seed", 0))
+    """ml/splits/<데이터 폴더 이름>.json 이 있으면 그 고정 분할을 쓴다 (팀 전체가 같은 test 수행자).
+    없으면 샘플(수행자 1명)은 단어 단위, 정식 데이터는 --split signer 로 수행자 단위로 그때그때 나눈다."""
+    return make_split(metas, cfg.get("split", "item"), cfg.get("holdout", 4), cfg.get("test_signers", 2),
+                      cfg.get("seed", 0), data_dir=cfg.get("data"))
 
 
 def sample_batch(clips, batch, window, rng):
@@ -159,8 +161,10 @@ def record_experiment(args, summary):
     tr, te = summary["train_mm"], summary["test_mm"]
     f1 = lambda v: f"{v:.1f}" if v is not None else "–"
     nb = summary["nb_code"]
+    sp = load_split(args.data)
+    split_label = f"고정 {sp['mode']}" if sp else args.split
     row = [datetime.date.today().isoformat(), os.path.basename(os.path.normpath(args.run)), git_commit(),
-           f"{os.path.basename(os.path.normpath(args.data))} · {args.split}", args.parts, str(nb), str(args.iters),
+           f"{os.path.basename(os.path.normpath(args.data))} · {split_label}", args.parts, str(nb), str(args.iters),
            str(summary["minutes"]), f"{f1(tr['body'])} / {f1(tr['hand'])}",
            f"{f1(te.get('body'))} / {f1(te.get('hand'))} / {f1(te.get('face'))}" if te else "–",
            f"{summary['codes_used_train']} ({summary['codes_used_train'] / nb:.0%}) · "
