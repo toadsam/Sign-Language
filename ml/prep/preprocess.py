@@ -12,12 +12,16 @@
 사용:
   python -m prep.preprocess --src "<01_real_word_keypoint 폴더>" --out data/sample
   python -m prep.preprocess --src "<정식 라벨링데이터 폴더>" --out data/full --types WORD,SEN --workers 8
+  python -m prep.preprocess --src "<...>/01_real_word_keypoint.zip" --out data/full --workers 4
+    zip을 풀지 않고 정면 클립만 바로 읽는다. 정식 데이터는 zip 하나에 프레임 JSON이 수십만 개라
+    풀기만 해도 수십 분이 걸리고 5방향이 다 풀려 디스크도 다섯 배를 쓴다.
 """
 import argparse
 import json
 import os
 import re
 import sys
+import zipfile
 
 import numpy as np
 from scipy.signal import savgol_filter
@@ -31,17 +35,34 @@ from common.skeleton import (
 CLIP_RE = re.compile(r"NIA_SL_(?P<item>[A-Z]+\d+)_(?P<signer>[A-Z]+\d+)_(?P<view>[DFLRU])$")
 
 
-def load_clip(folder):
-    """폴더 안 프레임 JSON을 파일 이름순으로 읽어 [T, 125, 3] (미터)로 쌓는다.
+_ZIPS = {}  # 작업자 프로세스마다 zip을 한 번만 연다
+
+
+def frame_jsons(src):
+    """클립 하나의 프레임 JSON을 파일 이름순으로 돌려준다.
+    src: 클립 폴더 경로, 또는 (zip 경로, zip 안 프레임 파일 이름들).
 
     파일 번호가 건너뛰는 경우(예: WORD1515_L)가 있어 번호가 아니라 정렬 순서를 쓴다.
     """
-    folder = long_path(folder)
-    files = sorted(f for f in os.listdir(folder) if f.endswith("_keypoints.json"))
-    frames = np.full((len(files), N_JOINTS, 3), np.nan)
-    for t, name in enumerate(files):
+    if isinstance(src, tuple):
+        zp, members = src
+        if zp not in _ZIPS:
+            _ZIPS[zp] = zipfile.ZipFile(zp)
+        return [json.loads(_ZIPS[zp].read(n)) for n in sorted(members)]
+    folder = long_path(src)
+    out = []
+    for name in sorted(f for f in os.listdir(folder) if f.endswith("_keypoints.json")):
         with open(os.path.join(folder, name), encoding="utf-8") as fh:
-            p = json.load(fh)["people"]
+            out.append(json.load(fh))
+    return out
+
+
+def load_clip(src):
+    """프레임 JSON을 읽어 [T, 125, 3] (미터)로 쌓는다."""
+    docs = frame_jsons(src)
+    frames = np.full((len(docs), N_JOINTS, 3), np.nan)
+    for t, d in enumerate(docs):
+        p = d["people"]
         if isinstance(p, list):
             p = p[0] if p else {}
         try:
@@ -127,8 +148,21 @@ def active_range(y, thresh=0.25, pad=3, n_rest=5):
     return [int(max(idx[0] - pad, 0)), int(min(idx[-1] + pad, len(y) - 1))]
 
 
+def _wanted(m, view, types):
+    return m is not None and m["view"] == view and (not types or re.sub(r"\d+", "", m["item"]) in types)
+
+
 def find_clips(src, view, types):
-    """src 아래를 모두 뒤져 해당 방향의 클립 폴더를 찾는다 (정식 데이터는 폴더가 여러 겹이다)."""
+    """[(클립 폴더 이름, 읽을 곳)]. src가 .zip이면 zip 안에서, 폴더면 하위 폴더까지 모두 뒤진다."""
+    if src.lower().endswith(".zip"):
+        groups = {}
+        for n in zipfile.ZipFile(src).namelist():
+            if not n.endswith("_keypoints.json"):
+                continue
+            parent = n.rsplit("/", 2)[-2] if n.count("/") >= 1 else ""
+            if _wanted(CLIP_RE.match(parent), view, types):
+                groups.setdefault(parent, []).append(n)
+        return sorted((name, (src, members)) for name, members in groups.items())
     found = []
     for root, dirs, _ in os.walk(long_path(src)):
         keep = []
@@ -136,20 +170,25 @@ def find_clips(src, view, types):
             m = CLIP_RE.match(d)
             if m is None:
                 keep.append(d)
-            elif m["view"] == view and (not types or re.sub(r"\d+", "", m["item"]) in types):
-                found.append(os.path.join(root, d))
+            elif _wanted(m, view, types):
+                found.append((d, os.path.join(root, d)))
         dirs[:] = keep  # 클립 폴더 안(프레임 JSON)으로는 들어가지 않는다
     return sorted(found)
 
 
-def process(path, out, max_missing):
+def process(name, src, out, max_missing):
     """클립 하나 처리. 결과 meta와 점검값을 돌려준다(제외하면 None)."""
-    m = CLIP_RE.match(os.path.basename(path))
+    m = CLIP_RE.match(name)
     clip_id = f"{m['item']}_{m['signer']}"
-    raw = load_clip(path)
+    raw = load_clip(src)
     raw, miss = fill_missing(raw)
     if miss > max_missing or len(raw) < 16:
         return None, f"제외 {clip_id}: 결측 {miss:.1%}, {len(raw)}프레임"
+    # 정식 데이터 일부(REAL01 기준 WORD1101~1500 구간의 366클립)는 3D가 미터가 아니라 밀리미터로 저장돼 있다.
+    # 어깨너비가 10 이상이면 사람일 수 없으니 밀리미터로 보고 미터로 바꾼다
+    unit = "m"
+    if np.median(np.linalg.norm(raw[:, L_SHOULDER] - raw[:, R_SHOULDER], axis=-1)) > 10:
+        raw, unit = raw / 1000.0, "mm"
 
     # 손 데이터의 왼/오른이 몸 기준과 맞는지 확인 (손목끼리 거리, m)
     gap_r = float(np.linalg.norm(raw[:, R_WRIST] - raw[:, R_HAND_ROOT], axis=-1).mean())
@@ -167,7 +206,7 @@ def process(path, out, max_missing):
         "type": re.sub(r"\d+", "", m["item"]), "frames": int(len(y)), "active": act,
         "missing": round(miss, 4), "norm": norm,
         "check": {"wrist_gap_cm": [round(gap_r * 100, 2), round(gap_l * 100, 2)],
-                  "bone_cv": [round(cv(b0), 4), round(cv(b1), 4)]},
+                  "bone_cv": [round(cv(b0), 4), round(cv(b1), 4)], "src_unit": unit},
     }
     with open(os.path.join(out, "npy", f"{clip_id}.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False)
@@ -178,12 +217,12 @@ def _job(a):
     try:
         return process(*a)
     except Exception as e:  # 깨진 클립 하나 때문에 전체가 멈추지 않게
-        return None, f"오류 {os.path.basename(a[0])}: {e}"
+        return None, f"오류 {a[0]}: {e}"
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True, help="키포인트 폴더 (하위 폴더까지 모두 찾음)")
+    ap.add_argument("--src", required=True, help="키포인트 폴더(하위 폴더까지 모두 찾음) 또는 키포인트 .zip")
     ap.add_argument("--out", required=True)
     ap.add_argument("--view", default="F")
     ap.add_argument("--types", default="", help="쉼표로 구분 (예: WORD,SEN). 비우면 전부")
@@ -199,13 +238,13 @@ def main():
     if not clips:
         sys.exit(f"{args.src} 아래에 {args.view} 방향 클립 폴더가 없습니다.")
 
-    def done(p):
-        m = CLIP_RE.match(os.path.basename(p))
+    def done(name):
+        m = CLIP_RE.match(name)
         return os.path.exists(os.path.join(npy_dir, f"{m['item']}_{m['signer']}.json"))
-    todo = clips if args.overwrite else [p for p in clips if not done(p)]
+    todo = clips if args.overwrite else [c for c in clips if not done(c[0])]
     print(f"클립 {len(clips)}개 중 새로 변환 {len(todo)}개 (작업자 {args.workers})")
 
-    jobs = [(p, args.out, args.max_missing) for p in todo]
+    jobs = [(name, src, args.out, args.max_missing) for name, src in todo]
     if args.workers > 1:
         from multiprocessing import Pool
         with Pool(args.workers) as pool:
@@ -242,7 +281,10 @@ def main():
             print(f"{mt['clip']:22s} {mt['frames']:4d}  {mt['active'][0]:3d}–{mt['active'][1]:3d}   "
                   f"{c['wrist_gap_cm'][0]:5.1f}/{c['wrist_gap_cm'][1]:5.1f}      {c['bone_cv'][0]:.3f} → {c['bone_cv'][1]:.4f}")
     gaps = [max(mt["check"]["wrist_gap_cm"]) for mt in metas]
+    n_mm = sum(mt["check"].get("src_unit") == "mm" for mt in metas)
     print(f"\n저장: {len(metas)}개 클립 → {args.out}  (손목 간격 최대 {max(gaps):.1f}cm — 5cm를 넘으면 손 좌우가 뒤바뀐 클립일 수 있음)")
+    if n_mm:
+        print(f"  원본이 밀리미터 단위라 미터로 바꾼 클립: {n_mm}개")
 
 
 if __name__ == "__main__":

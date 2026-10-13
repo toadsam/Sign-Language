@@ -29,10 +29,13 @@ python -m prep.inspect_dataset --root "<받은 폴더>" --out data/inspect_repor
 
 # 1) 정면 키포인트 → 정규화된 3D 동작 npy (하위 폴더 자동 탐색, 중간에 멈춰도 이어서 됨)
 python -m prep.preprocess --src "<라벨링데이터 폴더>" --out data/full --types WORD,SEN --workers 8
+#    받은 zip을 풀지 않고 바로 변환 (권장. zip 하나 = 표현자 한 명, 약 11GB → npy 약 0.5GB, 노트북 6작업자 2분)
+python -m prep.preprocess --src "<...>/01_real_word_keypoint.zip" --out data/full --workers 6
+#    정식 데이터 일부 클립은 3D가 mm 단위다. 자동으로 m로 바꾸고 meta의 check.src_unit 에 "mm" 로 남긴다
 
-# 1-1) 고정 분할표 — 수행자 33/4/4명으로 한 번 나눠 ml/splits/full.json 에 저장하고 커밋한다.
+# 1-1) 고정 분할표 — 수행자 13/2/2명(정식 WORD 표현자 17명)으로 한 번 나눠 ml/splits/full.json 에 저장하고 커밋한다.
 #      자모표·받아쓰기·읽는 모델이 모두 이 파일로 같은 test 수행자를 쓴다 (형식은 docs/contracts.md ①)
-python -m prep.make_split --data data/full --val-signers 4 --test-signers 4
+python -m prep.make_split --data data/full --val-signers 2 --test-signers 2
 
 # 2) 자모표 학습 — 수행자 단위로 나눠 처음 보는 사람으로 평가. 끝나면 experiments.md 에 한 줄이 붙는다
 #    E1 상체+손 55점 (Ours-H, 얼굴은 평균 고정) / E2 얼굴 포함 125점 (Ours-HF)

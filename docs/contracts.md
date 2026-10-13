@@ -50,7 +50,7 @@ ml/splits/<데이터 폴더 이름>.json     예) data/full → ml/splits/full.j
  "counts": {"train": 0, "val": 0, "test": 0}, "test_items_unseen": []}
 ```
 
-- 만들기: `python -m prep.make_split --data data/full --val-signers 4 --test-signers 4` (재훈이 한 번만)
+- 만들기: `python -m prep.make_split --data data/full --val-signers 2 --test-signers 2` (재훈이 한 번만. 정식 WORD 표현자가 17명이라 13 / 2 / 2명)
 - 쓰기:
 
 ```python
