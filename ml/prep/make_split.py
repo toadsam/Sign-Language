@@ -10,6 +10,7 @@
 정말 다시 나눠야 하면 --force 를 붙이고 팀에 알린다.
 """
 import argparse
+import csv
 import datetime
 import json
 import os
@@ -31,6 +32,9 @@ def main():
     ap.add_argument("--holdout", type=int, default=4, help="수행자가 부족할 때 test로 뺄 단어 수")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="이미 있는 분할표를 덮어쓴다")
+    ap.add_argument("--exclude", help="학습·평가에서 뺄 클립 목록. 품질 점검 CSV(clip, motion_status 열)면 motion_status가 hold인 것, "
+                                      "텍스트면 한 줄에 클립 하나")
+    ap.add_argument("--exclude-note", default="", help="제외 기준 설명 (분할표에 같이 저장)")
     args = ap.parse_args()
 
     out = split_path(args.data)
@@ -42,6 +46,16 @@ def main():
     signers = sorted({m["signer"] for m in metas})
     sp = {"name": os.path.basename(os.path.normpath(args.data)), "created": datetime.date.today().isoformat(),
           "seed": args.seed, "clips": len(metas)}
+    if args.exclude:
+        if args.exclude.lower().endswith(".csv"):
+            rows = list(csv.DictReader(open(args.exclude, encoding="utf-8")))
+            ex = sorted(r["clip"] for r in rows if r.get("motion_status", "hold") == "hold")
+        else:
+            ex = sorted(l.strip() for l in open(args.exclude, encoding="utf-8") if l.strip())
+        unknown = set(ex) - {m["clip"] for m in metas}
+        if unknown:
+            raise SystemExit(f"제외 목록에 데이터에 없는 클립 {len(unknown)}개: {sorted(unknown)[:5]}")
+        sp["exclude"] = {"clips": ex, "note": args.exclude_note, "source": os.path.basename(args.exclude)}
     if len(signers) > args.val_signers + args.test_signers:
         perm = np.random.default_rng(args.seed).permutation(signers).tolist()
         test, val = sorted(perm[:args.test_signers]), sorted(perm[args.test_signers:args.test_signers + args.val_signers])
@@ -63,7 +77,8 @@ def main():
         json.dump(sp, fh, ensure_ascii=False, indent=2)
     print(f"분할표: {out}")
     print(f"  방식 {sp['mode']} · 수행자 학습 {len(sp['signers']['train'])} / 검증 {len(sp['signers']['val'])} / 평가 {len(sp['signers']['test'])}명")
-    print(f"  클립 학습 {len(train)} · 검증 {len(val)} · 평가 {len(test)}")
+    print(f"  클립 학습 {len(train)} · 검증 {len(val)} · 평가 {len(test)}"
+          + (f" (제외 {len(sp['exclude']['clips'])}개)" if "exclude" in sp else ""))
     if sp["mode"] == "signer":
         print(f"  평가 수행자: {', '.join(sp['signers']['test'])}")
         print(f"  학습에 없는 평가 단어: {len(sp['test_items_unseen'])}개")

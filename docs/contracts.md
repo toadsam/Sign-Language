@@ -18,17 +18,29 @@
 ### 동작 데이터
 
 ```
-data/<세트>/
-  npy/<clip>.npy     float32 [T, 375] = [T, 125, 3], 정규화 좌표
+data/<세트>/                       정식 데이터는 노트북 C:/aihub/full (OneDrive 밖)
+  npy/<clip>.npy     float32, 파일에는 [T, 125, 3]으로 저장. load_data가 [T, 375]로 펴서 준다
+  npy/<clip>.json    클립 하나의 meta (meta.jsonl은 이것들을 모은 것)
   meta.jsonl         클립 하나에 한 줄
+  sentences.jsonl    문장(SEN) 클립이 있을 때만: {"clip", "gloss", "nonmanual"}
 ```
 
 ```json
 {"clip": "WORD1501_REAL01", "item": "WORD1501", "signer": "REAL01", "view": "F", "type": "WORD",
  "frames": 139, "active": [40, 112], "missing": 0.0,
  "norm": {"origin": [-0.00224, -0.10967, 2.3993], "yaw": -0.02343, "scale": 0.32641},
- "check": {"wrist_gap_cm": [0.91, 1.47], "bone_cv": [0.1362, 0.0]}}
+ "check": {"wrist_gap_cm": [0.91, 1.47], "bone_cv": [0.1362, 0.0], "src_unit": "m"},
+ "label": "ok", "gloss": ["운전면허"],
+ "segments": [{"name": "운전면허", "start": 1.675, "end": 3.9, "f0": 50, "f1": 117, "nonmanual": []}],
+ "question": false, "dur_ratio": 1.0}
 ```
+
+2026-10-14 추가된 필드 (기존 필드는 그대로, **팀 확인 필요**)
+- `check.src_unit`: 원본 3D 단위. 정식 데이터의 약 27%가 `"mm"`이라 변환할 때 미터로 맞췄다
+- `check.repair`: 귀·눈(9–12)을 다시 계산한 클립에만 있다(약 1.7만 클립, 주로 왼쪽 귀). 방법별 프레임 수 기록
+- `label` `"ok"`·`"empty"`·`"missing"`, `gloss` 형태소 목록, `segments` 구간(초와 30fps 프레임 `f0`~`f1`), `question` 의문형 여부
+- `dur_ratio`: 라벨의 영상 길이 / (프레임 수 / 30). 정상 1.0. **약 3이면 키포인트가 10fps로 뽑힌 클립**(동작이 3배 빠르게 보이고 `f0`·`f1`도 어긋남)
+- **라벨이 필요한 모델**(받아쓰기 · 읽는 모델)은 `label == "ok"`이고 `0.85 ≤ dur_ratio < 1.5`인 클립만 쓴다
 
 - 관절 125점: 상체 13 (0–12) · 왼손 21 (13–33) · 오른손 21 (34–54) · 얼굴 70 (55–124). 정의는 `ml/common/skeleton.py`
 - 좌표: 원점 목, 어깨선이 x축과 평행, 어깨너비 = 1. x 오른쪽, y 아래, z 카메라에서 멀어지는 방향. `norm.scale`을 곱하면 미터
@@ -59,6 +71,7 @@ metas = load_data("data/full")
 train, val, test = apply_split(metas, load_split("data/full"))
 ```
 
+- `exclude.clips`: 품질 점검에서 학습 보류된 클립. `apply_split`이 자동으로 빼므로 따로 거를 필요가 없다. 기준은 `exclude.note`와 `ml/prep/quality_policy.md`
 - `mode: "item"`은 수행자가 1명뿐인 샘플용이다(마지막 4단어가 test). 정식 데이터는 `"signer"`
 - `val`은 설정을 고르는 데만 쓰고, 최종 숫자는 `test`로 낸다
 - 이미 있는 분할표는 덮어쓰지 않는다(`--force` 없이는 거부). 바꿔야 하면 팀에 먼저 알린다

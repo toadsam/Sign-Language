@@ -54,7 +54,11 @@ def load_split(data_dir):
 
 
 def apply_split(metas, sp):
-    """고정 분할표대로 나눈다 → (train, val, test). 분할표에 없는 수행자의 클립은 어디에도 넣지 않는다."""
+    """고정 분할표대로 나눈다 → (train, val, test). 분할표에 없는 수행자의 클립은 어디에도 넣지 않는다.
+    분할표의 exclude.clips 에 있는 클립(품질 점검에서 학습 보류된 동작)도 빼다."""
+    excluded = set(sp.get("exclude", {}).get("clips", []))
+    if excluded:
+        metas = [m for m in metas if m["clip"] not in excluded]
     if sp["mode"] == "signer":
         part = {s: k for k, v in sp["signers"].items() for s in v}
         key = lambda m: part.get(m["signer"])
