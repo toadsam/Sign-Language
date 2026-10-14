@@ -36,12 +36,13 @@ function AuthGate() {
     const currentPath = (segments[0] as string | undefined);
     const inLoginScreen = currentPath === 'login';
     const inSignupScreen = currentPath === 'signup';
+    const inPlayerLab = __DEV__ && (currentPath === 'sign-player' || currentPath === 'sign-compare' || currentPath === 'sign-codebook' || currentPath === 'sign-reconstruct' || currentPath === 'sign-generate' || currentPath === 'sign-camera' || currentPath === 'sign-hand-review' || currentPath === 'sign-lab');
     const canUseApp = Boolean(accessToken) || isGuest;
 
     console.log('AuthGate - currentPath:', currentPath, 'canUseApp:', canUseApp, 'inLoginScreen:', inLoginScreen, 'inSignupScreen:', inSignupScreen);
 
     // 로그인/회원가입 화면이 아닌데 인증이 안되어 있으면 로그인으로
-    if (!canUseApp && !inLoginScreen && !inSignupScreen) {
+    if (!canUseApp && !inLoginScreen && !inSignupScreen && !inPlayerLab) {
       console.log('AuthGate - 인증 없음, 로그인으로 이동');
       router.replace('/login' as any);
       return;
