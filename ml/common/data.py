@@ -7,11 +7,22 @@ import numpy as np
 from common.skeleton import FEAT_DIM
 
 
-def load_data(data_dir, types=None):
-    """meta.jsonl의 각 줄에 동작 배열 m["x"] ([T, 375])를 붙여 돌려준다."""
+def load_data(data_dir, types=None, per_signer=0, seed=0):
+    """meta.jsonl의 각 줄에 동작 배열 m["x"] ([T, 375])를 붙여 돌려준다.
+
+    per_signer > 0 이면 수행자마다 클립을 그 수만큼만 무작위로(seed 고정) 골라 읽는다.
+    정식 데이터 전체는 메모리에 약 9GB라, 노트북에서 코드를 확인할 때 쓴다.
+    """
     metas = [json.loads(l) for l in open(os.path.join(data_dir, "meta.jsonl"), encoding="utf-8")]
     if types:
         metas = [m for m in metas if m["type"] in types]
+    if per_signer:
+        rng = np.random.default_rng(seed)
+        by = {}
+        for m in metas:
+            by.setdefault(m["signer"], []).append(m)
+        metas = sorted((m for ms in by.values() for m in rng.permutation(ms)[:per_signer].tolist()),
+                       key=lambda m: m["clip"])
     for m in metas:
         m["x"] = np.load(os.path.join(data_dir, "npy", f"{m['clip']}.npy")).reshape(-1, FEAT_DIM)
     return metas

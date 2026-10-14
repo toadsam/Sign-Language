@@ -30,7 +30,7 @@ from vq.model import PARTS, MotionVQVAE
 
 ML_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 이어 학습할 때 바뀌면 안 되는 설정 (모델 모양·데이터·분할)
-FIXED_KEYS = ["data", "parts", "width", "code_dim", "nb_code", "depth", "window", "split", "holdout", "test_signers", "seed"]
+FIXED_KEYS = ["data", "subset", "parts", "width", "code_dim", "nb_code", "depth", "window", "split", "holdout", "test_signers", "seed"]
 
 
 # ---------------------------------------------------------------- 데이터
@@ -209,6 +209,7 @@ def main():
     ap.add_argument("--save-every", type=int, default=0, help="중간 저장 간격 (0이면 --eval-every와 같게)")
     ap.add_argument("--resume", action="store_true", help="runs/<이름>/ckpt.pt 에서 이어 학습")
     ap.add_argument("--threads", type=int, default=0, help="CPU 스레드 수 (0이면 PyTorch 기본값). 노트북이 느려지면 줄인다")
+    ap.add_argument("--subset", type=int, default=0, help="수행자마다 이 수만큼만 읽음 (0이면 전부). 노트북 확인용")
     ap.add_argument("--note", default="", help="experiments.md 메모 칸")
     ap.add_argument("--no-record", action="store_true", help="experiments.md 에 남기지 않음 (코드 확인용 짧은 실행)")
     ap.add_argument("--seed", type=int, default=0)
@@ -222,7 +223,9 @@ def main():
     os.makedirs(args.run, exist_ok=True)
     json.dump(vars(args), open(os.path.join(args.run, "config.json"), "w"), indent=2)
 
-    metas = load_data(args.data)
+    metas = load_data(args.data, per_signer=args.subset, seed=args.seed)
+    if args.subset:
+        print(f"--subset {args.subset}: 수행자마다 {args.subset}클립만 읽음 (코드 확인용)")
     train_clips, test_clips = split(metas, vars(args))
     print(f"학습 클립 {len(train_clips)}개, 평가 클립 {len(test_clips)}개 · 관절 {PARTS[args.parts]}점 ({args.parts})")
 
