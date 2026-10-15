@@ -72,6 +72,7 @@ train, val, test = apply_split(metas, load_split("data/full"))
 ```
 
 - `exclude.clips`: 품질 점검에서 학습 보류된 클립. `apply_split`이 자동으로 빼므로 따로 거를 필요가 없다. 기준은 `exclude.note`와 `ml/prep/quality_policy.md`
+- 지금 있는 분할표 (2026-10-16): `full.json`(단어 WORD 48,000) · `full_sen.json`(문장 SEN 32,000) · `full_all.json`(둘을 합친 것). 셋 다 학습 12명 / 검증 REAL04 · REAL11 / 평가 REAL03 · REAL12로 같다. 문장 데이터는 노트북 `C:/aihub/full_sen`, `sentences.jsonl`도 거기 있다
 - `mode: "item"`은 수행자가 1명뿐인 샘플용이다(마지막 4단어가 test). 정식 데이터는 `"signer"`
 - `val`은 설정을 고르는 데만 쓰고, 최종 숫자는 `test`로 낸다
 - 이미 있는 분할표는 덮어쓰지 않는다(`--force` 없이는 거부). 바꿔야 하면 팀에 먼저 알린다

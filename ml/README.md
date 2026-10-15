@@ -59,11 +59,37 @@ python -m gen.train_sentence --tokens data/full/tokens.json --sentences data/ful
 # 비교 실험 — 우리 방법 vs 기준선 ① 이어붙이기 vs 기준선 ② 좌표 직접 예측
 python -m gen.compare --data data/full --vq runs/vq --recog runs/recog --gpt runs/gen_gpt --regress runs/gen_regress --out runs/compare
 
-# 발표용 그림
-python -m vq.render_figures --run runs/vq --data data/full --pair <클립>:<프레임> --timeline <클립>
+# 발표용 그림 (고른 클립만 읽음, --curve 는 학습 곡선)
+python -m vq.render_figures --run runs/vq --data data/full --curve --pair <클립>:<프레임> --timeline <클립>
 ```
 
 학습이 끝나면 `runs/<이름>/viewer.html`로 원본과 복원 동작을 비교한다.
+
+## 실제로 쓴 정식 데이터 흐름 (2026-10-14 ~ 16, 재훈)
+
+노트북에서 AI Hub 키포인트를 받아 변환하고, 학습은 GCP 서울 Spot T4에서 했다. 자세한 판단과 숫자는 `docs/ai-log/jaehun.md`, 실험 표는 `experiments.md`.
+
+```bash
+# 받기 + 변환 (zip 하나씩 받고 → 변환 → 확인 → zip 삭제. 끊겨도 다시 실행하면 이어서)
+python -m prep.batch_word --delete-verified               # WORD 16명 → C:/aihub/full     (48,000클립)
+python -m prep.batch_word --type SEN --delete-verified    # SEN 16명  → C:/aihub/full_sen (32,000클립)
+#    파일 하나를 받는 동안 임시 파일까지 약 45GB를 쓴다. 여유 공간 기준은 --reserve-gb (기본 20)
+
+# 품질 v1: 귀·눈 좌표 다시 계산(백업 필수) → 라벨 붙이기 → 제외 목록을 넣어 분할표
+python -m prep.repair_ears --data C:/aihub/full --backup C:/aihub/repair_backup/ears_v2
+python -m prep.attach_labels --data C:/aihub/full --labels <형태소 라벨 zip들>     # SEN이면 sentences.jsonl 도 생김
+python -m prep.make_split --data C:/aihub/full --exclude <제외 목록> --exclude-note "<기준>"
+#    분할표: splits/full.json(단어) · full_sen.json(문장) · full_all.json(둘을 합친 것). 평가 사람은 모두 REAL03 · REAL12
+
+# 자모표 학습 (GPU가 있으면 자동으로 씀, --device). 노트북에서 코드만 확인할 땐 --subset 300 --iters 400
+python -m vq.train --data /data/full --run runs/vq_e4_200k --split signer --nb-code 512 --iters 200000 --parts body_hand --resume
+
+# 학습한 자모표를 다른 데이터의 평가 사람으로 재기 (단어 구간 · 전환 · 앞뒤로 나눔, CPU로 됨)
+python -m vq.eval_clips --vq runs/vq_e4_200k --data C:/aihub/full_sen --out runs/vq_e4_200k/eval_sen_test.json
+
+# 기준선 B1 (단어 클립 이어붙이기)을 평가 사람으로 재기
+python -m vq.baseline_b1 --data C:/aihub/full --vq runs/vq_e1 --out runs/b1
+```
 
 ## 샘플 결과 (단어 20개 · 수행자 1명, CPU)
 
