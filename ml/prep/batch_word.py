@@ -37,6 +37,13 @@ def intact(path):
         return False
 
 
+def clean(work):
+    """작업 폴더에서 기록(.log) 말고 모두 지운다: 받다 끊긴 tar, 조각(.partN), 병합 zip."""
+    for old in work.iterdir():
+        if old.suffix != ".log":
+            shutil.rmtree(old) if old.is_dir() else old.unlink()
+
+
 def validate(archive, output, kind="WORD"):
     clips = find_clips(str(archive), "F", {kind})
     if not clips:
@@ -84,6 +91,8 @@ def main():
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--delete-verified", action="store_true")
     ap.add_argument("--type", choices=list(KINDS), default="WORD")
+    ap.add_argument("--reserve-gb", type=float, default=20,
+                    help="남길 최소 여유 공간. 파일 하나를 받는 동안 tar · 조각 · 병합 zip이 함께 있어 약 45GB까지 쓴다")
     args = ap.parse_args()
     root = args.root.resolve()
     kind, cfg = args.type, KINDS[args.type]
@@ -91,7 +100,7 @@ def main():
     logs = root / cfg["logs"]
     logs.mkdir(exist_ok=True)
     ml = Path(__file__).resolve().parents[1]
-    reserve = 40 * 1024**3
+    reserve = args.reserve_gb * 1024**3
     report = logs / "results.jsonl"
     completed = set()
     if report.exists():
@@ -116,9 +125,7 @@ def main():
             if not matches:
                 if kind == "WORD" and number == 1:
                     continue
-                for old in work.iterdir():  # 지난번에 받다 끊긴 파일 정리 (기록 .log 는 남김)
-                    if old.suffix != ".log":
-                        shutil.rmtree(old) if old.is_dir() else old.unlink()
+                clean(work)  # 지난번에 받다 끊긴 파일 정리
                 # Each request has its own directory so partial downloads cannot mix.
                 command = [str(args.bash), "-lc", 'export AIHUB_APIKEY=$(cat ~/.aihub_key); bash /c/aihub/aihubshell -mode d -datasetkey 103 -filekey ' + str(key)]
                 run_checked(command, work, work / "download.log", root, reserve)
@@ -132,6 +139,8 @@ def main():
             record["status"] = "validated"
             if args.delete_verified:
                 archive.unlink()
+                if archive.is_relative_to(work):
+                    clean(work)  # 남은 download.tar · 조각 파일 (zip 하나당 최대 20GB 넘게 남는다)
                 record["deleted"] = True
         except Exception as exc:
             record.update(status="failed", error=str(exc))
