@@ -77,7 +77,7 @@ def losses(x, xh, w, beta):
 
 # ---------------------------------------------------------------- 평가
 @torch.no_grad()
-def evaluate(model, clips, down):
+def evaluate(model, clips, down, device="cpu"):
     """클립 전체를 인코딩→복원해 부위별 MPJPE(mm)와 코드 사용 현황을 잰다."""
     model.eval()
     errs = {"body": [], "hand": [], "finger_rel": [], "face": [], "all": []}
@@ -85,7 +85,8 @@ def evaluate(model, clips, down):
     for m in clips:
         T = len(m["x"]) // down * down
         x = torch.from_numpy(m["x"][:T])[None]
-        xh, _, _, idx = model(x)
+        xh, _, _, idx = model(x.to(device))
+        xh, idx = xh.cpu(), idx.cpu()
         used.update(idx.flatten().tolist())
         mm = m["norm"]["scale"] * 1000.0  # 정규화 단위(어깨너비) → mm
         x4, xh4 = x.view(1, T, N_JOINTS, 3), xh.view(1, T, N_JOINTS, 3)
@@ -118,6 +119,7 @@ def save_ckpt(path, model, opt, it, rng, elapsed, args):
     tmp = path + ".tmp"
     torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "iter": it,
                 "np_rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
+                "cuda_rng": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                 "elapsed": elapsed, "config": vars(args)}, tmp)
     os.replace(tmp, path)
 
@@ -132,6 +134,8 @@ def load_ckpt(path, model, opt, rng, args):
     opt.load_state_dict(ck["opt"])
     rng.bit_generator.state = ck["np_rng"]
     torch.set_rng_state(ck["torch_rng"])
+    if ck.get("cuda_rng") and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(ck["cuda_rng"])
     return ck["iter"], ck["elapsed"]
 
 
@@ -209,6 +213,7 @@ def main():
     ap.add_argument("--save-every", type=int, default=0, help="중간 저장 간격 (0이면 --eval-every와 같게)")
     ap.add_argument("--resume", action="store_true", help="runs/<이름>/ckpt.pt 에서 이어 학습")
     ap.add_argument("--threads", type=int, default=0, help="CPU 스레드 수 (0이면 PyTorch 기본값). 노트북이 느려지면 줄인다")
+    ap.add_argument("--device", default="auto", help="auto: GPU가 있으면 cuda, 없으면 cpu")
     ap.add_argument("--subset", type=int, default=0, help="수행자마다 이 수만큼만 읽음 (0이면 전부). 노트북 확인용")
     ap.add_argument("--note", default="", help="experiments.md 메모 칸")
     ap.add_argument("--no-record", action="store_true", help="experiments.md 에 남기지 않음 (코드 확인용 짧은 실행)")
@@ -217,6 +222,7 @@ def main():
     save_every = args.save_every or args.eval_every
     if args.threads:
         torch.set_num_threads(args.threads)
+    device = torch.device(("cuda" if torch.cuda.is_available() else "cpu") if args.device == "auto" else args.device)
 
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -227,15 +233,20 @@ def main():
     if args.subset:
         print(f"--subset {args.subset}: 수행자마다 {args.subset}클립만 읽음 (코드 확인용)")
     train_clips, test_clips = split(metas, vars(args))
+    short = [m for m in train_clips if len(m["x"]) < args.window]
+    if short:  # 학습 창보다 짧은 클립은 잘라 낼 구간이 없다 (정식 데이터에 소수 있음)
+        train_clips = [m for m in train_clips if len(m["x"]) >= args.window]
+        print(f"학습 창 {args.window}프레임보다 짧은 학습 클립 {len(short)}개 제외")
     print(f"학습 클립 {len(train_clips)}개, 평가 클립 {len(test_clips)}개 · 관절 {PARTS[args.parts]}점 ({args.parts})")
 
     model = MotionVQVAE(FEAT_DIM, args.width, args.code_dim, args.nb_code, depth=args.depth, parts=args.parts)
     # 자모표가 맡지 않는 관절(body_hand의 얼굴)은 학습 데이터의 평균 자세로 채운다
     model.rest.copy_(torch.from_numpy(np.concatenate([m["x"] for m in train_clips]).mean(0)))
+    model.to(device)
     down = model.down
-    print(f"파라미터 {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
+    print(f"장치 {device} · 파라미터 {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.99), weight_decay=0.0)
-    w = joint_weights(args.w_body, args.w_hand, args.w_face, PARTS[args.parts])
+    w = joint_weights(args.w_body, args.w_hand, args.w_face, PARTS[args.parts]).to(device)
 
     ckpt = os.path.join(args.run, "ckpt.pt")
     start, elapsed = 0, 0.0
@@ -257,7 +268,7 @@ def main():
     for it in range(start + 1, args.iters + 1):
         for g in opt.param_groups:
             g["lr"] = args.lr * min(1.0, it / args.warmup)
-        x = sample_batch(train_clips, args.batch, args.window, rng)
+        x = sample_batch(train_clips, args.batch, args.window, rng).to(device, non_blocking=True)
         xh, commit, ppl, _ = model(x)
         pos, vel, hand = losses(x, xh, w, args.beta)
         loss = pos + args.lam_vel * vel + args.lam_hand * hand + args.commit * commit
@@ -275,8 +286,8 @@ def main():
                   f"commit {avg['commit']:.4f} ppl {avg['ppl']:.1f}  ({time.time() - t0:.0f}s)")
             log.write(json.dumps({"iter": it, **avg}) + "\n")
         if it % args.eval_every == 0 or it == args.iters:
-            ev_tr, used_tr, _ = evaluate(model, train_clips, down)
-            ev_te, used_te, _ = evaluate(model, test_clips, down) if test_clips else ({}, set(), {})
+            ev_tr, used_tr, _ = evaluate(model, train_clips, down, device)
+            ev_te, used_te, _ = evaluate(model, test_clips, down, device) if test_clips else ({}, set(), {})
             fmt = lambda e: " ".join(f"{k} {v:.1f}" for k, v in e.items())
             print(f"  평가 train(mm): {fmt(ev_tr)} | 코드 {len(used_tr)}/{args.nb_code}")
             if test_clips:
@@ -288,8 +299,8 @@ def main():
             save_ckpt(ckpt, model, opt, it, rng, time.time() - t0, args)
 
     torch.save({"model": model.state_dict(), "config": vars(args)}, os.path.join(args.run, "model.pt"))
-    ev_tr, used_tr, rec_tr = evaluate(model, train_clips, down)
-    ev_te, used_te, rec_te = evaluate(model, test_clips, down) if test_clips else ({}, set(), {})
+    ev_tr, used_tr, rec_tr = evaluate(model, train_clips, down, device)
+    ev_te, used_te, rec_te = evaluate(model, test_clips, down, device) if test_clips else ({}, set(), {})
     summary = {"parts": args.parts, "train_mm": ev_tr, "test_mm": ev_te, "codes_used_train": len(used_tr),
                "codes_used_test": len(used_te), "nb_code": args.nb_code,
                "usage_train": round(len(used_tr) / args.nb_code, 3), "ppl_last": ppl_last,
