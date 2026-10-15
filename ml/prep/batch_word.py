@@ -1,4 +1,10 @@
-"""Download WORD archives sequentially; delete only after validating every clip."""
+"""Download keypoint archives sequentially; delete only after validating every clip.
+
+  python -m prep.batch_word --delete-verified                 # WORD 16개 → C:/aihub/full
+  python -m prep.batch_word --type SEN --delete-verified      # SEN 16개 → C:/aihub/full_sen
+
+끊겨도 다시 실행하면 확인까지 끝난 압축 파일은 건너뛴다. 받다 끊긴 zip은 열리지 않으므로 지우고 다시 받는다.
+"""
 import argparse
 import ctypes
 from collections import Counter
@@ -8,16 +14,33 @@ import shutil
 import subprocess
 import sys
 import time
+import zipfile
 
 import numpy as np
 
 from prep.preprocess import CLIP_RE, find_clips
 
 
-def validate(archive, output):
-    clips = find_clips(str(archive), "F", {"WORD"})
+# 종류별 (압축 파일 번호 → AI Hub filekey, 저장 폴더, 기록 폴더)
+KINDS = {
+    "WORD": {"key": lambda n: 39600 if n == 1 else 39600 + n, "out": "full", "logs": "word_batch"},
+    "SEN": {"key": lambda n: 39583 if n == 1 else 39583 + n, "out": "full_sen", "logs": "sen_batch"},
+}
+
+
+def intact(path):
+    """끝까지 받아진 zip인지 (중앙 디렉터리를 읽을 수 있는지)."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            return len(z.namelist()) > 0
+    except (zipfile.BadZipFile, OSError):
+        return False
+
+
+def validate(archive, output, kind="WORD"):
+    clips = find_clips(str(archive), "F", {kind})
     if not clips:
-        raise ValueError("No front-view WORD clips")
+        raise ValueError(f"No front-view {kind} clips")
     metas = []
     for name, _ in clips:
         match = CLIP_RE.match(name)
@@ -60,10 +83,12 @@ def main():
     ap.add_argument("--bash", type=Path, default=Path("C:/Program Files/Git/bin/bash.exe"))
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--delete-verified", action="store_true")
+    ap.add_argument("--type", choices=list(KINDS), default="WORD")
     args = ap.parse_args()
     root = args.root.resolve()
-    output = root / "full"
-    logs = root / "word_batch"
+    kind, cfg = args.type, KINDS[args.type]
+    output = root / cfg["out"]
+    logs = root / cfg["logs"]
     logs.mkdir(exist_ok=True)
     ml = Path(__file__).resolve().parents[1]
     reserve = 40 * 1024**3
@@ -79,27 +104,31 @@ def main():
     for number in range(1, 17):
         if number in completed:
             continue
-        key = 39600 if number == 1 else 39600 + number
+        key = cfg["key"](number)
         work = logs / f"{number:02d}"
         work.mkdir(exist_ok=True)
         record = {"archive": number, "filekey": key}
         try:
             if shutil.disk_usage(root).free < reserve:
                 raise RuntimeError("Disk reserve reached; batch stopped")
-            matches = list(root.glob(f"**/{number:02d}_real_word_keypoint.zip"))
+            name = f"{number:02d}_real_{kind.lower()}_keypoint.zip"
+            matches = [m for m in root.glob(f"**/{name}") if intact(m)]
             if not matches:
-                if number == 1:
+                if kind == "WORD" and number == 1:
                     continue
+                for old in work.iterdir():  # 지난번에 받다 끊긴 파일 정리 (기록 .log 는 남김)
+                    if old.suffix != ".log":
+                        shutil.rmtree(old) if old.is_dir() else old.unlink()
                 # Each request has its own directory so partial downloads cannot mix.
                 command = [str(args.bash), "-lc", 'export AIHUB_APIKEY=$(cat ~/.aihub_key); bash /c/aihub/aihubshell -mode d -datasetkey 103 -filekey ' + str(key)]
                 run_checked(command, work, work / "download.log", root, reserve)
-                matches = list(work.glob(f"**/{number:02d}_real_word_keypoint.zip"))
+                matches = [m for m in work.glob(f"**/{name}") if intact(m)]
             if len(matches) != 1:
                 raise ValueError("Expected exactly one downloaded archive")
             archive = matches[0].resolve()
             archive.relative_to(root)
-            run_checked([sys.executable, "-u", "-m", "prep.preprocess", "--src", str(archive), "--out", str(output), "--types", "WORD", "--workers", str(args.workers)], ml, work / "preprocess.log", root, reserve)
-            record.update(validate(archive, output))
+            run_checked([sys.executable, "-u", "-m", "prep.preprocess", "--src", str(archive), "--out", str(output), "--types", kind, "--workers", str(args.workers)], ml, work / "preprocess.log", root, reserve)
+            record.update(validate(archive, output, kind))
             record["status"] = "validated"
             if args.delete_verified:
                 archive.unlink()
