@@ -77,8 +77,9 @@ def losses(x, xh, w, beta):
 
 # ---------------------------------------------------------------- 평가
 @torch.no_grad()
-def evaluate(model, clips, down, device="cpu"):
-    """클립 전체를 인코딩→복원해 부위별 MPJPE(mm)와 코드 사용 현황을 잰다."""
+def evaluate(model, clips, down, device="cpu", keep=()):
+    """클립 전체를 인코딩→복원해 부위별 MPJPE(mm)와 코드 사용 현황을 잰다.
+    복원 결과는 keep 에 든 클립만 돌려준다 (전부 모으면 데이터만큼 메모리를 더 쓴다)."""
     model.eval()
     errs = {"body": [], "hand": [], "finger_rel": [], "face": [], "all": []}
     used, recon = set(), {}
@@ -96,7 +97,8 @@ def evaluate(model, clips, down, device="cpu"):
         errs["face"].append(d[:, FACE].mean().item())
         errs["all"].append(d.mean().item())
         errs["finger_rel"].append(((hand_relative(x4) - hand_relative(xh4)).norm(dim=-1) * mm).mean().item())
-        recon[m["clip"]] = (xh[0].numpy(), idx[0].tolist())
+        if m["clip"] in keep:
+            recon[m["clip"]] = (xh[0].numpy(), idx[0].tolist())
     model.train()
     return {k: float(np.mean(v)) for k, v in errs.items()}, used, recon
 
@@ -241,7 +243,9 @@ def main():
 
     model = MotionVQVAE(FEAT_DIM, args.width, args.code_dim, args.nb_code, depth=args.depth, parts=args.parts)
     # 자모표가 맡지 않는 관절(body_hand의 얼굴)은 학습 데이터의 평균 자세로 채운다
-    model.rest.copy_(torch.from_numpy(np.concatenate([m["x"] for m in train_clips]).mean(0)))
+    # (클립을 한데 이어 붙이면 학습 데이터만큼 메모리를 한 번 더 쓰므로 더해 가며 평균)
+    total = sum(m["x"].sum(0, dtype=np.float64) for m in train_clips)
+    model.rest.copy_(torch.from_numpy((total / sum(len(m["x"]) for m in train_clips)).astype(np.float32)))
     model.to(device)
     down = model.down
     print(f"장치 {device} · 파라미터 {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
@@ -299,8 +303,9 @@ def main():
             save_ckpt(ckpt, model, opt, it, rng, time.time() - t0, args)
 
     torch.save({"model": model.state_dict(), "config": vars(args)}, os.path.join(args.run, "model.pt"))
-    ev_tr, used_tr, rec_tr = evaluate(model, train_clips, down, device)
-    ev_te, used_te, rec_te = evaluate(model, test_clips, down, device) if test_clips else ({}, set(), {})
+    show = {m["clip"] for m in train_clips[:4] + test_clips[:4]}  # 뷰어에 넣을 클립 (export_viewer와 같은 선택)
+    ev_tr, used_tr, rec_tr = evaluate(model, train_clips, down, device, show)
+    ev_te, used_te, rec_te = evaluate(model, test_clips, down, device, show) if test_clips else ({}, set(), {})
     summary = {"parts": args.parts, "train_mm": ev_tr, "test_mm": ev_te, "codes_used_train": len(used_tr),
                "codes_used_test": len(used_te), "nb_code": args.nb_code,
                "usage_train": round(len(used_tr) / args.nb_code, 3), "ppl_last": ppl_last,
