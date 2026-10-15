@@ -349,11 +349,11 @@
 - 목표: 문장 받아쓰기(지헌)가 바로 쓸 수 있게 SEN 데이터를 WORD와 같은 기준으로 정리한다.
 - AI에게 맡긴 것: 일괄 받기 재실행, `attach_labels`, `repair_ears`(백업 포함), 제외 목록, `make_split`.
 - 처음 계획 → 바꾼 것: 분할표는 WORD와 같은 사람이 test가 되어야 한다. 같은 수행자 16명 · 같은 seed라 make_split이 WORD와 똑같이 나눴다(val REAL04 · REAL11, test REAL03 · REAL12)는 것을 확인했다.
-- 내가 판단한 것: WORD에서 정한 귀·눈 대칭 수리 방법을 SEN에도 그대로 쓴다. SEN은 `C:ihubull_sen`에 따로 둔다.
+- 내가 판단한 것: WORD에서 정한 귀·눈 대칭 수리 방법을 SEN에도 그대로 쓴다. SEN은 `C:/aihub/full_sen`에 따로 둔다.
 - 검증:
   - 16개 모두 확인 통과, 32,000클립(수행자당 2,000). 다운로드는 파일당 약 10분.
   - 라벨 ok 31,986 · empty 12 · missing 2, dur_ratio 1.5 이상 78(10fps 등). 라벨만 있고 좌표가 없는 검증 추가분 REAL17 · 18 4,000개는 연결하지 않았다.
   - 쓸 수 있는 문장 클립 31,905개: 2,000문장, 형태소 449종(WORD와 겹치는 것 85종), 문장당 형태소 평균 3.2개(최대 7), 평균 5.9초, 의문문 967개.
-  - 귀·눈 수리 65클립뿐(WORD는 약 1.7만). 백업 `C:ihubepair_backup\sen_ears_v2`.
+  - 귀·눈 수리 65클립뿐(WORD는 약 1.7만). 백업 `C:/aihub/repair_backup/sen_ears_v2`.
   - 분할표 `ml/splits/full_sen.json`: 학습 23,942 · 검증 3,986 · 평가 3,977, 제외 95.
 - 남은 것: SEN 순간 이상치 점검(WORD 품질 점검 도구는 WORD 전용), 지헌에게 `sentences.jsonl` · 분할표 안내, 자모표로 SEN 토큰 만들기(서버에 SEN 올리기 필요).
