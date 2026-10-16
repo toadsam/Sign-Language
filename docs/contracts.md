@@ -73,6 +73,7 @@ train, val, test = apply_split(metas, load_split("data/full"))
 
 - `exclude.clips`: 품질 점검에서 학습 보류된 클립. `apply_split`이 자동으로 빼므로 따로 거를 필요가 없다. 기준은 `exclude.note`와 `ml/prep/quality_policy.md`
 - 지금 있는 분할표 (2026-10-16): `full.json`(단어 WORD 48,000) · `full_sen.json`(문장 SEN 32,000) · `full_all.json`(둘을 합친 것). 셋 다 학습 12명 / 검증 REAL04 · REAL11 / 평가 REAL03 · REAL12로 같다. 문장 데이터는 노트북 `C:/aihub/full_sen`, `sentences.jsonl`도 거기 있다
+- `heldout_sentences` (2026-10-16 추가, **팀 확인 필요**): `full_sen.json` · `full_all.json`에만 있다. 문장 받아쓰기 평가용 **새 조합 문장** — 새 단어 열 50개(`sequences`, 문장 번호 `items`)와 새 "단어 + 의문" 5개(`question_items`). 문장 받아쓰기는 `gloss`가 `sequences`에 있거나 `item`이 `items` · `question_items`에 있는 클립을 **학습에서 빼고**, 평가는 test 사람의 그 클립(150개)으로 한다. `apply_split`은 이 목록을 쓰지 않는다. 만든 방법은 `ml/prep/holdout_sentences.py`
 - `mode: "item"`은 수행자가 1명뿐인 샘플용이다(마지막 4단어가 test). 정식 데이터는 `"signer"`
 - `val`은 설정을 고르는 데만 쓰고, 최종 숫자는 `test`로 낸다
 - 이미 있는 분할표는 덮어쓰지 않는다(`--force` 없이는 거부). 바꿔야 하면 팀에 먼저 알린다
