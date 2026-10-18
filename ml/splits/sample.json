@@ -1,0 +1,31 @@
+{
+  "name": "sample",
+  "created": "2026-10-11",
+  "seed": 0,
+  "clips": 20,
+  "mode": "item",
+  "signers": {
+    "train": [
+      "REAL01"
+    ],
+    "val": [],
+    "test": []
+  },
+  "test_items": [
+    "WORD1517",
+    "WORD1518",
+    "WORD1519",
+    "WORD1520"
+  ],
+  "counts": {
+    "train": 16,
+    "val": 0,
+    "test": 4
+  },
+  "test_items_unseen": [
+    "WORD1517",
+    "WORD1518",
+    "WORD1519",
+    "WORD1520"
+  ]
+}
