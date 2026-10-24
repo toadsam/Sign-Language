@@ -1,6 +1,14 @@
 server:
   port: 8080
 
+sign:
+  generation:
+    url: ${SIGN_GENERATION_URL:http://127.0.0.1:8000/generate}
+    connect-timeout: ${SIGN_GENERATION_CONNECT_TIMEOUT:PT1S}
+    response-timeout: ${SIGN_GENERATION_RESPONSE_TIMEOUT:PT10S}
+    max-text-chars: ${SIGN_GENERATION_MAX_TEXT_CHARS:4096}
+    max-frames: ${SIGN_GENERATION_MAX_FRAMES:1800}
+
 spring:
   application:
     name: sign-language-backend

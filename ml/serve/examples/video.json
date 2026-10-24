@@ -1,0 +1,22 @@
+{
+  "source": "video",
+  "items": [
+    {
+      "word": "화장실",
+      "id": 1,
+      "file": "synthetic.mp4",
+      "url": "https://example.invalid/synthetic.mp4",
+      "hasVideo": true
+    },
+    {
+      "word": "미등록예시",
+      "id": 0,
+      "file": "",
+      "url": "",
+      "hasVideo": false
+    }
+  ],
+  "unknown": [
+    "미등록예시"
+  ]
+}
