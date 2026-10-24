@@ -5,3 +5,6 @@ backend/.gradle
 backend/build
 .env
 backend/.env
+
+# Local-only Codex planning documents and session reports
+/docs/plans/
