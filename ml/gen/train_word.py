@@ -9,7 +9,6 @@
 import argparse
 import json
 import os
-import time
 
 import numpy as np
 from gen.data import DataValidationError, select_data
@@ -20,7 +19,8 @@ def load_setup(tokens_path, data_dir, *, split_path=None, mode="formal",
     """Same four-value return as before, with validated train-only clips.
 
     Formal callers must supply split_path. GPT leaves include_motion=False;
-    B2 may explicitly request motion from selected training clips only.
+    include_motion=True retains the A1 eager helper for small callers only.
+    The A2 B2 entrypoint leaves it False and uses training.MotionSegments per batch.
     return_selection=True appends the Selection as a fifth return value.
     """
     selection = select_data(tokens_path, meta_path or os.path.join(data_dir, "meta.jsonl"),
@@ -57,88 +57,38 @@ def main():
     ap.add_argument("--corrupt", type=float, default=0.3, help="gpt: 입력 토큰을 무작위로 바꾸는 최대 비율")
     ap.add_argument("--length", type=int, default=64, help="regress: 출력 프레임 수")
     ap.add_argument("--seed", type=int, default=0)
+    add_training_arguments(ap)
     args = ap.parse_args()
 
-    from common.skeleton import FEAT_DIM
-    from gen.artifacts import prepare_run
-    from gen.model import MotionGPT, MotionRegressor
-    from recog.features import resample
-    from vq.train import joint_weights, losses
-    import torch
-    import torch.nn.functional as F
-
-    torch.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
-    tk, clips, classes, signers, selection = load_setup(
+    from gen.training import config_from_args, train
+    _, _, _, _, selection = load_setup(
         args.tokens, args.data, split_path=args.split, mode=args.data_mode,
-        include_motion=args.model == "regress", return_selection=True)
-    manifest = prepare_run(selection, args.run, vq_path=args.vq_checkpoint, vq_version=args.vq_version)
-    nb = tk["nb_code"]
-    max_len = max(len(c["tokens"]) for c in clips) + 8
-    print(f"단어 {len(classes)}개 · 클립 {len(clips)}개 · 수행자 {len(signers)}명 · 최대 토큰 {max_len - 8}")
-
-    if args.model == "gpt":
-        model = MotionGPT(len(classes), nb, args.d, args.layers, max_len=max_len, n_signer=len(signers))
-    else:
-        model = MotionRegressor(len(classes), FEAT_DIM, args.length, args.d, args.layers, n_signer=len(signers))
-        targets = {c["clip"]: torch.from_numpy(resample(c["motion"], args.length).astype(np.float32)) for c in clips}
-        w = joint_weights(1.0, 2.0, 0.5)
-    print(f"파라미터 {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=args.iters, pct_start=0.1)
-
-    t0 = time.time()
-    log = open(os.path.join(args.run, "log.jsonl"), "w", encoding="utf-8")
-    for it in range(1, args.iters + 1):
-        batch = [clips[i] for i in rng.integers(len(clips), size=args.batch)]
-        cond = torch.tensor([classes[c["item"]] for c in batch])
-        sig = torch.tensor([signers[c["signer"]] for c in batch])
-        if args.model == "gpt":
-            L = max(len(c["tokens"]) for c in batch)
-            inp = torch.full((len(batch), L), model.pad, dtype=torch.long)
-            tgt = torch.full((len(batch), L + 1), -100, dtype=torch.long)
-            for b, c in enumerate(batch):
-                t = torch.tensor(c["tokens"])
-                r = rng.uniform(0, args.corrupt)  # 학습–추론 불일치 줄이기: 입력 일부를 무작위 자모로
-                noisy = torch.where(torch.rand(len(t)) < r, torch.randint(0, nb, (len(t),)), t)
-                inp[b, :len(t)] = noisy
-                tgt[b, :len(t)] = t
-                tgt[b, len(t)] = model.end
-            logits = model(cond, inp, sig)
-            loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]), tgt.reshape(-1), ignore_index=-100)
-        else:
-            y = torch.stack([targets[c["clip"]] for c in batch])
-            pos, vel, hand = losses(y, model(cond, sig), w, 0.02)
-            loss = pos + 0.5 * vel + hand
-        opt.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
-        sched.step()
-        if it % 100 == 0:
-            print(f"[{it:5d}] loss {loss.item():.4f}  ({time.time() - t0:.0f}s)")
-            log.write(json.dumps({"iter": it, "loss": loss.item()}) + "\n")
-            log.flush()
-
-    torch.save({"model": model.state_dict(), "kind": args.model, "classes": classes, "signers": signers,
-                "nb_code": nb, "max_len": max_len, "tokens": args.tokens, "config": vars(args),
-                "artifact_manifest": manifest},
-               os.path.join(args.run, "model.pt"))
-    print(f"저장: {args.run}/model.pt ({(time.time() - t0) / 60:.1f}분)")
+        return_selection=True)
+    result = train(selection, args.run, kind=args.model, config=config_from_args(args),
+                   data_dir=args.data, vq_path=args.vq_checkpoint, vq_version=args.vq_version,
+                   resume=args.resume, stop_after=args.stop_after, tokens_path=args.tokens)
+    print(json.dumps(result, ensure_ascii=False))
 
 
-def load_generator(path):
-    import torch
-    from common.skeleton import FEAT_DIM
-    from gen.model import MotionGPT, MotionRegressor
-    ck = torch.load(path, map_location="cpu")
-    c = ck["config"]
-    if ck["kind"] == "gpt":
-        m = MotionGPT(len(ck["classes"]), ck["nb_code"], c["d"], c["layers"], max_len=ck["max_len"], n_signer=len(ck["signers"]))
-    else:
-        m = MotionRegressor(len(ck["classes"]), FEAT_DIM, c["length"], c["d"], c["layers"], n_signer=len(ck["signers"]))
-    m.load_state_dict(ck["model"])
-    return m.eval(), ck
+def load_generator(path, device="cpu"):
+    """Compatible word loader: (eval model, checkpoint), CPU by default."""
+    from gen.training import load_trained_model, TrainingError
+    model, checkpoint = load_trained_model(path, device)
+    if checkpoint["kind"] not in ("gpt", "regress"):
+        raise TrainingError("word_checkpoint_required", "kind")
+    return model, checkpoint
+
+
+def add_training_arguments(parser):
+    """Keep CLI help and metadata helpers importable without Torch installed."""
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--eval-every", type=int, default=100)
+    parser.add_argument("--save-every", type=int, default=100)
+    parser.add_argument("--max-src", type=int, default=64)
+    parser.add_argument("--max-len", type=int, default=None)
+    parser.add_argument("--generation-signer", default=None)
+    parser.add_argument("--resume", action="store_true", help="resume run/latest.pt with unchanged total --iters")
+    parser.add_argument("--stop-after", type=int, default=None, help="smoke interruption: absolute stop step")
 
 
 if __name__ == "__main__":

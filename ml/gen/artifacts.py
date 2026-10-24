@@ -142,12 +142,8 @@ def create_artifact_manifest(selection, selection_path, *, vq_path=None,
     return validate_artifact_manifest(manifest, allow_smoke=True)
 
 
-def prepare_run(selection, run_dir, *, vq_path=None, vq_version=None):
-    """Record A1 selection and manifest for both word and sentence entrypoints.
-
-    When a decoder is provided, load it on CPU and compare the real dimensions
-    with the token header. Formal runs require this decoder and a version label.
-    """
+def decoder_parts(selection, *, vq_path=None, vq_version=None):
+    """Validate the explicitly supplied decoder for new runs and resume alike."""
     formal = selection.report["data_mode"] == "formal"
     if formal and (vq_path is None or not vq_version):
         raise ArtifactValidationError("decoder_required", "vq_checkpoint/vq_version")
@@ -162,6 +158,12 @@ def prepare_run(selection, run_dir, *, vq_path=None, vq_version=None):
         if token_version is not None and token_version != vq_version:
             raise ArtifactValidationError("decoder_mismatch", "vq_version")
         parts = model.parts
+    return parts
+
+
+def prepare_run(selection, run_dir, *, vq_path=None, vq_version=None):
+    """Record selection and manifest, validating actual decoder dimensions."""
+    parts = decoder_parts(selection, vq_path=vq_path, vq_version=vq_version)
     run_dir = Path(run_dir)
     # Existing outputs are never reused as a different run.
     if run_dir.exists() and any(run_dir.iterdir()):
