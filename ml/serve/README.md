@@ -27,7 +27,8 @@ $env:SIGN_DEVICE = 'cpu'
 python -m uvicorn serve.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-B integration is a later step. C1 does not include B's loader or any checkpoint.
+The baseline loader is tested with B's actual `gen.infer.Generator` using entirely
+synthetic coordinates. Trained-model loading and real-data validation remain pending.
 The production factory never substitutes synthetic coordinates if loading fails.
 `GET /health` returns only `{"status":"ready"}` (200) or
 `{"status":"unavailable"}` (503). A load failure leaves generation unavailable.
@@ -141,8 +142,8 @@ separate terminal, then set `SIGN_TEST_FASTAPI_URL=http://127.0.0.1:8000/generat
 and run the same Gradle selection. It checks all decoded synthetic joint values.
 The test is skipped unless this variable is supplied; only localhost is permitted.
 
-To start/stop the temporary synthetic HTTP server automatically and run all the
-isolated Java tests, including that optional test, from the repository root:
+To start/stop the temporary demo HTTP server automatically and run the C1 Java
+tests, including that optional test, from the repository root:
 
 ```powershell
 python -m ml.serve.tests.run_http_check
@@ -151,3 +152,56 @@ python -m ml.serve.tests.run_http_check
 This runner uses an available localhost port and shuts down its own server in a
 `finally` block. It still requires the existing JDK/Gradle cache; it never installs
 or downloads dependencies.
+
+## Actual baseline Generator regression checks
+
+From repository root, with B's baseline code and the existing test dependencies:
+
+```powershell
+python -m pytest ml/serve/tests -q -p no:cacheprovider
+python -m ml.serve.tests.run_http_check --baseline
+```
+
+Set `JAVA_HOME` to an installed JDK 17 and `GRADLE_USER_HOME` to an existing Gradle
+cache if the defaults differ. The Java command remains offline and limits test
+selection to the `generation` package. No extra dependencies or model weights are
+required for the baseline.
+
+The first command retains the C1 mock tests and adds actual baseline tests in
+`test_baseline_service.py`. For the B-independent C1 checks alone, select
+`ml/serve/tests/test_service.py` instead.
+
+The `--baseline` runner retains the C1 demo and also creates a temporary run with
+synthetic metadata, coordinate arrays, a fixed synthetic signer split, vocabulary,
+and `generator.json` with `kind="baseline"`. It calls the production app factory
+with a run directory, without an injected Generator factory. The loader imports
+B's real `gen.infer.Generator`; no B test fixtures are imported. A second temporary
+app exercises a bad production configuration. All servers bind to `127.0.0.1` on
+available ports and stop before their temporary bundles are cleaned up.
+
+Java `BaselineHttpFlowTests` exercises Spring controller → mocked TranslationService
+→ real HTTP FastAPI → actual B baseline → coordinate serialization → Spring response.
+It covers normal words, repeated words and requests, partial unknown including
+duplicates, all unknown, and video fallback after failed initialization. These
+tests are skipped unless the runner supplies `SIGN_TEST_BASELINE_URL` and
+`SIGN_TEST_UNAVAILABLE_URL`. The original demo test and HTTP-stub failure tests
+remain distinct from these actual-B checks.
+
+The synthetic oracle assigns coordinate values using exact binary fractions:
+`marker*8 + frame/32 + joint/512 + axis/4096`, with markers 1 and 2 identifying two
+fabricated words. Source arrays have 20 frames with active `[6,10]`; B's four-frame
+padding selects `[2:15]` (13 frames per word). The fixture sets `blend=0`, so the
+complete decoded coordinate array independently verifies word, frame, joint, and
+axis order. No real motion quality is implied by these fabricated values.
+
+Python additionally checks loaded-object reuse, nonmanual tags leaving baseline
+coordinates unchanged, busy rejection and recovery with event-based fault injection,
+output frame limits, missing/malformed configuration, and bad coordinate files.
+The existing tests retain timeout, malformed response, authentication, and legacy
+`/translate` coverage. Expected initialization-failure logs appear during negative
+configuration checks. Baseline tag acceptance does not generate facial expressions.
+
+These checks validate integration on synthetic CPU data. They do not validate E5
+receipt, trained models, GPU performance, real sign-language quality, viewer playback,
+or the full application context. The response policies marked for team confirmation
+above remain unchanged.
