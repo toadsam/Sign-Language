@@ -1,6 +1,6 @@
-"""Public Generator adapter. B1 supports deterministic train-clip baseline only.
+"""Public baseline / word GPT / coordinate regressor Generator adapter.
 
-Nonmanual tags are accepted but do not control the baseline motion. Coordinates
+Nonmanual tags are accepted but do not condition baseline or word models. Coordinates
 retain the source normalization (neck origin, shoulder width 1, y down).
 """
 from collections import Counter
@@ -15,24 +15,27 @@ from gen.vocab import read_json, select_train
 class Generator:
     def __init__(self, run_dir: str, device: str = "cpu"):
         self.run_dir = Path(run_dir).resolve()
-        self.device = device  # B1 uses NumPy on CPU, regardless of model device.
+        self.device = device  # Baseline uses NumPy on CPU.
         config = read_json(self.run_dir / "generator.json")
         if not isinstance(config, dict):
             raise ValueError("generator config must be a JSON object")
         if type(config.get("schema_version")) is not int or config["schema_version"] != 1:
             raise ValueError("unsupported generator schema_version")
-        if config.get("kind") != "baseline":
-            raise ValueError("B1 supports kind=baseline; model adapters require B2")
+        self.kind = config.get("kind")
+        if self.kind not in ("baseline", "word_gpt", "word_regress"):
+            raise ValueError("unsupported Generator kind; sentence adapter is not implemented")
+        self.supported_nonmanual = ()
 
         def path(key):
             value = config.get(key)
             if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"baseline requires {key}")
+                raise ValueError(f"{self.kind} requires {key}")
             return (self.run_dir / value).resolve()
 
         # Resolve all required paths before opening any model/data files.
-        vocab_path, data_path, split_path = (path(key) for key in
-                                              ("vocab_map", "baseline_data", "baseline_split"))
+        vocab_path = path("vocab_map")
+        if self.kind == "baseline":
+            data_path, split_path = path("baseline_data"), path("baseline_split")
         vocab = read_json(vocab_path)
         if not isinstance(vocab, dict):
             raise ValueError("vocab must be a JSON object")
@@ -47,9 +50,16 @@ class Generator:
         if any(not isinstance(k, str) for k in unmapped) or set(mapping).intersection(unmapped) or set(mapping).intersection(ambiguous):
             raise ValueError("mapped and unresolved gloss entries must be disjoint")
         self.mapping = dict(mapping)
-        self.blend = config.get("blend", 8)
+        self.blend = config.get("blend", 8 if self.kind == "baseline" else 0)
         if type(self.blend) is not int or not 0 <= self.blend <= 300:
             raise ValueError("blend must be an integer in [0, 300]")
+        if self.kind != "baseline":
+            # Keep baseline and its tests usable without importing Torch.
+            from gen.infer_models import WordModelAdapter
+            self._adapter = WordModelAdapter(config, path, self.mapping, device, self.blend)
+            self.device = str(self._adapter.device)
+            self.connection_policy = self._adapter.connection_policy
+            return
         metas, self.selection_report = select_train(data_path, split_path,
                                                     data_mode=config.get("data_mode", "formal"))
         self.clips, self.selected_clips = {}, {}
@@ -91,6 +101,8 @@ class Generator:
             raise ValueError("nonmanual must be a sequence of strings")
         if seed is not None and type(seed) is not int:
             raise ValueError("seed must be an integer or None")
+        if self.kind != "baseline":
+            return self._adapter.generate(gloss, seed)
         clips, unknown = [], []
         for word in gloss:
             item = self.mapping.get(word)

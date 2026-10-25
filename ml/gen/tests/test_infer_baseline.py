@@ -169,9 +169,9 @@ class BaselineTests(unittest.TestCase):
     def test_model_kind_does_not_fall_back_to_baseline(self):
         run, _ = make_run(self.root)
         config = json.loads((run / "generator.json").read_text())
-        config["kind"] = "word_gpt"
+        config["kind"] = "sentence"
         write_json(run / "generator.json", config)
-        with self.assertRaisesRegex(ValueError, "B2"):
+        with self.assertRaisesRegex(ValueError, "sentence"):
             Generator(run)
 
     def test_invalid_coordinates_fail_at_startup(self):
