@@ -57,7 +57,8 @@ class BaselineHttpFlowTests {
   static MockMvc mvc(TranslationService translation, URI url) {
     GenerationSettings settings = new GenerationSettings(url, Duration.ofSeconds(1), Duration.ofSeconds(3), 4096, 1800);
     return MockMvcBuilders.standaloneSetup(new GenerationController(
-        new GenerationService(translation, new InferenceClient(settings, JSON), settings))).build();
+        new GenerationService(translation, new InferenceClient(settings, JSON), settings)))
+        .setControllerAdvice(new GenerationErrorHandler()).build();
   }
 
   @ParameterizedTest @MethodSource("sequences")
@@ -105,16 +106,15 @@ class BaselineHttpFlowTests {
   }
 
   @Test @EnabledIfEnvironmentVariable(named = "SIGN_TEST_UNAVAILABLE_URL", matches = ".+")
-  void badProductionConfigFallsBackToOriginalVideoItems() throws Exception {
+  void badProductionConfigReturnsUnavailableWithoutVideo() throws Exception {
     TranslationService translation = mock(TranslationService.class);
     when(translation.translate("합성 입력")).thenReturn(translated(List.of("화장실", "미등록"), true));
     MockMvc mvc = mvc(translation, localUrl("SIGN_TEST_UNAVAILABLE_URL"));
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
         .content("{\"text\":\"합성 입력\"}"))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("video"))
-        .andExpect(jsonPath("$.items[0].url").value("https://example.invalid/synthetic.mp4"))
-        .andExpect(jsonPath("$.items[1].hasVideo").value(false))
-        .andExpect(jsonPath("$.unknown[0]").value("미등록"))
+        .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.error.code").value("GENERATION_UNAVAILABLE"))
+        .andExpect(jsonPath("$.error.retryable").value(true))
+        .andExpect(jsonPath("$.source").doesNotExist()).andExpect(jsonPath("$.items").doesNotExist())
         .andExpect(jsonPath("$.data").doesNotExist());
     verify(translation, times(1)).translate("합성 입력");
   }

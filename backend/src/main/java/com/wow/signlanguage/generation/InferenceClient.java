@@ -7,6 +7,10 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Base64;
@@ -16,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import javax.net.ssl.SSLException;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -33,7 +39,7 @@ public class InferenceClient {
         .followRedirects(HttpClient.Redirect.NEVER).build();
   }
 
-  public ObjectNode generate(List<String> gloss, boolean question) throws InferenceUnavailable {
+  public ObjectNode generate(List<String> gloss, boolean question) {
     CompletableFuture<HttpResponse<byte[]>> pending = null;
     try {
       byte[] body = mapper.writeValueAsBytes(Map.of("gloss", gloss,
@@ -45,23 +51,42 @@ public class InferenceClient {
       int maxBytes = Math.toIntExact((long) settings.maxFrames() * 2000 + 65_536);
       pending = http.sendAsync(request, info -> new LimitedBody(maxBytes));
       HttpResponse<byte[]> response = pending.get(settings.responseTimeout().toMillis(), TimeUnit.MILLISECONDS);
-      if (response.statusCode() != 200) {
-        throw new IOException("Inference HTTP error");
-      }
+      checkStatus(response.statusCode());
       JsonNode node = mapper.readTree(response.body());
       validate(node, gloss);
       ObjectNode result = mapper.createObjectNode();
       FIELDS.forEach(field -> result.set(field, node.get(field)));
       return result;
+    } catch (GenerationFailure error) {
+      throw error;
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
-      throw new InferenceUnavailable();
+      throw new GenerationFailure(GenerationFailure.Reason.GENERATION_UNAVAILABLE);
     } catch (Exception error) {
-      throw new InferenceUnavailable();
+      for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+        if (cause instanceof TimeoutException || cause instanceof HttpTimeoutException) {
+          throw new GenerationFailure(GenerationFailure.Reason.GENERATION_TIMEOUT);
+        }
+        if (cause instanceof ConnectException || cause instanceof UnknownHostException
+            || cause instanceof UnresolvedAddressException || cause instanceof SSLException) {
+          throw new GenerationFailure(GenerationFailure.Reason.GENERATION_UNAVAILABLE);
+        }
+      }
+      throw new GenerationFailure(GenerationFailure.Reason.GENERATION_FAILED);
     } finally {
       if (pending != null && !pending.isDone()) {
         pending.cancel(true);
       }
+    }
+  }
+
+  private static void checkStatus(int status) {
+    switch (status) {
+      case 200 -> { }
+      case 429, 503 -> throw new GenerationFailure(GenerationFailure.Reason.GENERATION_UNAVAILABLE, true);
+      case 408, 504 -> throw new GenerationFailure(GenerationFailure.Reason.GENERATION_TIMEOUT);
+      case 400, 413, 422 -> throw new GenerationFailure(GenerationFailure.Reason.NO_GENERATABLE_INPUT);
+      default -> throw new GenerationFailure(GenerationFailure.Reason.GENERATION_FAILED);
     }
   }
 
@@ -108,10 +133,6 @@ public class InferenceClient {
 
   private static void require(boolean valid) throws IOException {
     if (!valid) throw new IOException("Invalid inference response");
-  }
-
-  public static class InferenceUnavailable extends Exception {
-    public InferenceUnavailable() { super("Inference unavailable"); }
   }
 
   private static class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {

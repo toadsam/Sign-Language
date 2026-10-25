@@ -1,12 +1,8 @@
 package com.wow.signlanguage.generation;
 
 import com.wow.signlanguage.service.TranslationService;
-import com.wow.signlanguage.translate.TranslatePlaybackItem;
 import com.wow.signlanguage.translate.TranslateResponse;
-import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class GenerationService {
@@ -22,29 +18,20 @@ public class GenerationService {
 
   public Object generate(String text) {
     if (text == null || text.isBlank() || text.length() > settings.maxTextChars()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid text");
+      throw new GenerationFailure(GenerationFailure.Reason.INVALID_REQUEST);
     }
     TranslateResponse translated;
     try {
       translated = translation.translate(text);
-      if (translated == null || translated.normalizedTokens() == null || translated.items() == null
-          || translated.unknown() == null || translated.normalizedTokens().stream()
-              .anyMatch(token -> token == null || token.isBlank())) {
-        throw new IllegalStateException();
-      }
+      if (translated == null) throw new IllegalStateException();
     } catch (RuntimeException error) {
-      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Translation unavailable");
+      throw new GenerationFailure(GenerationFailure.Reason.TRANSLATION_UNAVAILABLE);
     }
-    if (!translated.normalizedTokens().isEmpty()) {
-      try {
-        return inference.generate(translated.normalizedTokens(),
-            translated.metadata() != null && translated.metadata().question());
-      } catch (InferenceClient.InferenceUnavailable error) {
-        // Preserve the original items, including hasVideo=false; never synthesize clips.
-      }
+    if (translated.normalizedTokens() == null || translated.normalizedTokens().isEmpty()
+        || translated.normalizedTokens().stream().anyMatch(token -> token == null || token.isBlank())) {
+      throw new GenerationFailure(GenerationFailure.Reason.NO_GENERATABLE_INPUT);
     }
-    return new VideoResponse("video", translated.items(), translated.unknown());
+    return inference.generate(translated.normalizedTokens(),
+        translated.metadata() != null && translated.metadata().question());
   }
-
-  public record VideoResponse(String source, List<TranslatePlaybackItem> items, List<String> unknown) {}
 }

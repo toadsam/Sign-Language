@@ -27,8 +27,8 @@ $env:SIGN_DEVICE = 'cpu'
 python -m uvicorn serve.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-The baseline loader is tested with B's actual `gen.infer.Generator` using entirely
-synthetic coordinates. Trained-model loading and real-data validation remain pending.
+The baseline and word-model loaders have synthetic integration checks using B's
+actual `gen.infer.Generator`. Real-data and trained-motion quality remain separate.
 The production factory never substitutes synthetic coordinates if loading fails.
 `GET /health` returns only `{"status":"ready"}` (200) or
 `{"status":"unavailable"}` (503). A load failure leaves generation unavailable.
@@ -67,7 +67,7 @@ Caching is disabled. Request bodies are not logged by the service.
 
 The frame limit rejects excessive output; it cannot prevent a faulty generator
 from allocating memory before returning. A hung native model call cannot safely
-be killed in a Python thread: Spring times out and uses videos while FastAPI's
+be killed in a Python thread: Spring returns a timeout error while FastAPI's
 slot remains busy until the call ends. A process supervisor is needed for recovery.
 
 Spring environment variables (configured URL is never taken from request input):
@@ -87,7 +87,7 @@ canonical base64, exact byte count, finite float coordinates, and unknown entrie
 before returning the coordinate response. Align the two frame limits when deploying.
 Only `metadata.question` is forwarded, as `nonmanual=["의문"]`.
 
-## Responses and team confirmation
+## Successful coordinates and explicit errors
 
 The coordinate contract uses `fps=30`, `joints=125`, `units="shoulder"`,
 `frames=T`, `source="baseline"|"model"`, `tokens`, `segments=[]`, `unknown`,
@@ -103,22 +103,53 @@ Coordinates use neck origin, shoulder width 1, and downward y. A baseline has no
 VQ tokens. These details follow the existing proposed API contract; this service
 does not approve or change that team contract.
 
-**Team confirmation pending:**
+Unknown-input policies still need consumer agreement:
 
 - Partial unknown: generate known words and return the original unknown gloss.
 - All unknown: 200, `frames=0`, `data=""`, `tokens=[]`, and all unknown gloss;
   Spring forwards this coordinate response. Viewer treatment is still undecided.
-- Inference unavailable, timeout, non-200, or invalid output: Spring returns
-  `{"source":"video","items":[...],"unknown":[...]}` using the existing translation
-  result. There are no coordinate fields in this variant. `hasVideo=false` is
-  preserved; `source="video"` does not promise a playable video for every word.
-- Invalid Spring text returns 400 before translation. Translation failure returns
-  502 without inventing playback items. Empty translated tokens use the existing
-  video items without making an empty-gloss inference request.
+- These are successful coordinate responses, distinct from system generation failures.
 
-`examples/normal.json`, `unknown.json`, and `video.json` are synthetic fixtures.
-The video URL uses the reserved `example.invalid` domain and must not be fetched.
-No actual AI Hub motion data, real labels bundle, or model weights are included.
+The generation API **never automatically substitutes video**. This replaces the
+previous `source="video"` success variant. Existing `/translate` playback behavior
+and its DTO are unchanged; the generation controller's error handler is scoped
+to that controller and does not change other endpoints.
+
+Spring returns non-success HTTP status with this safe JSON envelope:
+
+```json
+{"error":{"code":"GENERATION_UNAVAILABLE","message":"동작을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.","retryable":true}}
+```
+
+| Situation | HTTP | error.code | retryable |
+|---|---:|---|---|
+| Malformed request, blank/overlong text | 400 | INVALID_REQUEST | false |
+| No translated gloss, or upstream 400/413/422 rejects input | 422 | NO_GENERATABLE_INPUT | false |
+| Translation service fails | 502 | TRANSLATION_UNAVAILABLE | true |
+| Connection unavailable, not ready, busy (upstream 429/503) | 503 | GENERATION_UNAVAILABLE | true |
+| Full HTTP deadline, or upstream 408/504 | 504 | GENERATION_TIMEOUT | true |
+| Malformed coordinates, unexpected status/5xx | 502 | GENERATION_FAILED | true |
+
+Errors have no `source`, `items`, or coordinate `data`. Messages never contain
+the upstream body, input text, model configuration, file paths, or stack traces.
+Upstream busy/not-ready responses use a fixed `Retry-After: 1`; an upstream header
+is never forwarded unchecked. `retryable=true` allows a later **new user request**;
+it does not guarantee success. The server performs no automatic retry loop.
+Failed requests release their inference slot; a timed-out model may remain busy
+until its current call actually ends, as described above.
+
+Frontend handoff (UI implementation remains with the frontend owner): preserve
+the original input and visible error state, display `error.message`, enable a
+retry action when `retryable=true`, and suppress duplicate submissions while a
+request is pending. A user retry sends the original text as a fresh POST. For
+non-retryable input errors, keep the text editable. Do not switch to videos or
+clear a user's input on failure. Partial/all unknown display still needs a
+separate consumer decision. This repository change does not implement UI buttons.
+
+`examples/normal.json`, `unknown.json`, and the legacy-named `video.json` are
+synthetic fixtures; `video.json` now holds the explicit 503 error above. See the
+examples README for that filename's compatibility note. No actual AI Hub motion
+data, real labels bundle, or model weights are included.
 
 ## Verify without external services
 
@@ -182,7 +213,7 @@ available ports and stop before their temporary bundles are cleaned up.
 Java `BaselineHttpFlowTests` exercises Spring controller → mocked TranslationService
 → real HTTP FastAPI → actual B baseline → coordinate serialization → Spring response.
 It covers normal words, repeated words and requests, partial unknown including
-duplicates, all unknown, and video fallback after failed initialization. These
+duplicates, all unknown, and explicit 503 errors after failed initialization. These
 tests are skipped unless the runner supplies `SIGN_TEST_BASELINE_URL` and
 `SIGN_TEST_UNAVAILABLE_URL`. The original demo test and HTTP-stub failure tests
 remain distinct from these actual-B checks.
@@ -197,7 +228,7 @@ axis order. No real motion quality is implied by these fabricated values.
 Python additionally checks loaded-object reuse, nonmanual tags leaving baseline
 coordinates unchanged, busy rejection and recovery with event-based fault injection,
 output frame limits, missing/malformed configuration, and bad coordinate files.
-The existing tests retain timeout, malformed response, authentication, and legacy
+The existing tests retain timeout, malformed response, user retry recovery, authentication, and legacy
 `/translate` coverage. Expected initialization-failure logs appear during negative
 configuration checks. Baseline tag acceptance does not generate facial expressions.
 
@@ -205,3 +236,19 @@ These checks validate integration on synthetic CPU data. They do not validate E5
 receipt, trained models, GPU performance, real sign-language quality, viewer playback,
 or the full application context. The response policies marked for team confirmation
 above remain unchanged.
+
+## Word GPT and coordinate-regression HTTP checks
+
+With CPU Torch in the service environment, `python -m ml.serve.tests.run_http_check
+--models` adds actual A/B model checks to the existing baseline/demo suites.
+This flag makes disposable tiny smoke checkpoints through A's public training API,
+keeps training runs separate from deployment bundles, and uses the production
+startup loader for `word_gpt` and `word_regress`. GPT responses remain stochastic;
+the tests do not require repeated requests to have identical coordinates or add a
+seed field to the HTTP contract. Regression uses direct coordinates and tokens=[].
+
+Installation requires approval; CPU-only model requirements are separate in
+`requirements-models.txt`. See [the test guide](tests/README.md) for exact commands,
+environment requirements, genuine inference versus fault injection, and cleanup.
+All model weights and input data in these tests are synthetic, not actual E5 or a
+validated sign-language model. The public response policies remain unchanged.

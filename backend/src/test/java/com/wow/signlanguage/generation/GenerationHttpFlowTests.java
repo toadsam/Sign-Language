@@ -35,7 +35,8 @@ class GenerationHttpFlowTests {
         new SimplificationMetadata(true, false, "present"), List.of(), List.of(), List.of(), List.of()));
     GenerationSettings settings = new GenerationSettings(url, Duration.ofSeconds(1), Duration.ofSeconds(3), 4096, 1800);
     MockMvc mvc = MockMvcBuilders.standaloneSetup(new GenerationController(
-        new GenerationService(translation, new InferenceClient(settings, json), settings))).build();
+        new GenerationService(translation, new InferenceClient(settings, json), settings)))
+        .setControllerAdvice(new GenerationErrorHandler()).build();
     String body = mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
         .content("{\"text\":\"화장실 있어요?\"}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"))

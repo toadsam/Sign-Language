@@ -194,7 +194,8 @@ def test_published_synthetic_examples_match_wire_format():
     for name, gloss in [("normal", ["화장실", "있다"]), ("unknown", ["미등록예시"])]:
         expected = serialize(SyntheticGenerator().generate(gloss), gloss, 1800).model_dump()
         assert json.loads((folder / f"{name}.json").read_text(encoding="utf-8")) == expected
-    video = json.loads((folder / "video.json").read_text(encoding="utf-8"))
-    assert video["source"] == "video" and "data" not in video
-    assert video["items"][1]["hasVideo"] is False
-    assert video["items"][0]["url"].startswith("https://example.invalid/")
+    error = json.loads((folder / "video.json").read_text(encoding="utf-8"))
+    assert set(error) == {"error"}
+    assert error["error"]["code"] == "GENERATION_UNAVAILABLE"
+    assert error["error"]["retryable"] is True
+    assert error["error"]["message"]
