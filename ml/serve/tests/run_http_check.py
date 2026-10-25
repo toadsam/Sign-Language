@@ -2,10 +2,12 @@
 
 From repository root: python -m ml.serve.tests.run_http_check
 Add --baseline for the production loader + actual B Generator on synthetic data.
+Add --models for actual word GPT/regression adapters and the baseline checks.
 The caller supplies JAVA_HOME/GRADLE_USER_HOME where needed. No dependencies are installed.
 """
 import argparse
 from contextlib import ExitStack, contextmanager
+import importlib.util
 import os
 from pathlib import Path
 import socket
@@ -50,15 +52,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", action="store_true",
                         help="Also test B's production loader using a temporary synthetic bundle")
+    parser.add_argument("--models", action="store_true",
+                        help="Also test tiny CPU GPT/regression checkpoints through real A/B loaders")
     args = parser.parse_args()
+    if args.models and importlib.util.find_spec("torch") is None:
+        parser.error("--models requires CPU Torch in this service environment; obtain installation approval first")
     root = Path(__file__).resolve().parents[3]
     with ExitStack() as cleanup:
         environment = dict(os.environ)
         # Opt-in test URLs must come from this runner's own temporary servers.
-        for variable in ("SIGN_TEST_BASELINE_URL", "SIGN_TEST_UNAVAILABLE_URL"):
+        for variable in ("SIGN_TEST_BASELINE_URL", "SIGN_TEST_UNAVAILABLE_URL", "SIGN_TEST_MODELS_FILE"):
             environment.pop(variable, None)
         environment["SIGN_TEST_FASTAPI_URL"] = cleanup.enter_context(serve_temporarily(create_demo_app()))
-        if args.baseline:
+        if args.baseline or args.models:
             # Match deployment's --app-dir ml without depending on B's test helpers.
             sys.path.insert(0, str(root / "ml"))
             temporary = Path(cleanup.enter_context(tempfile.TemporaryDirectory(prefix="sign-baseline-")))
@@ -75,6 +81,14 @@ def main():
             environment["SIGN_TEST_UNAVAILABLE_URL"] = cleanup.enter_context(serve_temporarily(failed))
             if failed.state.generator is not None:
                 raise RuntimeError("Invalid baseline configuration was reported ready")
+        if args.models:
+            import torch
+            from ml.serve.tests.model_http_fixture import configure_model_servers
+            previous_threads = torch.get_num_threads()
+            torch.set_num_threads(1)
+            cleanup.callback(torch.set_num_threads, previous_threads)
+            environment["SIGN_TEST_MODELS_FILE"] = str(
+                configure_model_servers(cleanup, temporary, serve_temporarily))
         command = (["cmd", "/c", "gradlew.bat"] if os.name == "nt" else ["./gradlew"])
         result = subprocess.run(command + ["--offline", "test", "--tests",
                                 "com.wow.signlanguage.generation.*", "--no-daemon"],

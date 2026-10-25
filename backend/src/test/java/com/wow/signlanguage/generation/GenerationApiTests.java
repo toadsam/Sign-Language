@@ -26,9 +26,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -40,6 +43,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 @WebMvcTest(controllers = {GenerationController.class, TranslateController.class},
     excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = WebConfig.class))
@@ -70,6 +74,7 @@ class GenerationApiTests {
           if (!stub.delayBody()) Thread.sleep(stub.delayMillis());
           byte[] body = stub.body().getBytes(java.nio.charset.StandardCharsets.UTF_8);
           exchange.getResponseHeaders().set("Content-Type", "application/json");
+          if (stub.status() == 503) exchange.getResponseHeaders().set("Retry-After", "999999999999");
           exchange.sendResponseHeaders(stub.status(), body.length);
           if (stub.delayBody()) Thread.sleep(stub.delayMillis());
           exchange.getResponseBody().write(body);
@@ -128,13 +133,13 @@ class GenerationApiTests {
     return node;
   }
 
-  void assertFallback() throws Exception {
+  void assertFailure(int status, String code, boolean retryable) throws Exception {
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
         .content("{\"text\":\"화장실 있어요?\"}"))
-        .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("video"))
-        .andExpect(jsonPath("$.items[0].url").value("https://example.invalid/test.mp4"))
-        .andExpect(jsonPath("$.items[1].hasVideo").value(false))
-        .andExpect(jsonPath("$.unknown[0]").value("있다"))
+        .andExpect(status().is(status)).andExpect(jsonPath("$.error.code").value(code))
+        .andExpect(jsonPath("$.error.message").isNotEmpty())
+        .andExpect(jsonPath("$.error.retryable").value(retryable))
+        .andExpect(jsonPath("$.source").doesNotExist()).andExpect(jsonPath("$.items").doesNotExist())
         .andExpect(jsonPath("$.data").doesNotExist());
     verify(translation, times(1)).translate("화장실 있어요?");
   }
@@ -173,10 +178,22 @@ class GenerationApiTests {
         .andExpect(jsonPath("$.data").value("")).andExpect(jsonPath("$.source").value("baseline"));
   }
 
-  @ParameterizedTest @ValueSource(ints = {302, 422, 500, 503})
-  void httpFailuresFallbackWithoutRetry(int status) throws Exception {
+  static Stream<Arguments> upstreamFailures() {
+    return Stream.of(Arguments.of(302, 502, "GENERATION_FAILED", true),
+        Arguments.of(400, 422, "NO_GENERATABLE_INPUT", false),
+        Arguments.of(413, 422, "NO_GENERATABLE_INPUT", false),
+        Arguments.of(422, 422, "NO_GENERATABLE_INPUT", false),
+        Arguments.of(408, 504, "GENERATION_TIMEOUT", true),
+        Arguments.of(429, 503, "GENERATION_UNAVAILABLE", true),
+        Arguments.of(500, 502, "GENERATION_FAILED", true),
+        Arguments.of(503, 503, "GENERATION_UNAVAILABLE", true),
+        Arguments.of(504, 504, "GENERATION_TIMEOUT", true));
+  }
+
+  @ParameterizedTest @MethodSource("upstreamFailures")
+  void httpFailuresReturnExplicitErrorsWithoutAutomaticRetry(int status, int expected, String code, boolean retryable) throws Exception {
     STUB.set(new Stub(status, "{}", 0, false));
-    assertFallback();
+    assertFailure(expected, code, retryable);
     assertThat(REQUESTS.get()).isEqualTo(1);
   }
 
@@ -184,13 +201,13 @@ class GenerationApiTests {
   void fullResponseTimeoutIncludesBody(boolean bodyDelay) throws Exception {
     STUB.set(new Stub(200, motion().toString(), 2000, bodyDelay));
     long started = System.nanoTime();
-    assertFallback();
+    assertFailure(504, "GENERATION_TIMEOUT", true);
     assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
   }
 
   @ParameterizedTest @ValueSource(strings = {"base64", "shape", "nan", "inf", "missing", "dtype",
       "source", "segments", "unknown", "empty", "overlong", "fractional", "json", "huge"})
-  void malformedResponsesFallback(String kind) throws Exception {
+  void malformedResponsesReturnErrors(String kind) throws Exception {
     ObjectNode node = motion();
     switch (kind) {
       case "base64" -> node.put("data", "!".repeat(2000));
@@ -212,18 +229,25 @@ class GenerationApiTests {
     }
     String body = switch (kind) { case "json" -> "{"; case "huge" -> " ".repeat(100_000); default -> node.toString(); };
     STUB.set(new Stub(200, body, 0, false));
-    assertFallback();
+    assertFailure(502, "GENERATION_FAILED", true);
   }
 
-  @Test void connectionRefusedFallsBack() throws Exception {
-    HttpServer temporary = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    int port = temporary.getAddress().getPort();
-    temporary.stop(0);
+  @Test void connectionRefusedReturnsUnavailable() throws Exception {
+    int port;
+    try (java.net.ServerSocket temporary = new java.net.ServerSocket(0, 0, java.net.InetAddress.getByName("127.0.0.1"))) {
+      port = temporary.getLocalPort();
+    }
     GenerationSettings settings = new GenerationSettings(java.net.URI.create("http://127.0.0.1:" + port + "/generate"),
-        Duration.ofMillis(100), Duration.ofMillis(300), 32, 2);
+        Duration.ofSeconds(2), Duration.ofSeconds(3), 32, 2);
     GenerationService service = new GenerationService(translation, new InferenceClient(settings, JSON), settings);
-    Object result = service.generate("화장실 있어요?");
-    assertThat(result).isEqualTo(new GenerationService.VideoResponse("video", translated().items(), translated().unknown()));
+    MockMvc isolated = MockMvcBuilders.standaloneSetup(new GenerationController(service))
+        .setControllerAdvice(new GenerationErrorHandler()).build();
+    isolated.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"text\":\"화장실 있어요?\"}"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.error.code").value("GENERATION_UNAVAILABLE"))
+        .andExpect(jsonPath("$.error.retryable").value(true))
+        .andExpect(jsonPath("$.source").doesNotExist()).andExpect(jsonPath("$.items").doesNotExist());
     verify(translation, times(1)).translate(anyString());
   }
 
@@ -232,7 +256,10 @@ class GenerationApiTests {
       "{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}", "{"})
   void invalidTextNeverCallsTranslationOrInference(String body) throws Exception {
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content(body))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.error.retryable").value(false))
+        .andExpect(jsonPath("$.items").doesNotExist());
     verifyNoInteractions(translation);
     assertThat(REQUESTS.get()).isZero();
   }
@@ -240,7 +267,9 @@ class GenerationApiTests {
   @Test void translationFailureIsAnErrorWithoutFabricatedVideo() throws Exception {
     when(translation.translate(anyString())).thenThrow(new IllegalStateException("SECRET"));
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
-        .andExpect(status().isBadGateway()).andExpect(jsonPath("$.items").doesNotExist());
+        .andExpect(status().isBadGateway()).andExpect(jsonPath("$.error.code").value("TRANSLATION_UNAVAILABLE"))
+        .andExpect(jsonPath("$.error.retryable").value(true)).andExpect(jsonPath("$.items").doesNotExist())
+        .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("SECRET"))));
     assertThat(REQUESTS.get()).isZero();
   }
 
@@ -255,5 +284,59 @@ class GenerationApiTests {
   @Test void unrelatedRouteStillRequiresAuthentication() throws Exception {
     mvc.perform(get("/api/sign/private")).andExpect(status().is3xxRedirection());
     verifyNoInteractions(translation);
+  }
+
+  @Test void emptyTranslatedGlossIsNotASystemFailureOrVideo() throws Exception {
+    TranslateResponse old = translated();
+    when(translation.translate(anyString())).thenReturn(new TranslateResponse(old.input(), old.simplifiedSentence(),
+        List.of(), old.appliedRules(), old.metadata(), old.clips(), old.items(), old.unknown(), old.noVideoWords()));
+    assertFailure(422, "NO_GENERATABLE_INPUT", false);
+    assertThat(REQUESTS.get()).isZero();
+  }
+
+  @Test void generationDoesNotDependOnTranslatedVideoItems() throws Exception {
+    TranslateResponse old = translated();
+    when(translation.translate(anyString())).thenReturn(new TranslateResponse(old.input(), old.simplifiedSentence(),
+        old.normalizedTokens(), old.appliedRules(), old.metadata(), null, null, null, null));
+    mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"text\":\"화장실 있어요?\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"));
+    verify(translation, times(1)).translate(anyString());
+  }
+
+  @ParameterizedTest @ValueSource(strings = {"busy", "server", "timeout", "bodyTimeout", "malformed"})
+  void userCanSubmitSameInputAgainAfterOneFailure(String fault) throws Exception {
+    int status = fault.equals("busy") ? 503 : fault.equals("server") ? 500 : 200;
+    boolean timeout = fault.equals("timeout") || fault.equals("bodyTimeout");
+    STUB.set(new Stub(status, fault.equals("malformed") ? "{" : motion().toString(),
+        timeout ? 2000 : 0, fault.equals("bodyTimeout")));
+    assertFailure(timeout ? 504 : fault.equals("busy") ? 503 : 502,
+        timeout ? "GENERATION_TIMEOUT" : fault.equals("busy") ? "GENERATION_UNAVAILABLE" : "GENERATION_FAILED", true);
+    assertThat(REQUESTS.get()).isEqualTo(1);
+    STUB.set(new Stub(200, motion().toString(), 0, false));
+    mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"text\":\"화장실 있어요?\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"));
+    verify(translation, times(2)).translate("화장실 있어요?");
+    assertThat(REQUESTS.get()).isEqualTo(2);
+  }
+
+  @Test void busyRetryAfterUsesFixedSafeValue() throws Exception {
+    STUB.set(new Stub(503, "{}", 0, false));
+    mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
+        .andExpect(status().isServiceUnavailable()).andExpect(header().string("Retry-After", "1"))
+        .andExpect(jsonPath("$.error.code").value("GENERATION_UNAVAILABLE"));
+  }
+
+  @Test void translationFailureCanBeRetriedByTheUser() throws Exception {
+    when(translation.translate(anyString())).thenThrow(new IllegalStateException("SECRET"));
+    mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
+        .andExpect(status().isBadGateway()).andExpect(jsonPath("$.error.code").value("TRANSLATION_UNAVAILABLE"));
+    assertThat(REQUESTS.get()).isZero();
+    doReturn(translated()).when(translation).translate(anyString());
+    mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"));
+    verify(translation, times(2)).translate("문장");
+    assertThat(REQUESTS.get()).isEqualTo(1);
   }
 }
