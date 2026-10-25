@@ -4,10 +4,12 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 from gen.infer import Generator
+from gen.vocab import select_train
 
 
 def write_json(path, value):
@@ -105,6 +107,8 @@ class BaselineTests(unittest.TestCase):
         metas = [make_meta(signer="VAL"), make_meta(signer="TEST"),
                  make_meta(signer="ZTRAIN"), make_meta()]
         run, data = make_run(self.root, metas)
+        candidates, _ = select_train(data, self.root / "split.json")
+        self.assertEqual({m["clip"] for m in candidates}, {"WORD1_TRAIN", "WORD1_ZTRAIN"})
         generator = Generator(run)
         self.assertEqual(generator.selected_clips, {"WORD1": "WORD1_TRAIN"})
         np.testing.assert_array_equal(generator.generate(["가"])["motion"], 4)
@@ -114,6 +118,18 @@ class BaselineTests(unittest.TestCase):
         write_metas(data, list(reversed(metas)))
         second = Generator(run)
         self.assertEqual(second.selected_clips, generator.selected_clips)
+
+    def test_unusable_train_candidates_do_not_fall_back_to_heldout_exemplars(self):
+        run, _ = make_run(self.root, [make_meta(active=[]), make_meta(signer="VAL"),
+            make_meta(signer="TEST"), make_meta("WORD2", signer="VAL", gloss=["나"])])
+        with patch("numpy.load", side_effect=AssertionError("heldout arrays must not be opened")):
+            generator = Generator(run)
+        self.assertEqual(generator.selected_clips, {})
+        self.assertEqual(generator.selection_report["empty_or_invalid_active"], 1)
+        result = generator.generate(["가", "나", "가"])
+        self.assertEqual(result["unknown"], ["가", "나", "가"])
+        self.assertEqual(result["motion"].shape, (0, 125, 3))
+        self.assertEqual(result["tokens"], [])
 
     def test_invalid_active_skipped_and_next_exemplar_selected(self):
         run, _ = make_run(self.root, [make_meta(active=[10, 6]), make_meta(signer="ZTRAIN")])
@@ -153,9 +169,9 @@ class BaselineTests(unittest.TestCase):
     def test_model_kind_does_not_fall_back_to_baseline(self):
         run, _ = make_run(self.root)
         config = json.loads((run / "generator.json").read_text())
-        config["kind"] = "word_gpt"
+        config["kind"] = "sentence"
         write_json(run / "generator.json", config)
-        with self.assertRaisesRegex(ValueError, "B2"):
+        with self.assertRaisesRegex(ValueError, "sentence"):
             Generator(run)
 
     def test_invalid_coordinates_fail_at_startup(self):

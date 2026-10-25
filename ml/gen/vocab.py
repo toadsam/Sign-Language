@@ -13,16 +13,30 @@ from pathlib import Path
 from common.data import apply_split
 
 
+def _unique_fields(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
 def read_json(path):
     with Path(path).open(encoding="utf-8-sig") as stream:
-        return json.load(stream)
+        return json.load(stream, object_pairs_hook=_unique_fields)
 
 
 def select_train(data_dir, split_path, *, data_mode="formal"):
-    """B1 minimum selection; returns metadata only and exclusion counts.
+    """Return all eligible WORD train candidates, not one exemplar per item.
 
-    Does not load coordinate arrays. Replace/reconcile with A1's selection API
-    when that API is integrated; common.data.apply_split alone is insufficient.
+    Formal quality/signer membership matches gen.data.select_data when its
+    token/segment validation succeeds. This API needs neither tokens nor npy;
+    Generator validates active/coordinates and then selects representatives.
+    B smoke remains strict about missing label/dur_ratio and requires a split,
+    whereas A smoke explicitly permits missing quality fields/absent splits.
+    Counts here record the first exclusion reason; A records every reason.
+    Empty candidates are valid for B (all unknown), unlike A's empty_train error.
     """
     if data_mode not in ("formal", "smoke"):
         raise ValueError("data_mode must be formal or smoke")
@@ -34,25 +48,28 @@ def select_train(data_dir, split_path, *, data_mode="formal"):
         raise ValueError("formal selection requires a fixed signer split")
     if mode == "signer":
         groups = split.get("signers", {})
+        if not isinstance(groups, dict) or set(groups) != {"train", "val", "test"}:
+            raise ValueError("split requires exactly train/val/test signer lists")
         seen = set()
         for part in ("train", "val", "test"):
             values = groups.get(part)
-            if not isinstance(values, list) or any(not isinstance(s, str) or not s for s in values):
+            if not isinstance(values, list) or any(not isinstance(s, str) or not s.strip() for s in values):
                 raise ValueError("split requires train/val/test signer lists")
             if len(set(values)) != len(values) or seen.intersection(values):
                 raise ValueError("split signer assignments overlap or repeat")
             seen.update(values)
-    elif not isinstance(split.get("test_items"), list):
+    elif (not isinstance(split.get("test_items"), list)
+          or any(not isinstance(item, str) or not item.strip() for item in split["test_items"])):
         raise ValueError("item smoke split requires test_items")
     excluded = split.get("exclude", {}).get("clips", [])
-    if not isinstance(excluded, list) or any(not isinstance(c, str) for c in excluded):
+    if not isinstance(excluded, list) or any(not isinstance(c, str) or not c.strip() for c in excluded):
         raise ValueError("exclude.clips must be a list of clip names")
     records, seen = [], set()
     with (Path(data_dir) / "meta.jsonl").open(encoding="utf-8-sig") as stream:
         for line in stream:
             if not line.strip():
                 continue
-            meta = json.loads(line)
+            meta = json.loads(line, object_pairs_hook=_unique_fields)
             if not isinstance(meta, dict):
                 raise ValueError("metadata row must be a JSON object")
             for key in ("clip", "item", "signer", "type"):
