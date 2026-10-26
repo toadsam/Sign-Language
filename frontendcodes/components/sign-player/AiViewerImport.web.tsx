@@ -13,13 +13,13 @@ export default function AiViewerImport({disabled,onBusy,onPair}:{disabled:boolea
     finally{if(version.current===request){setLoading(false);onBusy(false);}}
   };
   const apply=()=>{if(!viewer)return;try{const pair=decodeAiViewerPair(viewer,index,demo);onPair(pair,`${name} · 클립 ${index} (${String(viewer.clips[index].name??'이름 없음')})`,viewer.labels);setError('');setNotice('원본과 복원을 함께 불러왔습니다.');}catch(e){setError(e instanceof Error?e.message:'좌표 변환 실패');}};
-  return <fieldset disabled={disabled||loading} style={{padding:16,marginBottom:16,border:'1px solid #495266',borderRadius:12,background:'#111318'}}>
+  return <fieldset disabled={disabled||loading} style={{minWidth:0,maxWidth:'100%',boxSizing:'border-box',overflowWrap:'anywhere',padding:16,marginBottom:16,border:'1px solid #495266',borderRadius:12,background:'#111318'}}>
     <legend>AI 팀 viewer.html 불러오기</legend>
-    <label>학습 결과 HTML <input aria-label="AI 팀 viewer HTML" type="file" accept=".html,text/html" onChange={e=>{const file=e.target.files?.[0];e.target.value='';void load(file);}}/></label>
+    <label>학습 결과 HTML <input aria-label="AI 팀 viewer HTML" type="file" accept=".html,text/html" style={{maxWidth:'100%'}} onChange={e=>{const file=e.target.files?.[0];e.target.value='';void load(file);}}/></label>
     {loading&&<p role="status">데이터를 읽고 있습니다…</p>}
     {viewer&&<p>파일의 비교 설명: {viewer.labels[0]} ↔ {viewer.labels[1]}</p>}
     {viewer&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:12}}>
-      <label>클립 <select aria-label="AI 결과 클립" style={control} value={index} onChange={e=>setIndex(Number(e.target.value))}>{viewer.clips.map((clip,i)=><option key={i} value={i}>{i}: {String(clip.name??'이름 없음')} · {String(clip.split??'')} · {String(clip.frames)}프레임</option>)}</select></label>
+      <label style={{minWidth:0,maxWidth:'100%'}}>클립 <select aria-label="AI 결과 클립" style={{...control,maxWidth:'100%',boxSizing:'border-box'}} value={index} onChange={e=>setIndex(Number(e.target.value))}>{viewer.clips.map((clip,i)=><option key={i} value={i}>{i}: {String(clip.name??'이름 없음')} · {String(clip.split??'')} · {String(clip.frames)}프레임</option>)}</select></label>
       <label><input type="checkbox" checked={demo} onChange={e=>setDemo(e.target.checked)}/> 합성 시험 파일로 표시</label>
       <button style={control} onClick={apply}>선택한 클립 불러오기</button>
     </div>}
