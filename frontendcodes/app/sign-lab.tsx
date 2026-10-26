@@ -6,7 +6,7 @@ const screens=[
   {route:'/sign-compare',title:'네 동작 함께 비교',state:'조건별 JSON 필요',description:'원본·B1·B2·우리 방법을 같은 시간과 시점으로 재생합니다. 기본 자료는 합성 샘플입니다.'},
   {route:'/sign-reconstruct',title:'원본·복원 비교',state:'AI HTML 또는 JSON 불러오기',description:'팀 viewer.html의 클립을 선택하거나 두 JSON을 불러옵니다. 좌표 차이와 비교 보고서를 확인합니다.'},
   {route:'/sign-codebook',title:'코드북 살펴보기',state:'실제 코드북 연결 대기',description:'토큰별 4프레임 동작을 검색하고 재생합니다. 기본 목록은 모의 코드북입니다.'},
-  {route:'/sign-generate',title:'문장 입력 흐름 점검',state:'모의 응답 · API 연결 대기',description:'입력·로딩·취소·실패·영상 대체 재생을 점검합니다. 실제 문장을 수어로 변환하지 않습니다.'},
+  {route:'/sign-generate',title:'문장 입력 흐름 점검',state:'로컬 API 검증 · 실제 서버 연결 대기',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
   {route:'/sign-camera',title:'손 좌표 수집',state:'PC 웹 · 단어 모델 연결 대기',description:'카메라, 내 영상 또는 공개 시험 영상에서 손 관절을 추출하고 5초 좌표를 수집합니다.'},
   {route:'/sign-hand-review',title:'손 좌표 재생·품질 점검',state:'PC 웹 · 수집 JSON 불러오기',description:'수집 결과를 재생하고 미감지·추출 간격을 점검합니다. 품질 보고서도 저장할 수 있습니다.'},
 ];

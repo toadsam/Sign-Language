@@ -1,19 +1,16 @@
+import { validateGenerationText } from './generation-input';
 import { publicAssetPath } from '../public-asset';
 import sample from './demo-motion.json';
 import { decodeMotion } from './motion';
 import { decodePlayback } from './playback';
 import type { PlaybackResponse } from './playback';
 import type { MotionResponse } from './motion';
-export type MockScenario = 'success' | 'unknown' | 'error' | 'video' | 'video-error';
-export function validateGenerationText(text: string): string {
-  const value = text.trim();
-  if (!value) throw new Error('문장을 입력해주세요.');
-  if (Array.from(value).length > 200) throw new Error('문장은 200자 이하로 입력해주세요.');
-  return value;
-}
+export type MockScenario = 'success' | 'unknown' | 'error' | 'video' | 'video-error' | 'video-list' | 'video-empty';
+export { validateGenerationText } from './generation-input';
 export function createMockGeneration(text: string, scenario: MockScenario): PlaybackResponse {
   validateGenerationText(text);
   if (scenario === 'error') throw new Error('화면 점검용 실패 응답입니다. 다시 시도해주세요.');
+  if(scenario==='video-list'||scenario==='video-empty')return decodePlayback({source:'video',items:scenario==='video-empty'?[]:[{word:'샘플 하나',id:1,file:'demo',url:publicAssetPath('sign-demo.mp4'),hasVideo:true},{word:'영상 없는 샘플',id:0,file:'',url:'',hasVideo:false},{word:'샘플 둘',id:2,file:'demo',url:publicAssetPath('sign-demo.mp4'),hasVideo:true}],unknown:[],demo:true});
   if (scenario === 'video' || scenario === 'video-error') return decodePlayback({source:'video',videoUrl:publicAssetPath(scenario==='video'?'sign-demo.mp4':'missing-sign-demo.mp4'),unknown:[],demo:true});
   const response: MotionResponse = {
     ...(sample as MotionResponse), demo: true, tokens: [0, 1],

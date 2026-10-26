@@ -8,7 +8,7 @@ export default function SignGenerateScreen() {
     <Stack.Screen options={{title:'문장 입력 실습'}}/>
     <LabHomeLink/>
     <Text style={styles.title}>문장 입력부터 동작 재생까지</Text>
-    <Text style={styles.description}>문장을 입력하고 응답 대기·안내·재생 흐름을 샘플로 확인하세요.</Text>
+    <Text style={styles.description}>문장을 입력하고 샘플 또는 API 응답으로 대기·안내·재생 흐름을 확인하세요.</Text>
     <Link href={'/sign-player' as Href} style={{color:'#1f80e3'}}>동작 JSON 재생 화면 →</Link>
     <GenerationLab/>
   </ScrollView>;
