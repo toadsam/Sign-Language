@@ -110,6 +110,8 @@ class WordModelAdapter:
             if declared_version == "v0.3-e5" and decoder_hash != KNOWN_SHA256["model"]:
                 raise ValueError("decoder does not match the documented E5 hash")
             decoder, decoder_config = load_vqvae(decoder_path)
+            self.checkpoint = checkpoint
+            self.decoder_config = dict(decoder_config)
             actual_version = decoder_config.get("vq_version")
             if actual_version is None and decoder_hash == KNOWN_SHA256["model"]:
                 actual_version = "v0.3-e5"
@@ -139,6 +141,9 @@ class WordModelAdapter:
         saved_signer = checkpoint.get("generation_signer")
         if not isinstance(saved_signer, str) or saved_signer not in self.signers:
             raise ValueError("checkpoint generation_signer is not trained")
+        expected_signer = config.get("expected_generation_signer")
+        if expected_signer is not None and saved_signer != expected_signer:
+            raise ValueError("checkpoint generation_signer mismatch")
         self.signer = sampling.get("signer", saved_signer)
         if not isinstance(self.signer, str) or self.signer not in self.signers:
             raise ValueError("sampling signer is not trained")
@@ -166,6 +171,8 @@ class WordModelAdapter:
             "decode": "per_word" if self.kind == "word_gpt" else "direct_coordinates",
             "blend": blend, "max_words": self.max_words, "max_frames": self.max_frames,
             "frames_per_word_upper_bound": self.frames_per_word, "signer": self.signer,
+            "checkpoint_generation_signer": saved_signer, "max_len": self.max_len,
+            "nb_code": self.nb_code, "down": self.down,
             "top_k": self.top_k, "temperature": self.temperature, "min_len": self.min_len,
             "sentence_model": False, "nonmanual_supported": False}
         entropy = secrets.randbits(63)
@@ -198,14 +205,18 @@ class WordModelAdapter:
         indices = torch.tensor([tokens], dtype=torch.long, device=self.device)
         return self._motion(self.decoder.decode(indices), len(tokens) * self.down), tokens
 
-    def generate(self, gloss, seed):
+    def generate(self, gloss, seed, *, word_id=False):
         if len(gloss) > self.max_words:
             raise ValueError("input exceeds max_words")
         if seed is not None and not 0 <= seed < 2**63:
             raise ValueError("model seed must be in [0, 2**63)")
         items, unknown = [], []
         for word in gloss:
-            if word in self.mapping:
+            if word_id:
+                if word not in self.classes:
+                    raise ValueError("WORD ID is not in checkpoint classes")
+                items.append(word)
+            elif word in self.mapping:
                 items.append(self.mapping[word])
             else:
                 unknown.append(word)
@@ -243,3 +254,16 @@ class WordModelAdapter:
         if len(motion) > self.max_frames or not np.isfinite(motion).all():
             raise ValueError("invalid combined model motion")
         return {"fps": 30, "motion": motion, "tokens": tokens, "unknown": unknown, "source": "model"}
+
+    def decode_reference_tokens(self, tokens):
+        """Decode stored E5 codes for one reference; caller checks its frames interval."""
+        if self.kind != "word_gpt":
+            raise ValueError("reference token decoding requires word_gpt")
+        if (not isinstance(tokens, (list, tuple)) or not 1 <= len(tokens) * self.down <= self.max_frames
+                or any(type(t) is not int or not 0 <= t < self.nb_code for t in tokens)):
+            raise ValueError("invalid reference token range or length")
+        with _RNG_LOCK, torch.random.fork_rng(devices=self._cuda_devices), torch.inference_mode():
+            _check_device(self.decoder, self.device)
+            self.decoder.eval()
+            indices = torch.tensor([tokens], dtype=torch.long, device=self.device)
+            return self._motion(self.decoder.decode(indices), len(tokens) * self.down)

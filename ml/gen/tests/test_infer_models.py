@@ -16,6 +16,7 @@ from unittest.mock import patch
 import numpy as np
 
 from gen.infer import Generator
+from gen.evaluation_adapter import BUNDLE_ENV, SAMPLING, factory
 from gen.tests.test_infer_baseline import make_meta, write_json, write_metas
 
 HAS_TORCH = importlib.util.find_spec("torch") is not None
@@ -500,6 +501,69 @@ class WordModelTests(unittest.TestCase):
         weights = np.array([0.25, 0.5, 0.75])[:, None, None]
         expected = result["motion"][7] * (1 - weights) + result["motion"][11] * weights
         np.testing.assert_allclose(result["motion"][8:11], expected, atol=1e-7)
+
+    def test_word_id_evaluation_works_with_empty_gloss_mapping(self):
+        run, _ = self.bundle()
+        write_json(run / "vocab_map.json", {"schema_version": 1, "mapping": {},
+                                            "unmapped": [], "ambiguous": {}})
+        generator = Generator(run)
+        self.assertIn("WORD1", generator.word_ids)
+        self.assertEqual(generator.connection_policy["checkpoint_generation_signer"], "TRAIN")
+        self.assertEqual(generator.connection_policy["down"], 4)
+        first = generator.generate_word_id("WORD1", seed=17)
+        generator.generate_word_id("WORD2", seed=18)
+        again = generator.generate_word_id("WORD1", seed=17)
+        self.assert_motion(first)
+        self.assertEqual(first["unknown"], [])
+        np.testing.assert_array_equal(first["motion"], again["motion"])
+        self.assertEqual(first["tokens"], again["tokens"])
+        for item, seed in (("WORD999", 17), ("WORD1", True), ("WORD1", -1)):
+            with self.subTest(item=item, seed=seed), self.assertRaises(ValueError):
+                generator.generate_word_id(item, seed=seed)
+
+    def test_bundle_can_require_checkpoint_generation_signer(self):
+        run, _ = self.bundle(expected_generation_signer="OTHER")
+        with self.assertRaisesRegex(ValueError, "checkpoint generation_signer mismatch"):
+            Generator(run)
+
+    def test_stored_reference_codes_decode_with_loaded_e5(self):
+        run, _ = self.bundle()
+        generator = Generator(run)
+        restored = generator.decode_reference_tokens([0, 1, 7])
+        expected = generator._adapter.decoder.decode(torch.tensor([[0, 1, 7]]))
+        np.testing.assert_array_equal(restored, expected[0].numpy().reshape(12, 125, 3))
+        self.assertEqual(restored.dtype, np.float32)
+        self.assertEqual(generator.decode_reference_tokens([0] * 6).shape, (24, 125, 3))
+        for codes in ([], [8], [True], [0] * 451):
+            with self.subTest(codes=codes), self.assertRaises(ValueError):
+                generator.decode_reference_tokens(codes)
+
+    def test_a_factory_connects_tiny_trained_gpt_and_vq(self):
+        run, _ = self.bundle()
+        checkpoint = self.checkpoint(run)
+        checkpoint["signers"] = {"REAL01": 0}
+        checkpoint["generation_signer"] = "REAL01"
+        self.save_checkpoint(run, checkpoint)
+        config = json.loads((run / "generator.json").read_text(encoding="utf-8"))
+        config.update(sampling=dict(SAMPLING), expected_generation_signer="REAL01",
+                      blend=0, max_words=1)
+        write_json(run / "generator.json", config)
+        write_json(run / "config.json", {"width": 8, "code_dim": 4, "nb_code": 8,
+                                         "depth": 1, "parts": "body_hand", "vq_version": "fixture-v1"})
+        with patch.dict(os.environ, {BUNDLE_ENV: str(run)}):
+            adapter = factory(run / "model.pt", run / "vq.pt", "cpu")
+        self.assertFalse(adapter.model.training)
+        self.assertFalse(adapter.decoder_model.training)
+        self.assertEqual(adapter.decoder_info, {"nb_code": 8, "down": 4, "parts": "body_hand"})
+        sampling = {**SAMPLING, "seeds": [17, 18, 19], "fps": 30}
+        first = adapter.generate("WORD1", 17, sampling)
+        again = adapter.generate("WORD1", 17, sampling)
+        self.assert_motion(first)
+        self.assertEqual(first["tokens"], again["tokens"])
+        np.testing.assert_array_equal(first["motion"], again["motion"])
+        restored = adapter.decode([0, 1, 7])
+        self.assertEqual(restored.shape, (12, 125, 3))
+        self.assertEqual(restored.dtype, np.float32)
 
 
 if __name__ == "__main__":

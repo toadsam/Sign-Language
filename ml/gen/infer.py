@@ -59,6 +59,7 @@ class Generator:
             self._adapter = WordModelAdapter(config, path, self.mapping, device, self.blend)
             self.device = str(self._adapter.device)
             self.connection_policy = self._adapter.connection_policy
+            self.word_ids = frozenset(self._adapter.classes)
             return
         metas, self.selection_report = select_train(data_path, split_path,
                                                     data_mode=config.get("data_mode", "formal"))
@@ -115,3 +116,19 @@ class Generator:
         if not np.isfinite(motion).all():
             raise ValueError("baseline output contains nonfinite values")
         return {"fps": 30, "motion": motion, "tokens": [], "unknown": unknown, "source": "baseline"}
+
+    def generate_word_id(self, word_id: str, seed: int) -> dict:
+        """Generate one checkpoint WORD ID for evaluation, without a gloss map."""
+        if self.kind != "word_gpt":
+            raise ValueError("WORD ID evaluation requires word_gpt")
+        if not isinstance(word_id, str) or not word_id.startswith("WORD"):
+            raise ValueError("word_id must be a WORD ID string")
+        if type(seed) is not int or not 0 <= seed < 2**63:
+            raise ValueError("seed must be an integer in [0, 2**63)")
+        return self._adapter.generate([word_id], seed, word_id=True)
+
+    def decode_reference_tokens(self, tokens: list[int]) -> np.ndarray:
+        """Decode one stored E5 token sequence to float32 [T,125,3]."""
+        if self.kind != "word_gpt":
+            raise ValueError("reference token decoding requires word_gpt")
+        return self._adapter.decode_reference_tokens(tokens)
