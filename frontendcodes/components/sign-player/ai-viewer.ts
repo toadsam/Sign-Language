@@ -1,6 +1,6 @@
 import { decodeMotion } from './motion';
 import type { DecodedMotion } from './motion';
-export type AiViewer = {fps:number;clips:Record<string,unknown>[]};
+export type AiViewer = {fps:number;clips:Record<string,unknown>[];labels:[string,string]};
 /** Extract JSON only. Never execute the supplied HTML or its scripts. */
 export function readAiViewer(text:string):AiViewer{
   const match=/\bconst\s+DATA\s*=\s*/.exec(text);
@@ -19,7 +19,8 @@ export function readAiViewer(text:string):AiViewer{
   if(!value.parts||Object.entries(parts).some(([name,range])=>JSON.stringify(value.parts[name])!==JSON.stringify(range)))throw new Error('125관절 부위 순서가 다릅니다.');
   if(!Number.isFinite(value.fps)||value.fps<=0||value.fps>240)throw new Error('FPS가 올바르지 않습니다.');
   if(!Array.isArray(value.clips)||!value.clips.length||value.clips.length>1000||value.clips.some((c:unknown)=>!c||typeof c!=='object'||Array.isArray(c)))throw new Error('1~1000개의 클립 객체가 필요합니다.');
-  return {fps:value.fps,clips:value.clips};
+  if(value.labels!==undefined&&(!Array.isArray(value.labels)||value.labels.length!==2||value.labels.some((label:unknown)=>typeof label!=='string'||label.length>500)))throw new Error('원본과 복원의 제목은 두 개의 문자열이어야 합니다.');
+  return {fps:value.fps,clips:value.clips,labels:value.labels??['원본','복원']};
 }
 export function decodeAiViewerPair(viewer:AiViewer,index:number,demo:boolean):[DecodedMotion,DecodedMotion]{
   if(!Number.isInteger(index)||index<0||index>=viewer.clips.length)throw new Error('클립 번호가 범위를 벗어났습니다.');

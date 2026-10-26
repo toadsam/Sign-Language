@@ -72,7 +72,7 @@ export default function ComparisonPlayer({mode = 'four'}: ComparisonPlayerProps)
   };
   return <section style={{ fontFamily: 'system-ui,sans-serif', color: '#edf0fa' }} aria-label={pair ? '원본과 복원 동작 비교' : '4개 동작 비교'}>
     <p style={{ padding: 14, background: '#fff4dc', color: '#754b16', borderRadius: 12 }}>{pair ? '기본 두 동작은 화면 점검용 합성 샘플입니다. 복원 샘플은 손 좌표를 조금 변형한 것이며 학습 모델의 복원 결과가 아닙니다.' : '기본 4개 동작은 동기 재생 점검용 합성 샘플입니다. B1·B2·생성 모델의 실제 결과가 아닙니다.'}</p>
-    {pair&&<AiViewerImport disabled={recorder.busy||check.running||slots.some(s=>s.loading)} onBusy={setImporting} onPair={(motions,name)=>{versions.current=versions.current.map(v=>v+1);setSlots(motions.map((motion,i)=>({label:i===0?'원본':'복원',name,motion,error:null,loading:false})));setRecordSlot(0);seek(0);}}/>}
+    {pair&&<AiViewerImport disabled={recorder.busy||check.running||slots.some(s=>s.loading)} onBusy={setImporting} onPair={(motions,name,labels)=>{versions.current=versions.current.map(v=>v+1);setSlots(motions.map((motion,i)=>({label:labels[i],name,motion,error:null,loading:false})));setRecordSlot(0);seek(0);}}/>}
     <fieldset disabled={recorder.busy||check.running||importing} style={{border:0,padding:0,margin:0}}><div style={{ background: '#111318', borderRadius: 14, padding: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
       <button style={control} aria-pressed={playing} onClick={() => {setFinalSlot(null);setPlaying(!playing);}}>{playing ? '모두 일시정지' : '모두 재생'}</button>
       <button style={control} onClick={() => seek(0)}>처음으로</button>
