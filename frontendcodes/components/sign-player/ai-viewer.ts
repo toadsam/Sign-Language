@@ -3,8 +3,13 @@ import type { DecodedMotion } from './motion';
 export type AiViewer = {fps:number;clips:Record<string,unknown>[];labels:[string,string]};
 /** Extract JSON only. Never execute the supplied HTML or its scripts. */
 export function readAiViewer(text:string):AiViewer{
+  if(text.length>40000000)throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');
+  let value;
+  if(text.trimStart().startsWith('{')){
+    try{value=JSON.parse(text.trimStart());}catch{throw new Error('비교 JSON 파일을 읽을 수 없습니다. 파일을 다시 다운로드해주세요.');}
+  }else{
   const match=/\bconst\s+DATA\s*=\s*/.exec(text);
-  if(!match)throw new Error('팀 viewer.html의 DATA 선언을 찾을 수 없습니다.');
+  if(!match)throw new Error('비교 JSON 또는 팀 viewer.html의 DATA 선언이 필요합니다.');
   const start=match.index+match[0].length;
   if(text[start]!=='{')throw new Error('내보낸 JSON 데이터가 필요합니다.');
   let depth=0,quoted=false,escaped=false,end=-1;
@@ -14,7 +19,8 @@ export function readAiViewer(text:string):AiViewer{
     if(c==='"')quoted=true;else if(c==='{')depth++;else if(c==='}'&&--depth===0){end=i+1;break;}
   }
   if(end<0||!text.slice(end).trimStart().startsWith(';'))throw new Error('JSON 데이터 선언이 완성되지 않았습니다.');
-  const value=JSON.parse(text.slice(start,end));
+  value=JSON.parse(text.slice(start,end));
+  }
   const parts={body:[0,13],lhand:[13,34],rhand:[34,55],face:[55,125]};
   if(!value.parts||Object.entries(parts).some(([name,range])=>JSON.stringify(value.parts[name])!==JSON.stringify(range)))throw new Error('125관절 부위 순서가 다릅니다.');
   if(!Number.isFinite(value.fps)||value.fps<=0||value.fps>240)throw new Error('FPS가 올바르지 않습니다.');

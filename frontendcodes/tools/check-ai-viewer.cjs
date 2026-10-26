@@ -19,6 +19,12 @@ const fixture = { fps: 30, down: 4, parts: { body: [0,13], lhand: [13,34], rhand
 const html = value => '<script>const DATA = ' + JSON.stringify(value) + '; throw new Error("must not run");</script>';
 const viewer = readAiViewer(html(fixture));
 assert.deepEqual(Array.from(viewer.labels), fixture.labels);
+const jsonViewer = readAiViewer('\uFEFF \n'+JSON.stringify(fixture));
+assert.deepEqual(Array.from(jsonViewer.labels), fixture.labels);
+assert.equal(decodeAiViewerPair(jsonViewer,0,true)[1].positions[0],.25);
+assert.throws(()=>readAiViewer('{"fps":'),/JSON/);
+assert.throws(()=>readAiViewer(JSON.stringify({...fixture,parts:{}})),/관절/);
+assert.throws(()=>readAiViewer(JSON.stringify({...fixture,labels:['one']})),/제목/);
 const pair = decodeAiViewerPair(viewer, 0, true);
 assert.equal(pair[0].response.frames, 4);
 assert.equal(pair[0].positions[0], 0);
@@ -54,4 +60,4 @@ if (process.argv[2]) {
   }
   actualFile = { clips: actual.clips.length, fps: actual.fps, allPairsDecoded: true };
 }
-console.log(JSON.stringify({ passed: ['comparison labels preserved and legacy defaults', 'signed float32 pair decoding and token zero', 'invalid labels, parts, FPS and clip index rejected', 'truncated and non-finite coordinates rejected', 'JSON-only extraction without HTML execution'], actualFile, browserTested: false, modelAccuracyTested: false }, null, 2));
+console.log(JSON.stringify({ passed: ['direct comparison JSON and BOM input; invalid JSON and metadata rejected', 'comparison labels preserved and legacy defaults', 'signed float32 pair decoding and token zero', 'invalid labels, parts, FPS and clip index rejected', 'truncated and non-finite coordinates rejected', 'JSON-only extraction without HTML execution'], actualFile, browserTested: false, modelAccuracyTested: false }, null, 2));
