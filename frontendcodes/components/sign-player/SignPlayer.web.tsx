@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { decodeMotion } from './motion';
+import { currentMotionToken, decodeMotion } from './motion';
 import type { SignPlayerProps } from './SignPlayer';
 import RecordingControls from './RecordingControls';
 import { useCanvasRecorder } from './useCanvasRecorder';
@@ -50,6 +50,7 @@ export default function SignPlayer({motion}: SignPlayerProps) {
 
   if(!data)return <p role="alert">{parsed.error}</p>;
   const last=data.response.frames-1;
+  const token=currentMotionToken(data.response,frame);
   const seek=(n:number)=>{cursor.current=n;setFrame(n);setPlaying(false);};
   const segment=data.response.segments.find(s=>frame>=s.start&&frame<s.end);
   return <section aria-label="수어 동작 재생기" style={{background:'#111318',color:'#edf0fa',borderRadius:16,padding:20,fontFamily:'system-ui,sans-serif'}}>
@@ -65,6 +66,7 @@ export default function SignPlayer({motion}: SignPlayerProps) {
     </fieldset>
     <MotionCanvas data={data} frame={frame} yaw={yaw} pitch={pitch} showBody={showBody} showHands={showHands} showFace={showFace} onRenderSample={sample=>check.record(0,sample)} onCanvasReady={c=>{canvas.current=c;}} onViewChange={(y,p)=>{if(!recorder.busy&&!check.running){setYaw(y);setPitch(p);}}}/>
     <fieldset disabled={recorder.busy||check.running} style={{border:0,padding:0,margin:0}}><label style={{display:'flex',gap:12,alignItems:'center',marginTop:16}}>프레임 <input aria-label="프레임" type="range" min={0} max={last} value={Math.min(frame,last)} onChange={e=>seek(Number(e.target.value))} style={{flex:1}}/><output>{Math.min(frame,last)} / {last}</output></label>
+    <p aria-label="현재 토큰" style={{color:'#adb7ca',fontSize:14}}>현재 토큰: {token===undefined?'정보 없음':`#${token}`} · 4프레임 단위</p>
     <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center',marginTop:16}}>
       <label>반복 시작 <FrameInput label="반복 시작" min={0} max={loopEnd} value={loopStart} onCommit={n=>{setLoopStart(n);seek(n);}}/></label>
       <label>반복 끝 <FrameInput label="반복 끝" min={loopStart} max={last} value={loopEnd} onCommit={n=>{setLoopEnd(n);seek(loopStart);}}/></label>

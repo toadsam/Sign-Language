@@ -6,6 +6,12 @@ export type MotionResponse = {
 };
 export type DecodedMotion = { response: MotionResponse; positions: Float32Array };
 
+/** Team viewer README: each token corresponds to four motion frames. */
+export function currentMotionToken(response: MotionResponse, frame: number): number | undefined {
+  if (!Number.isInteger(frame) || frame < 0 || frame >= response.frames) return undefined;
+  return response.tokens[Math.floor(frame / 4)];
+}
+
 export function decodeMotion(value: unknown): DecodedMotion {
   if (!value || typeof value !== 'object') throw new Error('동작 응답 객체가 필요합니다.');
   const r = value as MotionResponse;
