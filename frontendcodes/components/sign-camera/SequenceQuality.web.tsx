@@ -27,6 +27,7 @@ export default function SequenceQuality({data,inputFilename,onSeek}:{data:HandSe
     {saveError&&<p role="alert" style={{color:'#ffb3b3'}}>{saveError}</p>}
     <p style={{fontSize:13,color:'#adb7ca'}}>파일 이름과 아래 통계를 저장합니다. 좌표 JSON과 함께 보관하세요.</p>
     <p>관측 추출 속도: {quality.observedSamplingHz===null?'계산 불가 (표본 1개)':`${quality.observedSamplingHz.toFixed(2)}회/초`} · 추출 간격 중앙값: {ms(quality.medianIntervalMs)} · 최대: {ms(quality.maxIntervalMs)}</p>
+    <p style={{fontSize:13,color:'#adb7ca'}}>아래 미감지는 좌우 입력 슬롯의 빈 표본 수입니다. 두 손이 같은 쪽으로 분류되면 한 슬롯만 선택될 수 있어, 실제 손이 화면에 없었다는 뜻은 아닙니다. 원본 수집 JSON의 rawFrames에는 감지된 두 손을 보존합니다.</p>
     <p>첫 추출까지 {ms(quality.initialWaitMs)} · 마지막 추출부터 수집 종료까지 {ms(quality.tailMs)}</p>
     <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}>
       <caption style={{textAlign:'left'}}>손별 미감지 표본</caption>

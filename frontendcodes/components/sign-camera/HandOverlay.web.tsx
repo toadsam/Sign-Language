@@ -45,7 +45,7 @@ export default function HandOverlay({input,enabled,mirrored,onStatus,onFrame}:Pr
                   for(const [a,b] of HAND_EDGES){context.beginPath();context.moveTo(points[a].x,points[a].y);context.lineTo(points[b].x,points[b].y);context.stroke();}
                   for(const point of points){context.beginPath();context.arc(point.x,point.y,3,0,Math.PI*2);context.fill();}
                 });}
-                notify.current({timestampMs:now,width:sw,height:sh,hands:result.landmarks.map((points,index)=>({side:result.handedness[index]?.[0]?.categoryName??'Unknown',score:result.handedness[index]?.[0]?.score??0,points:points.map(p=>({x:p.x,y:p.y}))}))});if(now-lastStatus>500||!isVideo){status.current(result.landmarks.length?`손 ${result.landmarks.length}개 감지 · 손마다 21관절`:'손을 감지하지 못했습니다. 손 전체가 화면에 들어오도록 해주세요.');lastStatus=now;}
+                notify.current({timestampMs:now,width:sw,height:sh,hands:result.landmarks.map((points,index)=>({side:result.handedness[index]?.[0]?.categoryName??'Unknown',score:result.handedness[index]?.[0]?.score??0,points:points.map(p=>({x:p.x,y:p.y}))}))});if(now-lastStatus>500||!isVideo){const sides=result.handedness.map(categories=>categories[0]?.categoryName);const duplicateSide=result.landmarks.length===2&&(sides[0]==='Left'||sides[0]==='Right')&&sides[0]===sides[1];status.current(result.landmarks.length?`손 ${result.landmarks.length}개 감지 · 손마다 21관절${duplicateSide?' · 좌우 분류 중복: 입력 슬롯에는 한 손만 선택될 수 있습니다.':''}`:'손을 감지하지 못했습니다. 손 전체가 화면에 들어오도록 해주세요.');lastStatus=now;}
               }catch{setError('손 추출 중 오류가 발생했습니다. 손 추출을 껐다가 다시 켜주세요.');status.current('손 추출 중단');notify.current(null);clear();return;}
             }
           }
