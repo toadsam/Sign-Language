@@ -23,6 +23,8 @@ const jsonViewer = readAiViewer('\uFEFF \n'+JSON.stringify(fixture));
 assert.deepEqual(Array.from(jsonViewer.labels), fixture.labels);
 assert.equal(decodeAiViewerPair(jsonViewer,0,true)[1].positions[0],.25);
 assert.throws(()=>readAiViewer('{"fps":'),/JSON/);
+assert.throws(()=>readAiViewer('{"fps":'),/끝부분/);
+assert.throws(()=>readAiViewer('{"fps":30,}'),/문법/);
 assert.throws(()=>readAiViewer(JSON.stringify({...fixture,parts:{}})),/관절/);
 assert.throws(()=>readAiViewer(JSON.stringify({...fixture,labels:['one']})),/제목/);
 const pair = decodeAiViewerPair(viewer, 0, true);

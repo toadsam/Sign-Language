@@ -6,10 +6,19 @@ const control={background:'#232935',color:'#edf0fa',border:'1px solid #495266',b
 export default function AiViewerImport({disabled,onBusy,onPair}:{disabled:boolean;onBusy:(busy:boolean)=>void;onPair:(pair:[DecodedMotion,DecodedMotion],name:string,labels:[string,string])=>void}){
   const [viewer,setViewer]=useState<AiViewer|null>(null),[name,setName]=useState(''),[index,setIndex]=useState(0),[demo,setDemo]=useState(true),[error,setError]=useState(''),[loading,setLoading]=useState(false),[notice,setNotice]=useState('');
   const [selectedName,setSelectedName]=useState('');
+  const [readInfo,setReadInfo]=useState('');
   const version=useRef(0);useEffect(()=>()=>{version.current++;},[]);
   const load=async(file:File|undefined)=>{
-    if(!file)return;const request=++version.current;setSelectedName(file.name);setLoading(true);onBusy(true);setError('');setNotice('');
-    try{if(file.size>40000000)throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');const next=readAiViewer(await file.text());if(version.current!==request)return;setViewer(next);setName(file.name);setIndex(0);setDemo(true);}
+    if(!file)return;const request=++version.current;setSelectedName(file.name);setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트`);setLoading(true);onBusy(true);setError('');setNotice('');
+    try{
+      if(file.size>40000000)throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');
+      const bytes=await file.arrayBuffer();if(version.current!==request)return;
+      setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트 · 읽은 크기 ${bytes.byteLength.toLocaleString()}바이트`);
+      if(bytes.byteLength!==file.size)throw new Error('파일을 끝까지 읽지 못했습니다. 파일 앱에서 다운로드를 완료한 뒤 다시 선택해주세요.');
+      let text:string;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new Error('UTF-8 형식의 파일이 아닙니다. 비교 JSON 원본 파일을 선택해주세요.');}
+      setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트 · 읽은 크기 ${bytes.byteLength.toLocaleString()}바이트 · UTF-8 정상`);
+      const next=readAiViewer(text);if(version.current!==request)return;setViewer(next);setName(file.name);setIndex(0);setDemo(true);
+    }
     catch(e){if(version.current===request)setError(e instanceof Error?e.message:'파일을 읽을 수 없습니다.');}
     finally{if(version.current===request){setLoading(false);onBusy(false);}}
   };
@@ -18,6 +27,7 @@ export default function AiViewerImport({disabled,onBusy,onPair}:{disabled:boolea
     <legend>비교 HTML / JSON 불러오기</legend>
     <label>비교 파일 선택 <input aria-label="AI 팀 viewer HTML 또는 비교 JSON" type="file" accept=".html,.htm,.json,text/html,application/json" style={{maxWidth:'100%'}} onChange={e=>{void load(e.target.files?.[0]);}}/></label>
     {selectedName&&<p role="status">최근 선택한 파일: {selectedName}</p>}
+    {readInfo&&<p style={{fontSize:13,color:'#adb7ca'}}>{readInfo}</p>}
     {loading&&<p role="status">데이터를 읽고 있습니다…</p>}
     {viewer&&<p>읽은 파일: {name} · {viewer.clips.length}개 클립</p>}
     {viewer&&<p>파일의 비교 설명: {viewer.labels[0]} ↔ {viewer.labels[1]}</p>}

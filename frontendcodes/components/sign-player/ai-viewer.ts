@@ -6,7 +6,10 @@ export function readAiViewer(text:string):AiViewer{
   if(text.length>40000000)throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');
   let value;
   if(text.trimStart().startsWith('{')){
-    try{value=JSON.parse(text.trimStart());}catch{throw new Error('비교 JSON 파일을 읽을 수 없습니다. 파일을 다시 다운로드해주세요.');}
+    try{value=JSON.parse(text.trimStart());}catch{
+      if(!text.trimEnd().endsWith('}'))throw new Error('비교 JSON의 끝부분이 완성되지 않았습니다. 원본 파일을 다시 다운로드해주세요.');
+      throw new Error('비교 JSON의 문법이 올바르지 않습니다. 원본 파일을 다시 다운로드해주세요.');
+    }
   }else{
   const match=/\bconst\s+DATA\s*=\s*/.exec(text);
   if(!match)throw new Error('비교 JSON 또는 팀 viewer.html의 DATA 선언이 필요합니다.');
