@@ -28,6 +28,7 @@ timestamps are beyond that inventory check; it is not a coordinate content hash.
 """
 from collections import Counter
 from dataclasses import asdict, dataclass
+import hashlib
 import json
 import math
 import os
@@ -288,7 +289,7 @@ class Trainer:
         self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
             self.optimizer, max_lr=config.lr, total_steps=config.iters, pct_start=self.pct_start)
 
-    def loss(self, rows, *, training):
+    def loss(self, rows, *, training, trace=None):
         device, model, sel = self.device, self.model, self.selection
         signers = [sel.signers[r["signer"]] if training else sel.signers[self.generation_signer] for r in rows]
         sig = torch.tensor(signers, dtype=torch.long, device=device)
@@ -318,6 +319,9 @@ class Trainer:
             targets[i, :len(tokens)] = tokens
             targets[i, len(tokens)] = model.end
         logits = model(condition, inputs, sig)
+        if trace is not None:
+            trace.update(condition=condition.detach(), inputs=inputs.detach(), targets=targets.detach(),
+                         signers=sig.detach(), logits=logits.detach())
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100), \
             sum(len(r["tokens"]) + 1 for r in rows)
 
@@ -350,20 +354,35 @@ class Trainer:
 
 
 def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
-          vq_version=None, resume=False, stop_after=None, tokens_path=None):
+          vq_version=None, resume=False, stop_after=None, tokens_path=None,
+          warm_start=None, parent_sha256=None):
     """Train or resume the same run, returning step/best/LR/coverage metadata.
 
     ``stop_after`` is an absolute step for interruption tests; config.iters must
     remain the original total. Checkpoints contain Python/NumPy/Torch RNG state
     and are loaded with weights_only=True. No real dataset is needed for smoke.
+    warm_start requires an explicit parent SHA and a new run. It copies only
+    strict GPT weights, evaluates/saves the full ordinary val baseline at step0,
+    and starts a new optimizer/schedule/RNG. Resume remains exact recovery only.
     """
+    if resume and warm_start is not None:
+        raise TrainingError("initialization_conflict", "resume/warm_start")
+    if warm_start is None and parent_sha256 is not None:
+        raise TrainingError("parent_required", "warm_start")
     trainer = Trainer(selection, kind, config, data_dir)
     end_step = config.iters if stop_after is None else stop_after
     if type(end_step) is not int or not 1 <= end_step <= config.iters:
         raise TrainingError("invalid_config", "stop_after")
     run = Path(run_dir)
     step, best, best_step, best_artifact = 0, None, None, None
+    parent = None
     if resume:
+        saved_training = json.loads((run / "training.json").read_text(encoding="utf-8"))
+        parent = saved_training.get("parent_provenance")
+        if parent is not None:
+            if sha256_file(parent["path"]) != parent["sha256"]:
+                raise TrainingError("warm_start_parent", "parent changed before pilot resume")
+            trainer.metadata["parent_provenance"] = parent
         parts = decoder_parts(selection, vq_path=vq_path, vq_version=vq_version)
         manifest = create_artifact_manifest(selection, run / "selection.json", vq_path=vq_path,
                                             vq_version=vq_version, parts=parts)
@@ -382,21 +401,63 @@ def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
         trainer.optimizer.load_state_dict(recovery["optimizer"])
         trainer.scheduler.load_state_dict(recovery["scheduler"])
         best, best_step, best_artifact = recovery["best_validation"], recovery["best_step"], recovery["best_artifact"]
+        if recovery.get("parent_provenance") != parent:
+            raise TrainingError("resume_mismatch", "parent_provenance")
         # Restore RNG last, after initialization and optimizer/scheduler loading.
         restore_rng(recovery["rng"], trainer.rng)
         # Keep the original run's provenance, even if unrelated Git state changed.
         manifest = saved_manifest
     else:
+        if warm_start is not None:
+            if kind != "gpt" or not isinstance(parent_sha256, str) or len(parent_sha256) != 64:
+                raise TrainingError("warm_start_parent", "gpt and explicit SHA256 required")
+            parent_path = Path(warm_start).resolve(strict=True)
+            if run.resolve().is_relative_to(parent_path.parent) or sha256_file(parent_path) != parent_sha256:
+                raise TrainingError("warm_start_parent", "path/hash")
+            if len(trainer.val) != len(selection.partitions["val"]) or not trainer.val:
+                raise TrainingError("warm_start_validation", "all ordinary val clips must be eligible")
+            checkpoint = torch.load(parent_path, map_location="cpu", weights_only=True)
+            if (checkpoint.get("checkpoint_schema_version") != 1 or
+                    checkpoint.get("checkpoint_type") != "inference" or checkpoint.get("kind") != "gpt"):
+                raise TrainingError("warm_start_parent", "inference GPT schema 1 required")
+            for field in ("classes", "signers", "nb_code", "max_len", "generation_signer"):
+                if checkpoint.get(field) != trainer.metadata[field]:
+                    raise TrainingError("warm_start_mismatch", field)
+            for field in ("d", "layers", "corrupt"):
+                if checkpoint.get("config", {}).get(field) != asdict(config)[field]:
+                    raise TrainingError("warm_start_mismatch", f"config.{field}")
+            parts = decoder_parts(selection, vq_path=vq_path, vq_version=vq_version)
+            artifact = checkpoint.get("artifact_manifest")
+            validate_artifact_manifest(artifact, allow_smoke=selection.report["data_mode"] == "smoke")
+            for field, expected in {**selection.report["sources"], "data_mode": selection.report["data_mode"],
+                                    "nb_code": selection.tokens["nb_code"], "down": selection.tokens["down"],
+                                    "parts": parts, "vq_version": vq_version,
+                                    "vq_sha256": sha256_file(vq_path) if vq_path else None}.items():
+                if artifact.get(field) != expected:
+                    raise TrainingError("warm_start_mismatch", f"artifact.{field}")
+            selection_raw = (json.dumps(selection.report, ensure_ascii=False, sort_keys=True,
+                                        indent=2, allow_nan=False) + "\n").encode("utf-8")
+            if artifact["selection_sha256"] != hashlib.sha256(selection_raw).hexdigest():
+                raise TrainingError("warm_start_mismatch", "selection_sha256")
+            trainer.model.load_state_dict(checkpoint["model"], strict=True)
+            parent = {"path": str(parent_path), "sha256": parent_sha256,
+                      "global_step": checkpoint["global_step"], "kind": "gpt"}
+            trainer.metadata["parent_provenance"] = parent
+            if trainer.optimizer.state:
+                raise TrainingError("warm_start_optimizer", "new optimizer must have no state")
+            if sha256_file(parent_path) != parent_sha256:
+                raise TrainingError("warm_start_parent", "changed during load")
         manifest = prepare_run(selection, run, vq_path=vq_path, vq_version=vq_version)
         write_json_atomic(run / "training.json", {"schema_version": 1, "signature": trainer.signature(manifest),
             "validation": {"eligible": len(trainer.val), "skipped": dict(trainer.val_skipped)},
             "selection_metric": "ordinary_val_loss" if trainer.val else "smoke_unvalidated",
-            "generation_signer": trainer.generation_signer})
+            "generation_signer": trainer.generation_signer, "parent_provenance": parent})
     trainer.metadata.update(artifact_manifest=manifest, tokens=str(tokens_path) if tokens_path else None)
 
     def inference_artifact(current_step, metric):
         return {**trainer.metadata, "model": _cpu_state(trainer.model), "global_step": current_step,
                 "best_validation": metric, "best_step": best_step,
+                "artifact_role": "warm_start_step0" if parent is not None and current_step == 0 else "validation_best",
                 "selection_metric": "ordinary_val_loss" if trainer.val else "smoke_unvalidated"}
 
     def save_latest():
@@ -405,11 +466,26 @@ def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
                     "scheduler": trainer.scheduler.state_dict(), "global_step": step,
                     "rng": capture_rng(trainer.rng), "best_validation": best, "best_step": best_step,
                     "best_artifact": best_artifact, "config": asdict(config), "artifact_manifest": manifest,
+                    "parent_provenance": parent,
                     "signature": trainer.signature(manifest)}
         atomic_torch_save(recovery, run / "latest.pt")
         if best_artifact is not None:
             atomic_torch_save(best_artifact, run / "model.pt")
 
+    if warm_start is not None:
+        state = capture_rng(trainer.rng)
+        baseline = trainer.validate()
+        restore_rng(state, trainer.rng)
+        if baseline is None:
+            raise TrainingError("warm_start_validation", "full ordinary val required at step0")
+        best, best_step = baseline, 0
+        best_artifact = inference_artifact(0, baseline)
+        atomic_torch_save(best_artifact, run / "baseline.pt")
+        write_json_atomic(run / "baseline.json", {"schema_version": 1, "global_step": 0,
+            "ordinary_val_loss": baseline, "validation_clips": len(trainer.val),
+            "validation_skipped": dict(trainer.val_skipped), "parent_provenance": parent,
+            "interpretation": "parent weights measured under this new run; not pilot improvement"})
+        save_latest()
     starting_step = step
     with open(run / "log.jsonl", "a", encoding="utf-8") as log:
         while step < end_step:
@@ -439,10 +515,13 @@ def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
         # A no-op resume can repair an inference file from recovery as well.
         if step == starting_step:
             save_latest()
+    if parent is not None and sha256_file(parent["path"]) != parent["sha256"]:
+        raise TrainingError("warm_start_parent", "parent changed during pilot")
     return {"global_step": step, "best_validation": best, "best_step": best_step,
             "lr": trainer.optimizer.param_groups[0]["lr"], "device": str(trainer.device),
             "validation_clips": len(trainer.val), "validation_skipped": dict(trainer.val_skipped),
-            "generation_signer": trainer.generation_signer, "run_dir": str(run)}
+            "generation_signer": trainer.generation_signer, "run_dir": str(run),
+            "parent_provenance": parent, "step0_baseline_file": str(run/"baseline.json") if parent else None}
 
 
 def config_from_args(args):

@@ -10,7 +10,6 @@ import argparse
 import json
 import os
 
-import numpy as np
 from gen.data import DataValidationError, select_data
 
 
@@ -27,6 +26,7 @@ def load_setup(tokens_path, data_dir, *, split_path=None, mode="formal",
                             split_path, kind="WORD", mode=mode)
     clips = [dict(c) for c in selection.train]
     if include_motion:
+        import numpy as np
         for c in clips:
             motion = np.load(os.path.join(data_dir, "npy", f"{c['clip']}.npy"), allow_pickle=False)
             if motion.ndim not in (2, 3) or motion.shape[1:] not in ((375,), (125, 3)):
@@ -57,7 +57,7 @@ def main():
     ap.add_argument("--corrupt", type=float, default=0.3, help="gpt: 입력 토큰을 무작위로 바꾸는 최대 비율")
     ap.add_argument("--length", type=int, default=64, help="regress: 출력 프레임 수")
     ap.add_argument("--seed", type=int, default=0)
-    add_training_arguments(ap)
+    add_training_arguments(ap, allow_warm_start=True)
     args = ap.parse_args()
 
     from gen.training import config_from_args, train
@@ -66,7 +66,8 @@ def main():
         return_selection=True)
     result = train(selection, args.run, kind=args.model, config=config_from_args(args),
                    data_dir=args.data, vq_path=args.vq_checkpoint, vq_version=args.vq_version,
-                   resume=args.resume, stop_after=args.stop_after, tokens_path=args.tokens)
+                   resume=args.resume, stop_after=args.stop_after, tokens_path=args.tokens,
+                   warm_start=args.warm_start, parent_sha256=args.parent_sha256)
     print(json.dumps(result, ensure_ascii=False))
 
 
@@ -79,7 +80,7 @@ def load_generator(path, device="cpu"):
     return model, checkpoint
 
 
-def add_training_arguments(parser):
+def add_training_arguments(parser, *, allow_warm_start=False):
     """Keep CLI help and metadata helpers importable without Torch installed."""
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--eval-every", type=int, default=100)
@@ -87,7 +88,11 @@ def add_training_arguments(parser):
     parser.add_argument("--max-src", type=int, default=64)
     parser.add_argument("--max-len", type=int, default=None)
     parser.add_argument("--generation-signer", default=None)
-    parser.add_argument("--resume", action="store_true", help="resume run/latest.pt with unchanged total --iters")
+    initialization = parser.add_mutually_exclusive_group()
+    initialization.add_argument("--resume", action="store_true", help="resume run/latest.pt with unchanged total --iters")
+    if allow_warm_start:
+        initialization.add_argument("--warm-start", help="parent inference checkpoint; new run/optimizer/schedule at step0")
+        parser.add_argument("--parent-sha256", help="required exact parent SHA256 with --warm-start")
     parser.add_argument("--stop-after", type=int, default=None, help="smoke interruption: absolute stop step")
 
 
