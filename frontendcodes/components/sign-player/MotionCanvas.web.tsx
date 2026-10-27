@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { RenderSample } from './performance';
 import { EDGES } from './skeleton';
 import { createCapsule, setCapsuleBetween } from './capsule';
+import { createViewportUpdater } from './viewport';
 import type { DecodedMotion } from './motion';
 type MotionCanvasProps = {
   data: DecodedMotion; frame: number; yaw: number; pitch: number;
@@ -57,14 +58,12 @@ export default function MotionCanvas(props: MotionCanvasProps) {
     const lost = (event: Event) => { event.preventDefault(); setError('3D 재생 연결이 중단됐습니다. 잠시 후 다시 시도하거나 새로고침해주세요.'); };
     const restored = () => setContextVersion(v => v + 1);
     canvas.addEventListener('webglcontextlost', lost); canvas.addEventListener('webglcontextrestored', restored);
+    const updateViewport = createViewportUpdater(renderer, camera);
     const draw = () => {
       const { data, frame, yaw: y, pitch: p, showBody, showHands, showFace } = current.current;
       const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
       const cpuStart=performance.now();
-      const scale = Math.min(w / 3.2, h / 3.6);
-      camera.left = -w / scale / 2; camera.right = w / scale / 2;
-      camera.top = h / scale / 2; camera.bottom = -h / scale / 2; camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
+      updateViewport(w, h);
       const f = Math.min(data.response.frames - 1, Math.max(0, Math.floor(frame))), offset = f * 375;
       for (let j = 0; j < 125; j++) points[j].set(data.positions[offset + j * 3], -data.positions[offset + j * 3 + 1], -data.positions[offset + j * 3 + 2]);
       model.rotation.set(p, -y, 0, 'XYZ');
