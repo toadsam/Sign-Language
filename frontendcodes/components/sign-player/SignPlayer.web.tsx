@@ -31,7 +31,7 @@ export default function SignPlayer({motion}: SignPlayerProps) {
   const [loopStart,setLoopStart]=useState(0), [loopEnd,setLoopEnd]=useState(0);
   const data=parsed.value;
 
-  useEffect(()=>{cancelCheck();cancelRecording();cursor.current=0;setFrame(0);setPlaying(false);setLoopStart(0);setLoopEnd(data?data.response.frames-1:0);},[data,cancelCheck,cancelRecording]);
+  useEffect(()=>{cancelCheck();cancelRecording();cursor.current=0;setFrame(0);setPlaying(false);setLoopStart(0);setLoopEnd(data?Math.max(0,data.response.frames-1):0);},[data,cancelCheck,cancelRecording]);
   useEffect(()=>{
     if(!data || !playing)return;
     let id=0, last:number|undefined;
@@ -49,6 +49,7 @@ export default function SignPlayer({motion}: SignPlayerProps) {
 
 
   if(!data)return <p role="alert">{parsed.error}</p>;
+  if(data.response.frames===0)return <p role="status">생성할 수 있는 단어가 없어 재생할 동작이 없습니다.</p>;
   const last=data.response.frames-1;
   const token=currentMotionToken(data.response,frame);
   const seek=(n:number)=>{cursor.current=n;setFrame(n);setPlaying(false);};
@@ -66,7 +67,8 @@ export default function SignPlayer({motion}: SignPlayerProps) {
     </fieldset>
     <MotionCanvas data={data} frame={frame} yaw={yaw} pitch={pitch} showBody={showBody} showHands={showHands} showFace={showFace} onRenderSample={sample=>check.record(0,sample)} onCanvasReady={c=>{canvas.current=c;}} onViewChange={(y,p)=>{if(!recorder.busy&&!check.running){setYaw(y);setPitch(p);}}}/>
     <fieldset disabled={recorder.busy||check.running} style={{border:0,padding:0,margin:0}}><label style={{display:'flex',gap:12,alignItems:'center',marginTop:16}}>프레임 <input aria-label="프레임" type="range" min={0} max={last} value={Math.min(frame,last)} onChange={e=>seek(Number(e.target.value))} style={{flex:1}}/><output>{Math.min(frame,last)} / {last}</output></label>
-    <p aria-label="현재 토큰" style={{color:'#adb7ca',fontSize:14}}>현재 토큰: {token===undefined?'정보 없음':`#${token}`} · 4프레임 단위</p>
+    <p aria-label="현재 토큰" style={{color:'#adb7ca',fontSize:14}}>현재 토큰: {token===undefined?'정보 없음':`#${token}`} · 4프레임 단위 참고 표시</p>
+    {!data.response.demo&&data.response.tokens.length>0&&<p style={{color:'#adb7ca',fontSize:13}}>단어 연결 시 프레임이 조정될 수 있어 토큰 번호는 실제 동작과 정확히 대응하지 않을 수 있습니다.</p>}
     <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center',marginTop:16}}>
       <label>반복 시작 <FrameInput label="반복 시작" min={0} max={loopEnd} value={loopStart} onCommit={n=>{setLoopStart(n);seek(n);}}/></label>
       <label>반복 끝 <FrameInput label="반복 끝" min={loopStart} max={last} value={loopEnd} onCommit={n=>{setLoopEnd(n);seek(loopStart);}}/></label>

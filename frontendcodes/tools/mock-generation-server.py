@@ -62,14 +62,17 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError()
             body = json.loads(self.rfile.read(size))
             text = body.get('text') if isinstance(body, dict) else None
-            if not isinstance(text, str) or not 1 <= len(text.strip()) <= 200:
+            if not isinstance(text, str) or set(body) != {'text'} or not 1 <= len(text.strip()) <= 200:
                 raise ValueError()
         except (ValueError, UnicodeError):
             self.respond(400, {'error': 'text required, 1..200 characters'})
             return
         scenario = parse_qs(request.query).get('scenario', ['success'])[0]
         if scenario == 'error':
-            self.respond(503, {'error': 'synthetic server failure'})
+            self.respond(503, {'error': {'code': 'GENERATION_UNAVAILABLE', 'message': '합성 시험: 동작을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'retryable': True}})
+            return
+        if scenario == 'all-unknown':
+            self.respond(200, {'source': 'baseline', 'fps': 30, 'joints': 125, 'units': 'shoulder', 'frames': 0, 'data': '', 'tokens': [], 'segments': [], 'unknown': ['점검용 미지원 단어'], 'demo': True})
             return
         if scenario == 'slow':
             time.sleep(3)

@@ -1,5 +1,6 @@
 import { decodePlayback } from './playback';
 import type { PlaybackResponse } from './playback';
+import { readGenerationError } from './generation-error';
 import { generationEndpoint } from './generate-api';
 
 /** Parses a local response without sending a request or executing file content. */
@@ -13,6 +14,8 @@ export async function readResponseFile(file: Pick<File,'size'|'arrayBuffer'>, ba
   let value: unknown;
   try { value = JSON.parse(text); }
   catch { throw new Error('올바른 응답 JSON이 아닙니다. 파일이 완성됐는지 확인해주세요.'); }
+  const failure = readGenerationError(value);
+  if (failure) throw failure;
   const result = decodePlayback(value);
   if (result.source !== 'video') return result;
   let base: string | undefined;

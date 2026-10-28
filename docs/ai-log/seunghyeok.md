@@ -247,3 +247,22 @@
 - 브라우저: Google 환경변수 3개 제거·EXPO_NO_DOTENV=1·캐시 초기화한 웹 export 25경로 통과. Chrome 새 loopback origin에서 안내 표시→게스트 home→sign-player 진입, 합성120프레임 재생 진행과 일시정지 확인. 실제 Google 인증 및 네이티브 UI는 미검증.
 - 브랜치: yuseunghyuk에서만 작업. main 및 기존 staged 설정/start.sh 유지. 사용자 요청으로 이번 수정·검사·기록 4개 파일만 커밋. 푸시 없음.
 - 산출물: 로컬 outputs/signplayer-login-config-2026-10-28. 지헌 실제API 자료는 계속 대기.
+
+
+## 2026-10-28 — 지헌 생성 API 코드 대조 및 프런트 계약 보정
+- 기준: origin/feature/transformer-jiheon cfa2893da31bfbcd7910f08b75bf4a6c4e1a2588의 ml/serve 및 Spring generation 코드. 예전 서버 contracts.md를 기준으로 삼지 않음. 브랜치 병합/체크아웃 없이 fetch/show로 확인.
+- 변경: 생성 API의 구조화 오류 message/code/retryable 처리, 수동 재시도 버튼, 진행 중 동기 ref 가드. 입력 문장 유지. 생성 API source:video 거절 및 생성 시험 메뉴에서 영상 대체 제거. 기존 translate/파일 영상 디코더는 보존.
+- 빈 응답: frames=0/data=""/tokens=[]/segments=[]/unknown 비어있지 않음만 정상 빈 동작으로 허용. 재생 컨트롤 대신 미지원 안내. 일부 미지원은 목록 표시와 나머지 좌표 재생 유지.
+- 토큰: 길이 차이를 오류로 판단하지 않는 참고 안내로 수정. 4프레임 토큰 번호는 참고 표시이며 실제 프레임 정렬이 보장되지 않음을 표시. vq_version/segments 존재를 새 필수조건으로 추가하지 않음.
+- 샘플: 지헌 브랜치의 명시적 합성 예제 3개와 README를 tools/fixtures/generation-jiheon에 원문 보관·출처 고정. normal은 1프레임 형식검사, unknown은 0프레임, video라는 파일은 503 오류이며 영상 아님.
+- 검증: 신규 오프라인 계약검사(정상/전체·일부미지원/6종오류/정확한text단일키/자동재시도없음/영상거절/복구), 기존 API목업·응답파일·요약·좌표 검사, tsc 및 diff 검사 통과. 환경설정 없는 웹 export25경로 통과.
+- Chrome: 합성 503에서 서버 메시지/재시도·입력 유지, 수동 재시도, 전체미지원 안내(0프레임), 3초 대기 중 입력/전송 잠금 및 정상응답 복구 확인. 실제 Spring/모델 연결은 하지 않음. 이번 시험 서버 종료.
+- 남은 것: 실제 재생 가능한 모델 샘플 수신 후 품질 확인, 마지막에 허용 origin(localhost:8081 등)에서 Spring 연결. 현재 화면 입력 상한200자는 서버 기본4096자보다 보수적인 기존 제품 제한. backend/ml코드와 main 변경 없음. 커밋/푸시 없음.
+
+
+## 2026-10-28 — 비교 화면의 전체 미지원 빈 동작 가져오기 방어
+- 원인: 공유 decodeMotion이 정상 전체미지원(0프레임)을 허용한 뒤, 비교 파일 입력은 이를 그대로 슬롯에 넣어 프레임 -1/빈 좌표를 계산할 수 있었다. 단일 생성 화면의 빈 응답 지원은 유지해야 함.
+- 변경: ComparisonPlayer.web.tsx에서 디코딩한 frames=0 파일을 슬롯 반영 전에 안내 오류로 처리. 기존 이름·좌표·다른 슬롯 유지, 기존 오류 UI 사용. 2개/4개 비교에 공통 적용.
+- 검증: check-comparison-empty.cjs에서 실제 컴포넌트의 파일 선택 핸들러와 실제 디코더를 격리된 React 훅 상태로 실행. 4칸/2칸 각각 모든 칸의 빈 파일 거절·기존 동작 유지·음수 프레임 없음·로딩 해제, 정상1프레임 파일 복구 및 재차 빈 파일 거절 확인. 방어 코드를 메모리에서 제거하면 같은 검사가 실패하여 회귀 감지 확인.
+- 추가 검증: 기존 생성 계약 검사, tsc --noEmit, git diff --check 통과. 이번 작업은 브라우저/GPU·네이티브WebView 검증이 아님.
+- 범위: 팀 서버·실제 모델 없이 완료. yuseunghyuk 작업, main 및 기존 staged 파일 변경 없음. 커밋·푸시 없음. 다음 외부 의존 작업은 실제 모델 재생 샘플 수신.

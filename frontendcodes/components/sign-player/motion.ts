@@ -18,10 +18,11 @@ export function decodeMotion(value: unknown): DecodedMotion {
   if ((r as {source:string}).source === 'video') throw new Error('영상 응답입니다. 좌표 응답 JSON을 선택해주세요.');
   if (r.source !== 'model' && r.source !== 'baseline') throw new Error('동작의 출처가 올바르지 않습니다.');
   if (r.joints !== 125 || r.units !== 'shoulder') throw new Error('125관절·어깨너비 단위 응답이 필요합니다.');
-  if (!Number.isInteger(r.frames) || r.frames < 1 || r.frames > 18000 || !Number.isFinite(r.fps) || r.fps <= 0 || r.fps > 240) throw new Error('프레임 수 또는 FPS가 올바르지 않습니다.');
+  if (!Number.isInteger(r.frames) || r.frames < 0 || r.frames > 18000 || !Number.isFinite(r.fps) || r.fps <= 0 || r.fps > 240) throw new Error('프레임 수 또는 FPS가 올바르지 않습니다.');
   if (!Array.isArray(r.tokens) || r.tokens.some(x=>!Number.isInteger(x)||x<0) || !Array.isArray(r.unknown) || r.unknown.some(x=>typeof x !== 'string')) throw new Error('토큰 또는 미지원 단어 목록이 올바르지 않습니다.');
   if (!Array.isArray(r.segments) || r.segments.some(s=>!s || typeof s.gloss !== 'string' || !Number.isInteger(s.start) || !Number.isInteger(s.end) || s.start<0 || s.end<=s.start || s.end>r.frames)) throw new Error('자막 구간이 올바르지 않습니다.');
   if (typeof r.data !== 'string' || r.data.length > 36000000) throw new Error('좌표 데이터가 없거나 너무 큽니다.');
+  if (r.frames === 0 && (r.data !== '' || r.tokens.length !== 0 || r.segments.length !== 0 || r.unknown.length === 0)) throw new Error('빈 동작은 좌표·토큰·구간 없이 미지원 단어를 포함해야 합니다.');
   let raw: string;
   try { raw = atob(r.data); } catch { throw new Error('base64 좌표를 읽을 수 없습니다.'); }
   const count = r.frames * 125 * 3;

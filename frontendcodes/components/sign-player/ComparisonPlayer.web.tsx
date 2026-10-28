@@ -62,6 +62,7 @@ export default function ComparisonPlayer({mode = 'four'}: ComparisonPlayerProps)
     try {
       if (file.size > 40000000) throw new Error('40MB 이하 JSON을 선택해주세요.');
       const motion = decodeMotion(JSON.parse(await file.text()));
+      if (motion.response.frames === 0) throw new Error('미지원 단어만 포함된 빈 동작입니다. 비교할 수 있는 동작이 없습니다.');
       if (version !== versions.current[index]) return;
       setSlots(old => old.map((s, i) => i === index ? { ...s, name: file.name, motion, error: null, loading: false } : s));
       seek(0);
