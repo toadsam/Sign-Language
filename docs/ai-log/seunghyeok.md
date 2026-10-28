@@ -236,3 +236,14 @@
 - 시험보완: .env없는임시빌드의Google공개clientId누락초기화오류는측정에서제외. 양쪽동일시험용공개값명시·캐시초기화후정상진입과측정. 실제인증/환경파일변경없음.
 - 산출물: 로컬outputs/signplayer-render-ab-2026-10-27의4보고서/RESULTS/SUMMARY. 시험서버·재생종료.
 - 남은 것: 지연원인/실제표시FPS. 공개로그인설정없을때게스트진입도막히는실행안정성문제는별도개선후보. 실제API는지헌자료대기.
+
+
+## 2026-10-28 — 로그인 설정 없는 새 환경의 빈 화면 수정
+- 목표: Google 공개 client ID가 없는 새 환경에서도 로그인 화면과 기존 게스트 진입을 사용할 수 있게 한다.
+- AI에게 맡긴 것: Google OAuth 초기화 경로 분석, 설정 확인과 요청 훅의 컴포넌트 분리, 회귀 검사 및 설정 없는 배포 빌드 확인.
+- 원인: Google provider가 렌더 중 누락된 client ID 예외를 던져 버튼 클릭 시의 기존 검사까지 도달하지 못했다.
+- 변경: lib/auth/google.ts에서 플랫폼별 유효 설정을 훅 호출 전에 확인. app/login.tsx에서 설정된 경우에만 OAuth 훅 컴포넌트를 마운트. 미설정 시 안내·비활성 Google 버튼과 기존 게스트 버튼 표시. 가짜 ID·인증 우회·환경 파일 변경 없음.
+- 검증: tools/check-login-config.cjs의 실제 컴포넌트 렌더/버튼 핸들러 11시나리오 통과. 누락/빈값/공백, 웹/네이티브/Expo Go 설정 선택, 기존 redirect와 게스트 home 이동 검사. tsc --noEmit 및 git diff --check 통과.
+- 브라우저: Google 환경변수 3개 제거·EXPO_NO_DOTENV=1·캐시 초기화한 웹 export 25경로 통과. Chrome 새 loopback origin에서 안내 표시→게스트 home→sign-player 진입, 합성120프레임 재생 진행과 일시정지 확인. 실제 Google 인증 및 네이티브 UI는 미검증.
+- 브랜치: yuseunghyuk에서만 작업. main 및 기존 staged 설정/start.sh 유지. 사용자 요청으로 이번 수정·검사·기록 4개 파일만 커밋. 푸시 없음.
+- 산출물: 로컬 outputs/signplayer-login-config-2026-10-28. 지헌 실제API 자료는 계속 대기.

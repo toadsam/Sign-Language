@@ -5,14 +5,27 @@ import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth-context';
-import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
+import { getGoogleClientConfiguration, useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
 import { getBaseUrl } from '@/lib/api/base-url';
 
 export default function LoginScreen() {
+  // Separate components keep hook order stable without constructing a request with a fake ID.
+  return getGoogleClientConfiguration().hasGoogleClientId
+    ? <ConfiguredLoginScreen />
+    : <LoginContent googleAuth={null} />;
+}
+
+function ConfiguredLoginScreen() {
+  const googleAuth = useGoogleIdTokenAuthRequest();
+  return <LoginContent googleAuth={googleAuth} />;
+}
+
+function LoginContent({ googleAuth }: { googleAuth: ReturnType<typeof useGoogleIdTokenAuthRequest> | null }) {
   const apiBaseUrl = getBaseUrl();
   const router = useRouter();
   const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
-  const { request, response, promptAsync, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
+  const request = googleAuth?.request ?? null;
+  const response = googleAuth?.response ?? null;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const processedIdTokenRef = useRef<string | null>(null);
@@ -191,8 +204,8 @@ export default function LoginScreen() {
   }, [processGoogleIdToken]);
 
   const handleGooglePress = async () => {
-    if (!hasGoogleClientId) {
-      setErrorMessage('frontendcodes/.env의 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID를 확인해 주세요.');
+    if (!googleAuth) {
+      setErrorMessage('Google 로그인 설정이 없습니다. 로그인 없이 시작을 이용해 주세요.');
       return;
     }
 
@@ -203,7 +216,7 @@ export default function LoginScreen() {
 
     setErrorMessage(null);
 
-    const result = await promptAsync();
+    const result = await googleAuth.promptAsync();
 
     if (result.type === 'cancel' || result.type === 'dismiss') {
       setErrorMessage('Google 로그인 창이 닫혔습니다.');
@@ -258,6 +271,10 @@ export default function LoginScreen() {
               {isSubmitting ? '로그인 중...' : '구글로 간편 로그인 / 회원가입'}
             </Text>
           </Pressable>
+
+          {!googleAuth && <Text style={styles.loginNotice}>
+            Google 로그인이 아직 설정되지 않았어요. ‘로그인 없이 시작’으로 이용할 수 있어요.
+          </Text>}
 
           <Pressable onPress={handleGuestStart} style={styles.guestStartButton}>
             <Text style={styles.guestStartText}>로그인 없이 시작</Text>
@@ -362,6 +379,12 @@ const styles = StyleSheet.create({
     color: '#4b5563',
     fontSize: 16,
     fontWeight: '800',
+  },
+  loginNotice: {
+    color: '#526078',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   guestStartButton: {
     alignSelf: 'center',
