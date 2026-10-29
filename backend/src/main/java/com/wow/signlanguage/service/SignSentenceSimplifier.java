@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -45,6 +46,11 @@ public class SignSentenceSimplifier {
   }
 
   public SimplificationResult simplify(String input) {
+    return simplify(input, this::hasDictionaryWord);
+  }
+
+  /** Same rules, judged against a caller-chosen word list instead of the video dictionary. */
+  public SimplificationResult simplify(String input, Predicate<String> knownWord) {
     String safeInput = input == null ? "" : input.trim();
     if (safeInput.isEmpty()) {
       return new SimplificationResult("", List.of(), List.of(), new SimplificationMetadata(false, false, "present"));
@@ -63,7 +69,7 @@ public class SignSentenceSimplifier {
     String tense = "present";
 
     for (String rawToken : tokenize(safeInput)) {
-      TokenAnalysis analysis = analyze(rawToken);
+      TokenAnalysis analysis = analyze(rawToken, knownWord);
       if (analysis == null) {
         continue;
       }
@@ -121,7 +127,7 @@ public class SignSentenceSimplifier {
       addUnique(orderedTokens, "아니다");
     }
 
-    if ("past".equals(tense) && hasDictionaryWord("끝")) {
+    if ("past".equals(tense) && knownWord.test("끝")) {
       addUnique(orderedTokens, "끝");
     }
 
@@ -149,7 +155,7 @@ public class SignSentenceSimplifier {
     return List.of(cleaned.split("\\s+"));
   }
 
-  private TokenAnalysis analyze(String rawToken) {
+  private TokenAnalysis analyze(String rawToken, Predicate<String> knownWord) {
     if (rawToken == null || rawToken.isBlank()) {
       return null;
     }
@@ -169,7 +175,7 @@ public class SignSentenceSimplifier {
     stripped = stripCommonParticles(stripped);
     boolean removedParticle = !stripped.equals(token);
 
-    String normalized = resolveKnownWord(stripped);
+    String normalized = resolveKnownWord(stripped, knownWord);
     boolean questionWord = QUESTION_WORDS.contains(normalized);
     boolean negativeWord = normalized.equals("아니다") || normalized.equals("없다") || normalized.equals("불가능");
     boolean past = detectPastTense(token);
@@ -179,15 +185,15 @@ public class SignSentenceSimplifier {
     return new TokenAnalysis(normalized, role, questionWord, past, future, removedParticle, false, negativeWord);
   }
 
-  private String resolveKnownWord(String token) {
+  private String resolveKnownWord(String token, Predicate<String> knownWord) {
     String normalized = textNormalizer.normalizeToken(token);
-    if (hasDictionaryWord(normalized)) {
+    if (knownWord.test(normalized)) {
       return normalized;
     }
 
     for (String candidate : deriveCandidates(token)) {
       String normalizedCandidate = textNormalizer.normalizeToken(candidate);
-      if (hasDictionaryWord(normalizedCandidate)) {
+      if (knownWord.test(normalizedCandidate)) {
         return normalizedCandidate;
       }
     }
