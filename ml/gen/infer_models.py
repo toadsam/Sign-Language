@@ -14,8 +14,13 @@ This is word concatenation, not a sentence model. Nonmanual is not conditioned.
 
 max_words defaults to 128 and max_frames to 1800 (C defaults). A request must fit
 the conservative per-word upper bound: GPT max_len*down or regression length,
-plus blend frames. Sampling settings are top_k=10, temperature=1, min_len=2 and
-signer=checkpoint.generation_signer unless overridden with a trained signer.
+plus blend frames. Sampling settings are top_k=10, temperature=1, min_len=2,
+guidance=1, samples=1 and signer=checkpoint.generation_signer unless overridden
+with a trained signer. guidance != 1 needs a null-condition GPT (cond_drop > 0).
+samples > 1 generates that many sequences per word and returns the medoid: the
+one with the smallest summed body+hands distance to the others after the same
+active-span trim and 32-frame resample as gen.word_accuracy. No reference
+motion is consulted.
 
 All adapters share an RNG lock, compatible with C's serialized worker. Seeded
 requests use isolated Torch states; unseeded requests advance private states
@@ -34,10 +39,14 @@ from gen.artifacts import sha256_file, validate_artifact_manifest
 from gen.train_word import load_generator
 from gen.training import resolve_device
 from gen.verify_bundle import KNOWN_SHA256
+from gen.word_accuracy import prepare
+from gen.word_test_eval import medoid
 from vq.model import load_vqvae
 
 
 _RNG_LOCK = threading.RLock()
+MAX_SAMPLES = 32
+BODY_HANDS = slice(0, 55)
 
 
 def _positive_integer(value, name):
@@ -152,6 +161,15 @@ class WordModelAdapter:
         self.min_len = _positive_integer(sampling.get("min_len", 2), "min_len")
         if self.min_len > self.max_len:
             raise ValueError("min_len exceeds checkpoint max_len")
+        self.guidance = sampling.get("guidance", 1.0)
+        if (type(self.guidance) not in (int, float) or not math.isfinite(self.guidance)
+                or self.guidance <= 0):
+            raise ValueError("guidance must be finite and positive")
+        if self.guidance != 1 and getattr(self.model, "null", None) is None:
+            raise ValueError("guidance requires a null-condition GPT checkpoint")
+        self.samples = _positive_integer(sampling.get("samples", 1), "samples")
+        if self.samples > MAX_SAMPLES or (self.samples > 1 and self.kind != "word_gpt"):
+            raise ValueError(f"samples must be 1..{MAX_SAMPLES} and GPT only")
         if self.kind == "word_gpt":
             if self.model.nb_code != self.nb_code or self.model.max_len != self.max_len:
                 raise ValueError("GPT model metadata mismatch")
@@ -167,6 +185,8 @@ class WordModelAdapter:
             "blend": blend, "max_words": self.max_words, "max_frames": self.max_frames,
             "frames_per_word_upper_bound": self.frames_per_word, "signer": self.signer,
             "top_k": self.top_k, "temperature": self.temperature, "min_len": self.min_len,
+            "guidance": self.guidance, "samples": self.samples,
+            "pick": "medoid_body_hands55" if self.samples > 1 else "single",
             "sentence_model": False, "nonmanual_supported": False}
         entropy = secrets.randbits(63)
         self._cpu_rng = torch.Generator(device="cpu").manual_seed(entropy).get_state()
@@ -187,16 +207,21 @@ class WordModelAdapter:
         signer = torch.tensor([self.signers[self.signer]], dtype=torch.long, device=self.device)
         if self.kind == "word_regress":
             return self._motion(self.model(condition, signer), self.frames_per_word), []
-        sequences = self.model.generate(condition, signer, top_k=self.top_k,
-                                        temperature=self.temperature, min_len=self.min_len)
-        if not isinstance(sequences, list) or len(sequences) != 1:
-            raise ValueError("GPT output must contain one token sequence")
-        tokens = sequences[0]
-        if (not isinstance(tokens, list) or not self.min_len <= len(tokens) <= self.max_len
-                or any(type(t) is not int or not 0 <= t < self.nb_code for t in tokens)):
-            raise ValueError("invalid generated token range or length")
-        indices = torch.tensor([tokens], dtype=torch.long, device=self.device)
-        return self._motion(self.decoder.decode(indices), len(tokens) * self.down), tokens
+        sequences = self.model.generate(condition.repeat(self.samples), signer.repeat(self.samples),
+                                        top_k=self.top_k, temperature=self.temperature,
+                                        min_len=self.min_len, guidance=self.guidance)
+        if not isinstance(sequences, list) or len(sequences) != self.samples:
+            raise ValueError("GPT output must contain one token sequence per sample")
+        motions = []
+        for tokens in sequences:
+            if (not isinstance(tokens, list) or not self.min_len <= len(tokens) <= self.max_len
+                    or any(type(t) is not int or not 0 <= t < self.nb_code for t in tokens)):
+                raise ValueError("invalid generated token range or length")
+            indices = torch.tensor([tokens], dtype=torch.long, device=self.device)
+            motions.append(self._motion(self.decoder.decode(indices), len(tokens) * self.down))
+        # Several samples: keep the one closest to the others (never sees a reference motion).
+        pick = 0 if self.samples == 1 else medoid([prepare(m.reshape(len(m), 375)) for m in motions], BODY_HANDS)
+        return motions[pick], sequences[pick]
 
     def generate(self, gloss, seed):
         if len(gloss) > self.max_words:

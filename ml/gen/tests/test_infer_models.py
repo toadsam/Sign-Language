@@ -69,17 +69,24 @@ class WordModelTests(unittest.TestCase):
                                           device="cpu", seed=17, eval_every=1, save_every=1),
                     data_dir=cls.fixture_root, vq_path=cls.vq_path, vq_version="fixture-v1")
                 cls.trained[("word_" + kind, mode)] = run
+        # Null-condition GPT for guidance; kind stays word_gpt in the bundle.
+        cls.trained[("word_gpt_cond", "smoke")] = cls.fixture_root / "gpt-cond"
+        train(select_data(tokens_path, cls.fixture_root / "meta.jsonl", split_path, mode="smoke"),
+              cls.trained[("word_gpt_cond", "smoke")], kind="gpt",
+              config=TrainingConfig(iters=4, batch=2, d=8, layers=1, max_len=5, device="cpu", seed=17,
+                                    eval_every=1, save_every=1, cond_every=True, cond_drop=0.5),
+              vq_path=cls.vq_path, vq_version="fixture-v1")
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root, self.counter = Path(self.temporary.name), 0
 
-    def bundle(self, kind="word_gpt", mode="smoke", **changes):
+    def bundle(self, kind="word_gpt", mode="smoke", source=None, **changes):
         self.counter += 1
         run = self.root / f"run-{self.counter}"
         run.mkdir()
-        (run / "model.pt").write_bytes((self.trained[(kind, mode)] / "model.pt").read_bytes())
+        (run / "model.pt").write_bytes((self.trained[(source or kind, mode)] / "model.pt").read_bytes())
         (run / "vq.pt").write_bytes(self.vq_path.read_bytes())
         write_json(run / "vocab_map.json", {"schema_version": 1, "mapping": {"가": "WORD1", "나": "WORD2"},
                                             "unmapped": ["미등록"], "ambiguous": {"모호": ["WORD3", "WORD4"]}})
@@ -485,6 +492,55 @@ class WordModelTests(unittest.TestCase):
                     patch.object(adapter.decoder, "decode", side_effect=AssertionError("validate tokens first")):
                 with self.assertRaises(ValueError):
                     generator.generate(["가"])
+
+    def test_guided_medoid_sampling_generates_reproducibly(self):
+        run, _ = self.bundle(source="word_gpt_cond", sampling={"top_k": 3, "signer": "TRAIN",
+                                                                 "guidance": 2.0, "samples": 4})
+        generator = Generator(run)
+        adapter = generator._adapter
+        self.assertEqual((adapter.model.null, adapter.model.cond_every), (2, True))
+        self.assertEqual(generator.connection_policy["pick"], "medoid_body_hands55")
+        with patch.object(adapter.model, "generate", wraps=adapter.model.generate) as sample:
+            result = generator.generate(["가", "미등록"], seed=11)
+        self.assert_motion(result)
+        self.assertEqual(result["unknown"], ["미등록"])
+        self.assertEqual(len(result["motion"]), len(result["tokens"]) * 4)
+        self.assertEqual(sample.call_args.args[0].tolist(), [0, 0, 0, 0])
+        self.assertEqual(sample.call_args.kwargs["guidance"], 2.0)
+        again = generator.generate(["가", "미등록"], seed=11)
+        self.assertEqual(result["tokens"], again["tokens"])
+        np.testing.assert_array_equal(result["motion"], again["motion"])
+
+    def test_medoid_returns_the_sample_closest_to_the_others(self):
+        run, _ = self.bundle(sampling={"top_k": 3, "signer": "TRAIN", "samples": 3})
+        generator = Generator(run)
+        adapter = generator._adapter
+        fill = {0: 0.0, 2: 0.01, 4: 5.0}  # 0 and 2 agree; 4 is the outlier.
+        def decode(indices):
+            return torch.full((1, indices.shape[1] * 4, 375), fill[int(indices[0, 0])])
+        with patch.object(adapter.model, "generate", return_value=[[4, 5], [2, 3], [0, 1]]), \
+                patch.object(adapter.decoder, "decode", side_effect=decode):
+            result = generator.generate(["가"], seed=1)
+        self.assertIn(result["tokens"], ([2, 3], [0, 1]))
+        self.assertNotEqual(float(result["motion"][0, 0, 0]), 5.0)
+        with patch.object(adapter.model, "generate", return_value=[[0, 1], [2, 3]]):
+            with self.assertRaisesRegex(ValueError, "per sample"):
+                generator.generate(["가"], seed=1)
+
+    def test_guidance_and_samples_settings_are_validated(self):
+        cases = [("word_gpt", None, {"guidance": 2.0}),  # no null condition
+                 ("word_gpt", "word_gpt_cond", {"guidance": 0}),
+                 ("word_gpt", "word_gpt_cond", {"guidance": float("inf")}),
+                 ("word_gpt", "word_gpt_cond", {"guidance": "2"}),
+                 ("word_gpt", None, {"samples": 0}), ("word_gpt", None, {"samples": 33}),
+                 ("word_gpt", None, {"samples": True}), ("word_regress", None, {"samples": 2}),
+                 ("word_regress", None, {"guidance": 2.0})]
+        for kind, source, sampling in cases:
+            run, _ = self.bundle(kind, source=source, sampling=sampling)
+            with self.subTest(kind=kind, sampling=sampling), self.assertRaises(ValueError):
+                Generator(run)
+        run, _ = self.bundle(source="word_gpt_cond", sampling={"guidance": 1})
+        self.assertEqual(Generator(run).connection_policy["pick"], "single")
 
     def test_blend_frames_are_not_misrepresented_as_gpt_tokens(self):
         run, _ = self.bundle(blend=3)

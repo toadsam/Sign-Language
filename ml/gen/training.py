@@ -68,6 +68,9 @@ class TrainingConfig:
     max_len: int | None = None
     deterministic: bool = True
     generation_signer: str | None = None
+    # gpt only. Both off reproduces the original architecture and RNG stream.
+    cond_every: bool = False   # add the word condition at every position
+    cond_drop: float = 0.0     # >0 adds a null condition, swapped in at this rate (guidance)
 
     def validate(self):
         for field in ("iters", "batch", "d", "layers", "eval_every", "save_every", "max_src"):
@@ -86,6 +89,11 @@ class TrainingConfig:
             raise TrainingError("invalid_config", "seed")
         if type(self.deterministic) is not bool:
             raise TrainingError("invalid_config", "deterministic")
+        if type(self.cond_every) is not bool:
+            raise TrainingError("invalid_config", "cond_every")
+        if (type(self.cond_drop) not in (int, float) or not math.isfinite(self.cond_drop)
+                or not 0 <= self.cond_drop < 1):
+            raise TrainingError("invalid_config", "cond_drop")
 
 
 def resolve_device(requested="auto"):
@@ -199,7 +207,9 @@ def build_model(checkpoint):
     common = {"d": c["d"], "layers": c["layers"], "n_signer": len(checkpoint["signers"])}
     kind = checkpoint["kind"]
     if kind == "gpt":
-        return MotionGPT(len(checkpoint["classes"]), checkpoint["nb_code"], max_len=checkpoint["max_len"], **common)
+        # Checkpoints from before these options lack the keys: original architecture.
+        return MotionGPT(len(checkpoint["classes"]), checkpoint["nb_code"], max_len=checkpoint["max_len"],
+                         cond_every=c.get("cond_every", False), null_cond=c.get("cond_drop", 0) > 0, **common)
     if kind == "regress":
         return MotionRegressor(len(checkpoint["classes"]), 375, c["length"], **common)
     if kind == "sentence":
@@ -232,6 +242,8 @@ class Trainer:
         config.validate()
         if kind not in ("gpt", "regress", "sentence"):
             raise TrainingError("invalid_kind", str(kind))
+        if kind != "gpt" and (config.cond_every or config.cond_drop):
+            raise TrainingError("invalid_config", "cond_every/cond_drop are gpt only")
         if not selection.train:
             raise TrainingError("empty_train", "train")
         if not selection.signers:
@@ -317,6 +329,9 @@ class Trainer:
                 inputs[i, :len(tokens)] = tokens
             targets[i, :len(tokens)] = tokens
             targets[i, len(tokens)] = model.end
+        if training and self.config.cond_drop:
+            condition = torch.where(torch.rand(len(rows), device=device) < self.config.cond_drop,
+                                    torch.full_like(condition, model.null), condition)
         logits = model(condition, inputs, sig)
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100), \
             sum(len(r["tokens"]) + 1 for r in rows)

@@ -305,6 +305,61 @@ class TrainingTests(Fixture):
         with self.assertRaisesRegex(TrainingError, "inference_required"):
             load_generator(self.root / "model/latest.pt")
 
+    def test_condition_options_off_keep_original_architecture_and_old_configs(self):
+        selection = self.word_selection()
+        train(selection, self.root / "plain", kind="gpt", config=self.config())
+        ck = self.read_checkpoint("plain", "model.pt")
+        self.assertEqual((ck["config"]["cond_every"], ck["config"]["cond_drop"]), (False, 0.0))
+        self.assertEqual(ck["model"]["cond.weight"].shape[0], len(ck["classes"]))
+        # A checkpoint written before these options existed has no such keys.
+        for field in ("cond_every", "cond_drop"):
+            ck["config"].pop(field)
+        torch.save(ck, self.root / "old.pt")
+        model, _ = load_generator(self.root / "old.pt")
+        self.assertFalse(model.cond_every)
+        self.assertIsNone(model.null)
+
+    def test_condition_options_train_resume_and_guide(self):
+        selection = self.word_selection()
+        options = {"kind": "gpt", "config": self.config(cond_every=True, cond_drop=0.5, eval_every=3, save_every=3)}
+        train(selection, self.root / "cond-full", **options)
+        train(selection, self.root / "cond-resume", stop_after=2, **options)
+        train(selection, self.root / "cond-resume", resume=True, **options)
+        for field in ("model", "optimizer", "rng", "best_validation"):
+            self.assert_state_equal(self.read_checkpoint("cond-full")[field], self.read_checkpoint("cond-resume")[field])
+        model, ck = load_generator(self.root / "cond-full/model.pt")
+        self.assertTrue(model.cond_every)
+        self.assertEqual(model.null, len(ck["classes"]))
+        self.assertEqual(ck["model"]["cond.weight"].shape[0], len(ck["classes"]) + 1)
+        with torch.inference_mode():
+            out = model.generate(torch.tensor([0, 1]), torch.tensor([0, 0]), top_k=2, guidance=2.0)
+        self.assertTrue(all(row and all(0 <= code < 8 for code in row) for row in out))
+
+    def test_condition_drop_swaps_only_training_conditions(self):
+        selection = self.word_selection()
+        trainer = Trainer(selection, "gpt", self.config(cond_drop=0.99))
+        seen = []
+        real_forward = trainer.model.forward
+        def forward(cond, tokens, signer=None):
+            seen.append(cond.tolist())
+            return real_forward(cond, tokens, signer)
+        trainer.model.forward = forward
+        rows = selection.train * 4
+        trainer.loss(rows, training=True)
+        trainer.loss(rows, training=False)
+        self.assertIn(trainer.model.null, seen[0])
+        self.assertNotIn(trainer.model.null, seen[1])
+
+    def test_condition_options_are_validated_and_gpt_only(self):
+        selection = self.word_selection()
+        for changes in ({"cond_every": 1}, {"cond_drop": -0.1}, {"cond_drop": 1.0}, {"cond_drop": float("nan")}):
+            with self.subTest(changes=changes), self.assertRaises(TrainingError):
+                train(selection, self.root / "invalid", kind="gpt", config=self.config(**changes))
+        for kind in ("regress", "sentence"):
+            with self.subTest(kind=kind), self.assertRaisesRegex(TrainingError, "gpt only"):
+                Trainer(selection, kind, self.config(cond_every=True), data_dir=self.root)
+        self.assertFalse((self.root / "invalid").exists())
+
     def test_checkpoint_atomic_failure_preserves_old_file(self):
         target = self.root / "atomic.pt"
         torch.save({"old": 1}, target)

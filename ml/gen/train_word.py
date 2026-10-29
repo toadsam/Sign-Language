@@ -57,6 +57,9 @@ def main():
     ap.add_argument("--corrupt", type=float, default=0.3, help="gpt: 입력 토큰을 무작위로 바꾸는 최대 비율")
     ap.add_argument("--length", type=int, default=64, help="regress: 출력 프레임 수")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--cond-every", action="store_true", help="gpt: 단어 조건을 모든 위치에 더한다")
+    ap.add_argument("--cond-drop", type=float, default=0.0,
+                    help="gpt: >0이면 '단어 없음' 조건을 두고 이 비율로 바꿔 넣는다(생성 때 guidance용)")
     add_training_arguments(ap)
     args = ap.parse_args()
 
