@@ -23,6 +23,17 @@ class WordAccuracyTests(unittest.TestCase):
         self.assertAlmostEqual(shape_distance(a, b), 0.0, places=5)
         self.assertGreater(body_distance(a, b), 0.1)
 
+    def test_references_keep_first_clip_per_signer_and_scores_average_signers(self):
+        import numpy as np
+        from gen.word_accuracy import references, score_words
+        rows = [{"item": "W", "signer": "P", "tokens": [1]}, {"item": "W", "signer": "P", "tokens": [9]},
+                {"item": "W", "signer": "Q", "tokens": [3]}]
+        truth = references(rows, lambda tokens: np.full((4, 125, 3), tokens[0], dtype=np.float32))
+        self.assertEqual({p: float(m[0, 0, 0]) for p, m in truth["W"].items()}, {"P": 1.0, "Q": 3.0})
+        scored = score_words({"W": np.full((4, 125, 3), 2.0, dtype=np.float32)}, truth)
+        self.assertAlmostEqual(scored["W"]["body"], np.sqrt(3), places=5)  # 두 화자 모두 각 축 1 차이
+        self.assertAlmostEqual(scored["W"]["shape"], 0.0, places=5)
+
 
 if __name__ == "__main__":
     unittest.main()

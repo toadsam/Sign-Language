@@ -360,6 +360,65 @@ class TrainingTests(Fixture):
                 Trainer(selection, kind, self.config(cond_every=True), data_dir=self.root)
         self.assertFalse((self.root / "invalid").exists())
 
+    def decoder_selection(self):
+        """down=4 token fixture with a tiny saved decoder: (selection, decoder path)."""
+        from vq.model import MotionVQVAE
+        self.word_selection()
+        self.tokens["down"] = 4
+        for token in self.tokens["clips"].values():
+            token["tokens"] = token["tokens"][:3]
+        decoder = self.root / "vq.pt"
+        vq = MotionVQVAE(width=8, code_dim=4, nb_code=8, depth=1, parts="body_hand")
+        torch.save({"config": {"width": 8, "code_dim": 4, "nb_code": 8, "depth": 1, "parts": "body_hand"},
+                    "model": vq.state_dict()}, decoder)
+        return self.select(mode="smoke"), decoder
+
+    def test_motion_selection_keeps_the_closest_val_motion_step(self):
+        selection, decoder = self.decoder_selection()
+        options = {"kind": "gpt", "vq_path": decoder, "vq_version": "fixture-v1",
+                   "config": self.config(select_metric="val_motion")}
+        motions = [{"body": 0.5, "shape": s, "words": 1} for s in (0.3, 0.1, 0.2, 0.4)]
+        with patch("gen.training.MotionValidator.__call__", side_effect=motions), \
+                patch.object(Trainer, "validate", side_effect=[1.0, 2.0, 3.0, 0.5]):
+            result = train(selection, self.root / "motion", **options)
+        best = self.read_checkpoint("motion", "model.pt")
+        self.assertEqual((result["best_step"], best["global_step"], best["best_validation"]), (2, 2, 0.1))
+        self.assertEqual(best["selection_metric"], "val_motion_shape")
+        log = [json.loads(line) for line in (self.root / "motion/log.jsonl").read_text().splitlines()]
+        self.assertEqual([e["val_motion_shape"] for e in log], [0.3, 0.1, 0.2, 0.4])
+        self.assertEqual(log[3]["val_loss"], 0.5)
+
+    def test_motion_checks_do_not_change_training_and_resume_exactly(self):
+        selection, decoder = self.decoder_selection()
+        common = {"kind": "gpt", "vq_path": decoder, "vq_version": "fixture-v1"}
+        motion = self.config(select_metric="val_motion", eval_every=1, save_every=1)
+        train(selection, self.root / "loss", config=self.config(eval_every=1, save_every=1), **common)
+        train(selection, self.root / "full", config=motion, **common)
+        train(selection, self.root / "resume", config=motion, stop_after=2, **common)
+        train(selection, self.root / "resume", config=motion, resume=True, **common)
+        loss, full, resumed = (self.read_checkpoint(name) for name in ("loss", "full", "resume"))
+        self.assert_state_equal(loss["model"], full["model"])
+        for field in ("model", "optimizer", "rng", "best_validation", "best_step"):
+            self.assert_state_equal(full[field], resumed[field])
+        log = [json.loads(line) for line in (self.root / "full/log.jsonl").read_text().splitlines()]
+        self.assertTrue(all(math.isfinite(e["val_motion_shape"]) and math.isfinite(e["val_motion_body"]) for e in log))
+
+    def test_motion_selection_settings_are_validated(self):
+        selection, decoder = self.decoder_selection()
+        for changes in ({"select_metric": "val_top5"}, {"select_words": -1}, {"select_words": 1.5},
+                        {"select_guidance": 2.0}, {"select_guidance": 0}):
+            with self.subTest(changes=changes), self.assertRaises(TrainingError):
+                Trainer(selection, "gpt", self.config(**changes), vq_path=decoder)
+        with self.assertRaisesRegex(TrainingError, "requires vq_path"):
+            Trainer(selection, "gpt", self.config(select_metric="val_motion"))
+        with self.assertRaisesRegex(TrainingError, "gpt only"):
+            Trainer(selection, "regress", self.config(select_metric="val_motion"), data_dir=self.root,
+                    vq_path=decoder)
+        trainer = Trainer(selection, "gpt", self.config(select_metric="val_motion", cond_drop=0.1,
+                                                        select_guidance=2.0), vq_path=decoder)
+        self.assertEqual(trainer.motion_validator.guidance, 2.0)
+        self.assertEqual(set(trainer.motion_validator.truth), {"WORD_A"})
+
     def test_checkpoint_atomic_failure_preserves_old_file(self):
         target = self.root / "atomic.pt"
         torch.save({"old": 1}, target)

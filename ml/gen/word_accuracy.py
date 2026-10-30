@@ -52,6 +52,25 @@ def shape_distance(a, b):
     return float(np.linalg.norm(hand_shape(a) - hand_shape(b), axis=-1).mean())
 
 
+def references(rows, decode):
+    """정답 동작 {단어: {화자: prepare된 동작}}. 화자마다 그 단어의 첫 클립만 쓴다."""
+    truth = defaultdict(dict)
+    for r in rows:
+        if r["signer"] not in truth[r["item"]]:
+            truth[r["item"]][r["signer"]] = decode(r["tokens"])
+    return dict(truth)
+
+
+def score_words(motions, truth):
+    """{단어: 동작} → {단어: {body, shape}}. 그 단어 정답 화자들과의 거리 평균."""
+    out = {}
+    for w, m in motions.items():
+        refs = truth[w].values()
+        out[w] = {"body": float(np.mean([body_distance(m, t) for t in refs])),
+                  "shape": float(np.mean([shape_distance(m, t) for t in refs]))}
+    return out
+
+
 def summarize(per_word, baseline=None):
     body = np.array([v["body"] for v in per_word.values()])
     shape = np.array([v["shape"] for v in per_word.values()])
@@ -70,7 +89,10 @@ def main(argv=None):
         ap.add_argument(f"--{name}", required=True)
     ap.add_argument("--guidance", type=float, nargs="+", default=[1.0, 2.0])
     ap.add_argument("--temperature", type=float, nargs="+", default=[1.0, 0.7, 0.5, 0.3])
-    ap.add_argument("--samples", type=int, default=5)
+    ap.add_argument("--samples", type=int, nargs="+", default=[5], help="대표 고르기 후보 수(여러 개면 각각 채점)")
+    ap.add_argument("--medoid-temperature", type=float, nargs="+", default=[1.0, 0.5])
+    ap.add_argument("--partition", choices=("test", "val"), default="test",
+                    help="정답 화자. 모델·설정 고르기는 val, 최종 보고만 test")
     ap.add_argument("--batch", type=int, default=500)
     ap.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     args = ap.parse_args(argv)
@@ -89,9 +111,7 @@ def main(argv=None):
         with torch.no_grad():
             return prepare(vq.decode(torch.tensor([tokens], device=args.device))[0].float().cpu().numpy())
 
-    truth = defaultdict(dict)
-    for r in sel.partitions["test"]:
-        truth[r["item"]].setdefault(r["signer"], decode(r["tokens"]))
+    truth = references(sel.partitions[args.partition], decode)
     people = sorted({p for v in truth.values() for p in v})
     retrieval, own = {}, set()  # 생성 화자의 클립을 우선, 없으면 다른 train 화자의 첫 클립
     for r in sel.train:
@@ -118,27 +138,24 @@ def main(argv=None):
             tokens[f"gen_g{g:g}_t{t:g}"] = generate(g, t, 17)
     tokens["gen_g2_greedy"] = generate(2.0, 1.0, 17, top_k=1)
     motions = {name: {w: decode(seq) for w, seq in seqs.items() if w in truth} for name, seqs in tokens.items()}
-    for t in (1.0, 0.5):
-        samples = [generate(2.0, t, 17 + k) for k in range(args.samples)]
-        picked = {}
+    for t in args.medoid_temperature:
+        # 시드 17, 18, ...의 앞 n개로 고르므로 n이 달라도 앞쪽 후보는 같다.
+        samples = [generate(2.0, t, 17 + k) for k in range(max(args.samples))]
+        picked = {n: {} for n in args.samples}
         for w in words:
-            if w in truth:
+            if w in truth:  # 단어마다 복원해 고르고 버린다(후보 전부를 메모리에 두지 않음)
                 cands = [decode(s[w]) for s in samples]
-                picked[w] = cands[medoid(cands, slice(0, 55))]
-        motions[f"gen_g2_t{t:g}_medoid{args.samples}"] = picked
+                for n in args.samples:
+                    picked[n][w] = cands[medoid(cands[:n], slice(0, 55))]
+        for n in args.samples:
+            motions[f"gen_g2_t{t:g}_medoid{n}"] = picked[n]
     print(json.dumps({"generated": list(motions), "seconds": round(time.time() - started, 1)}), flush=True)
 
-    def per_word(ms):
-        out = {}
-        for w, m in ms.items():
-            ds = [(body_distance(m, truth[w][p]), shape_distance(m, truth[w][p])) for p in people if p in truth[w]]
-            out[w] = {"body": float(np.mean([d[0] for d in ds])), "shape": float(np.mean([d[1] for d in ds]))}
-        return out
-
-    scored = {name: per_word(ms) for name, ms in motions.items()}
+    scored = {name: score_words(ms, truth) for name, ms in motions.items()}
     ceiling = {w: {"body": body_distance(v[people[0]], v[people[1]]), "shape": shape_distance(v[people[0]], v[people[1]])}
                for w, v in truth.items() if all(p in v for p in people[:2])}
-    result = {"checkpoint": str(Path(args.checkpoint).resolve()), "people": people, "generation_signer": gen_signer,
+    result = {"checkpoint": str(Path(args.checkpoint).resolve()), "partition": args.partition,
+              "people": people, "generation_signer": gen_signer,
               "token_length_mean": {n: float(np.mean([len(t) for t in s.values()])) for n, s in tokens.items()},
               "methods": {n: summarize(s, scored["retrieval"]) for n, s in scored.items()},
               "real_person_ceiling": summarize(ceiling), "per_word": scored,
