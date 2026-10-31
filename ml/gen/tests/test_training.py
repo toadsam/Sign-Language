@@ -350,14 +350,56 @@ class TrainingTests(Fixture):
         self.assertIn(trainer.model.null, seen[0])
         self.assertNotIn(trainer.model.null, seen[1])
 
+    def test_signer_drop_adds_null_signer_trains_resumes_and_generates(self):
+        from gen.training import NULL_SIGNER
+        selection = self.word_selection()
+        options = {"kind": "gpt", "config": self.config(cond_drop=0.5, signer_drop=0.5, eval_every=3, save_every=3)}
+        train(selection, self.root / "sig-full", **options)
+        train(selection, self.root / "sig-resume", stop_after=2, **options)
+        train(selection, self.root / "sig-resume", resume=True, **options)
+        for field in ("model", "optimizer", "rng", "best_validation"):
+            self.assert_state_equal(self.read_checkpoint("sig-full")[field], self.read_checkpoint("sig-resume")[field])
+        model, ck = load_generator(self.root / "sig-full/model.pt")
+        self.assertEqual(ck["signers"], {**selection.signers, NULL_SIGNER: len(selection.signers)})
+        self.assertEqual(ck["generation_signer"], NULL_SIGNER)
+        self.assertEqual(ck["model"]["signer.weight"].shape[0], len(selection.signers) + 1)
+        with torch.inference_mode():
+            out = model.generate(torch.tensor([0, 1]), torch.tensor([ck["signers"][NULL_SIGNER]] * 2), top_k=2)
+        self.assertTrue(all(row and all(0 <= code < 8 for code in row) for row in out))
+        # A trained signer can still be named explicitly.
+        name = next(iter(selection.signers))
+        trainer = Trainer(selection, "gpt", self.config(signer_drop=0.5, generation_signer=name))
+        self.assertEqual(trainer.generation_signer, name)
+
+    def test_signer_drop_swaps_only_training_signers_and_off_keeps_dictionary(self):
+        from gen.training import NULL_SIGNER
+        selection = self.word_selection()
+        self.assertEqual(Trainer(selection, "gpt", self.config()).metadata["signers"], selection.signers)
+        trainer = Trainer(selection, "gpt", self.config(signer_drop=0.99, generation_signer=next(iter(selection.signers))))
+        null = trainer.signers[NULL_SIGNER]
+        seen = []
+        real_forward = trainer.model.forward
+        def forward(cond, tokens, signer=None):
+            seen.append(signer.tolist())
+            return real_forward(cond, tokens, signer)
+        trainer.model.forward = forward
+        rows = selection.train * 4
+        trainer.loss(rows, training=True)
+        trainer.loss(rows, training=False)
+        self.assertIn(null, seen[0])
+        self.assertNotIn(null, seen[1])
+
     def test_condition_options_are_validated_and_gpt_only(self):
         selection = self.word_selection()
-        for changes in ({"cond_every": 1}, {"cond_drop": -0.1}, {"cond_drop": 1.0}, {"cond_drop": float("nan")}):
+        for changes in ({"cond_every": 1}, {"cond_drop": -0.1}, {"cond_drop": 1.0}, {"cond_drop": float("nan")},
+                        {"signer_drop": -0.1}, {"signer_drop": 1.0}, {"signer_drop": "0.1"}):
             with self.subTest(changes=changes), self.assertRaises(TrainingError):
                 train(selection, self.root / "invalid", kind="gpt", config=self.config(**changes))
         for kind in ("regress", "sentence"):
             with self.subTest(kind=kind), self.assertRaisesRegex(TrainingError, "gpt only"):
                 Trainer(selection, kind, self.config(cond_every=True), data_dir=self.root)
+            with self.subTest(kind=kind, option="signer_drop"), self.assertRaisesRegex(TrainingError, "gpt only"):
+                Trainer(selection, kind, self.config(signer_drop=0.1), data_dir=self.root)
         self.assertFalse((self.root / "invalid").exists())
 
     def decoder_selection(self):

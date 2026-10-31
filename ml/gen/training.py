@@ -76,6 +76,10 @@ class TrainingConfig:
     select_metric: str = "val_loss"
     select_words: int = 0       # 0 = every val word; otherwise a fixed seed-17 subset
     select_guidance: float = 1.0
+    # gpt only. >0 appends the NULL_SIGNER entry ("no signer") to the signer
+    # dictionary and swaps it in at this rate during training. generation_signer
+    # then defaults to NULL_SIGNER, so val loss, val_motion and inference all use it.
+    signer_drop: float = 0.0
 
     def validate(self):
         for field in ("iters", "batch", "d", "layers", "eval_every", "save_every", "max_src"):
@@ -99,6 +103,9 @@ class TrainingConfig:
         if (type(self.cond_drop) not in (int, float) or not math.isfinite(self.cond_drop)
                 or not 0 <= self.cond_drop < 1):
             raise TrainingError("invalid_config", "cond_drop")
+        if (type(self.signer_drop) not in (int, float) or not math.isfinite(self.signer_drop)
+                or not 0 <= self.signer_drop < 1):
+            raise TrainingError("invalid_config", "signer_drop")
         if self.select_metric not in ("val_loss", "val_motion"):
             raise TrainingError("invalid_config", "select_metric")
         if type(self.select_words) is not int or self.select_words < 0:
@@ -257,6 +264,9 @@ def _source_ids(row, vocab, max_src):
     return [vocab[symbol] for symbol in symbols]
 
 
+NULL_SIGNER = "NO_SIGNER"  # signer_drop > 0: the learned "no signer" entry, last in the signer dictionary
+
+
 def build_model(checkpoint):
     """Construct an unchanged model architecture from inference metadata."""
     c = checkpoint["config"]
@@ -298,8 +308,9 @@ class Trainer:
         config.validate()
         if kind not in ("gpt", "regress", "sentence"):
             raise TrainingError("invalid_kind", str(kind))
-        if kind != "gpt" and (config.cond_every or config.cond_drop or config.select_metric != "val_loss"):
-            raise TrainingError("invalid_config", "cond_every/cond_drop/select_metric are gpt only")
+        if kind != "gpt" and (config.cond_every or config.cond_drop or config.signer_drop
+                              or config.select_metric != "val_loss"):
+            raise TrainingError("invalid_config", "cond_every/cond_drop/signer_drop/select_metric are gpt only")
         if config.select_metric == "val_motion" and vq_path is None:
             raise TrainingError("invalid_config", "select_metric val_motion requires vq_path")
         if not selection.train:
@@ -308,8 +319,14 @@ class Trainer:
             raise TrainingError("empty_signers", "signers")
         self.selection, self.kind, self.config = selection, kind, config
         self.device = resolve_device(config.device)
-        self.generation_signer = config.generation_signer or selection.report["generation_signer"]
-        if self.generation_signer not in selection.signers:
+        self.signers = dict(selection.signers)
+        if config.signer_drop:
+            if NULL_SIGNER in self.signers:
+                raise TrainingError("invalid_signer", NULL_SIGNER)
+            self.signers[NULL_SIGNER] = len(self.signers)
+        self.generation_signer = (config.generation_signer
+                                  or (NULL_SIGNER if config.signer_drop else selection.report["generation_signer"]))
+        if self.generation_signer not in self.signers:
             raise TrainingError("untrained_signer", "generation_signer")
         self.max_len = config.max_len or max(len(r["tokens"]) for r in selection.train) + 8
         for row in selection.train:
@@ -343,7 +360,7 @@ class Trainer:
         seed_run(config.seed, config.deterministic)
         self.rng = np.random.default_rng(config.seed)
         self.metadata = {"checkpoint_schema_version": 1, "checkpoint_type": "inference", "kind": kind,
-                         "classes": selection.classes, "vocab": selection.vocab, "signers": selection.signers,
+                         "classes": selection.classes, "vocab": selection.vocab, "signers": self.signers,
                          "nb_code": selection.tokens["nb_code"], "max_len": self.max_len,
                          "max_src": config.max_src, "config": asdict(config),
                          "generation_signer": self.generation_signer}
@@ -368,7 +385,7 @@ class Trainer:
 
     def loss(self, rows, *, training):
         device, model, sel = self.device, self.model, self.selection
-        signers = [sel.signers[r["signer"]] if training else sel.signers[self.generation_signer] for r in rows]
+        signers = [sel.signers[r["signer"]] if training else self.signers[self.generation_signer] for r in rows]
         sig = torch.tensor(signers, dtype=torch.long, device=device)
         if self.kind == "sentence":
             sources = [_source_ids(r, sel.vocab, self.config.max_src) for r in rows]
@@ -398,6 +415,9 @@ class Trainer:
         if training and self.config.cond_drop:
             condition = torch.where(torch.rand(len(rows), device=device) < self.config.cond_drop,
                                     torch.full_like(condition, model.null), condition)
+        if training and self.config.signer_drop:  # drawn after cond_drop: off keeps the old RNG stream
+            sig = torch.where(torch.rand(len(rows), device=device) < self.config.signer_drop,
+                              torch.full_like(sig, self.signers[NULL_SIGNER]), sig)
         logits = model(condition, inputs, sig)
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100), \
             sum(len(r["tokens"]) + 1 for r in rows)
@@ -423,7 +443,7 @@ class Trainer:
             return None
         self.model.eval()
         result = self.motion_validator(self.model, self.selection.classes,
-                                       self.selection.signers[self.generation_signer])
+                                       self.signers[self.generation_signer])
         if not math.isfinite(result["shape"]):
             raise TrainingError("nonfinite_validation", "motion")
         return result

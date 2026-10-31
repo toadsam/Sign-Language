@@ -86,11 +86,12 @@ def summarize(per_word, baseline=None):
 
 
 def medoid_signers(names, trained):
-    """--medoid-signers 값 → 화자 이름 목록. all은 학습 화자 전부(이름순). 학습에 없는 화자는 거절."""
+    """--medoid-signers 값 → 화자 이름 목록. all은 학습 화자 전부(이름순, '화자 없음' 제외). 학습에 없는 화자는 거절."""
     if not names:
         return []
     if names == ["all"]:
-        return sorted(trained)
+        from gen.training import NULL_SIGNER
+        return sorted(n for n in trained if n != NULL_SIGNER)
     unknown = [n for n in names if n not in trained]
     if unknown:
         raise SystemExit(f"--medoid-signers: 학습에 없는 화자 {unknown}")

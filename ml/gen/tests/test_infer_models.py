@@ -76,6 +76,13 @@ class WordModelTests(unittest.TestCase):
               config=TrainingConfig(iters=4, batch=2, d=8, layers=1, max_len=5, device="cpu", seed=17,
                                     eval_every=1, save_every=1, cond_every=True, cond_drop=0.5),
               vq_path=cls.vq_path, vq_version="fixture-v1")
+        # "No signer" GPT: the null signer is an ordinary dictionary entry and the saved generation signer.
+        cls.trained[("word_gpt_nosigner", "smoke")] = cls.fixture_root / "gpt-nosigner"
+        train(select_data(tokens_path, cls.fixture_root / "meta.jsonl", split_path, mode="smoke"),
+              cls.trained[("word_gpt_nosigner", "smoke")], kind="gpt",
+              config=TrainingConfig(iters=4, batch=2, d=8, layers=1, max_len=5, device="cpu", seed=17,
+                                    eval_every=1, save_every=1, cond_every=True, cond_drop=0.5, signer_drop=0.3),
+              vq_path=cls.vq_path, vq_version="fixture-v1")
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -526,6 +533,19 @@ class WordModelTests(unittest.TestCase):
         with patch.object(adapter.model, "generate", return_value=[[0, 1], [2, 3]]):
             with self.assertRaisesRegex(ValueError, "per sample"):
                 generator.generate(["가"], seed=1)
+
+    def test_null_signer_checkpoint_serves_without_adapter_changes(self):
+        from gen.training import NULL_SIGNER
+        run, config = self.bundle(source="word_gpt_nosigner", sampling={"top_k": 3, "guidance": 2.0, "samples": 2})
+        generator = Generator(run)
+        adapter = generator._adapter
+        self.assertEqual(generator.connection_policy["signer"], NULL_SIGNER)
+        with patch.object(adapter.model, "generate", wraps=adapter.model.generate) as sample:
+            result = generator.generate(["가"], seed=3)
+        self.assert_motion(result)
+        self.assertEqual(sample.call_args.args[1].tolist(), [adapter.signers[NULL_SIGNER]] * 2)
+        run, _ = self.bundle(source="word_gpt_nosigner", sampling={"top_k": 3, "signer": "TRAIN"})
+        self.assertEqual(Generator(run).connection_policy["signer"], "TRAIN")
 
     def test_guidance_and_samples_settings_are_validated(self):
         cases = [("word_gpt", None, {"guidance": 2.0}),  # no null condition
