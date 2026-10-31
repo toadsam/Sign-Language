@@ -118,7 +118,7 @@ def main(argv=None):
     ap.add_argument("--partition", choices=("test", "val"), default="test",
                     help="정답 화자. 모델·설정 고르기는 val, 최종 보고만 test")
     ap.add_argument("--batch", type=int, default=500)
-    ap.add_argument("--limit-words", type=int, default=None, help="짧은 확인용: 앞 N단어만 채점")
+    ap.add_argument("--limit-words", type=int, default=None, help="짧은 확인용: 단어 번호 전체에서 고르게 N단어만 채점")
     ap.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     args = ap.parse_args(argv)
 
@@ -130,7 +130,8 @@ def main(argv=None):
     vq = load_vqvae(args.vq)[0].to(args.device).eval()
     sel = select_data(args.tokens, str(Path(args.data) / "meta.jsonl"), args.split_file, mode="formal")
     words = sorted(ck["classes"], key=ck["classes"].get)
-    words = words[:args.limit_words] if args.limit_words else words
+    if args.limit_words and args.limit_words < len(words):  # 단어 번호 전체에서 고르게(앞쪽 한 종류에 몰리지 않게)
+        words = [words[i * len(words) // args.limit_words] for i in range(args.limit_words)]
     gen_signer = ck["generation_signer"]
     pool_signers = medoid_signers(args.medoid_signers, ck["signers"])
 
