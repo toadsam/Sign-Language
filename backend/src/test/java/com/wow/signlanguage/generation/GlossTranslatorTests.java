@@ -25,6 +25,7 @@ class GlossTranslatorTests {
   DictionaryLoader videoDictionary = mock(DictionaryLoader.class);
   ExternalLexiconApiClient etri = mock(ExternalLexiconApiClient.class);
   OpenAiMorphologyNormalizerService openAi = mock(OpenAiMorphologyNormalizerService.class);
+  SynonymReplacer synonyms = mock(SynonymReplacer.class);
   TextNormalizer normalizer = new TextNormalizer();
   GlossTranslator translator;
 
@@ -36,11 +37,14 @@ class GlossTranslatorTests {
         """));
     when(etri.fetchSentenceLemmas(anyString())).thenReturn(List.of());
     when(openAi.normalize(anyString())).thenReturn(Optional.empty());
+    // Default: the synonym step changes nothing (as with no cache or no API key).
+    when(synonyms.replace(anyString(), anyList()))
+        .thenAnswer(call -> SynonymReplacer.Result.unchanged(call.getArgument(1)));
   }
 
   GlossTranslator translator(WordVocabulary vocabulary) {
     return new GlossTranslator(vocabulary, normalizer, new SignSentenceSimplifier(normalizer, videoDictionary),
-        etri, openAi);
+        etri, openAi, synonyms);
   }
 
   void openAiSays(String... tokens) {
@@ -91,10 +95,32 @@ class GlossTranslatorTests {
     assertThat(gloss.question()).isTrue();
   }
 
+  @Test void synonymStepRunsOnTheChosenStreamWithTheOriginalSentence() {
+    openAiSays("변소", "가다");
+    when(synonyms.replace("변소 가고 싶어", List.of("변소", "가다"))).thenReturn(new SynonymReplacer.Result(
+        List.of("화장실", "가다"), List.of(new SynonymReplacer.Replacement("변소", "화장실"))));
+    GlossTranslator.Gloss gloss = translator.translate("변소 가고 싶어");
+    assertThat(gloss.words()).containsExactly("화장실", "가다");
+    assertThat(gloss.replacements()).containsExactly(new SynonymReplacer.Replacement("변소", "화장실"));
+  }
+
+  @Test void streamIsChosenBeforeSynonymsAreApplied() {
+    // ETRI already has more drawable words; the synonym step must not change which stream wins.
+    openAiSays("변소", "친구");
+    when(etri.fetchSentenceLemmas(anyString())).thenReturn(List.of("화장실", "친구"));
+    translator.translate("문장");
+    verify(synonyms).replace("문장", List.of("화장실", "친구"));
+  }
+
+  @Test void noReplacementsByDefault() {
+    openAiSays("고양이", "친구");
+    assertThat(translator.translate("문장").replacements()).isEmpty();
+  }
+
   @Test void missingVocabularyFailsBeforeAnyExternalCall() {
     GlossTranslator unavailable = translator(new WordVocabulary("", new ObjectMapper()));
     assertThatThrownBy(() -> unavailable.translate("친구"))
         .isInstanceOf(GlossTranslator.VocabularyUnavailable.class);
-    verifyNoInteractions(etri, openAi);
+    verifyNoInteractions(etri, openAi, synonyms);
   }
 }

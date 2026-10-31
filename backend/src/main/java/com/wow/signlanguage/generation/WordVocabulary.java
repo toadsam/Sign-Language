@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -71,6 +72,11 @@ public class WordVocabulary {
   /** One fixed sign: the generator can draw it. */
   public boolean isMapped(String word) {
     return mapped.contains(word);
+  }
+
+  /** Every drawable word, sorted, for building the synonym embedding cache. */
+  public List<String> mappedWords() {
+    return mapped.stream().sorted().toList();
   }
 
   /** In the table at all, including words with several signs that the generator leaves unknown. */

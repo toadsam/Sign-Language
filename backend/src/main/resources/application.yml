@@ -9,6 +9,10 @@ sign:
     max-text-chars: ${SIGN_GENERATION_MAX_TEXT_CHARS:4096}
     max-frames: ${SIGN_GENERATION_MAX_FRAMES:1800}
     word-vocab-path: ${SIGN_WORD_VOCAB_PATH:}
+    synonym:
+      enabled: ${SIGN_SYNONYM_ENABLED:true}
+      cache-path: ${SIGN_SYNONYM_CACHE_PATH:}
+      candidates: ${SIGN_SYNONYM_CANDIDATES:10}
 
 spring:
   application:
@@ -36,6 +40,7 @@ openai:
   morphology:
     enabled: ${OPENAI_MORPHOLOGY_ENABLED:true}
   chat-completions-url: ${OPENAI_CHAT_COMPLETIONS_URL:https://api.openai.com/v1/chat/completions}
+  embeddings-url: ${OPENAI_EMBEDDINGS_URL:https://api.openai.com/v1/embeddings}
 
 app:
   frontend-base-url: http://localhost:8081/home
