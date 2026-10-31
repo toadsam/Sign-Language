@@ -34,6 +34,29 @@ class WordAccuracyTests(unittest.TestCase):
         self.assertAlmostEqual(scored["W"]["body"], np.sqrt(3), places=5)  # 두 화자 모두 각 축 1 차이
         self.assertAlmostEqual(scored["W"]["shape"], 0.0, places=5)
 
+    def test_medoid_signers_all_sorted_and_rejects_untrained(self):
+        from gen.word_accuracy import medoid_signers
+        trained = {"REAL05": 1, "REAL01": 0, "REAL02": 2}
+        self.assertEqual(medoid_signers(None, trained), [])
+        self.assertEqual(medoid_signers(["all"], trained), ["REAL01", "REAL02", "REAL05"])
+        self.assertEqual(medoid_signers(["REAL05", "REAL01", "REAL05"], trained), ["REAL05", "REAL01"])
+        with self.assertRaises(SystemExit):
+            medoid_signers(["REAL03"], trained)
+
+    def test_pooled_medoid_uses_first_k_per_signer_and_picks_center(self):
+        import numpy as np
+        from gen.word_accuracy import pooled_medoid
+
+        def m(v):
+            return np.full((4, 125, 3), v, dtype=np.float32)
+        cands = {"P": [m(0.0), m(9.0)], "Q": [m(1.0), m(-9.0)], "R": [m(3.0), m(9.0)]}
+        self.assertEqual(float(pooled_medoid(cands, 1)[0, 0, 0]), 1.0)   # 0, 1, 3 중 가운데
+        picked = pooled_medoid(cands, 2)                                  # 0, 9, 1, -9, 3, 9 중 가운데
+        self.assertIn(float(picked[0, 0, 0]), (1.0, 3.0))
+        joints_past_55 = {"P": [m(0.0)], "Q": [m(0.1)], "R": [m(0.2)]}
+        joints_past_55["P"][0][:, 55:] = 100.0                            # 얼굴은 대표 고르기에 쓰지 않음
+        self.assertAlmostEqual(float(pooled_medoid(joints_past_55, 1)[0, 0, 0]), 0.1, places=5)
+
 
 if __name__ == "__main__":
     unittest.main()
