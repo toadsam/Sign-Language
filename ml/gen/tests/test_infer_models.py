@@ -547,6 +547,40 @@ class WordModelTests(unittest.TestCase):
         run, _ = self.bundle(source="word_gpt_nosigner", sampling={"top_k": 3, "signer": "TRAIN"})
         self.assertEqual(Generator(run).connection_policy["signer"], "TRAIN")
 
+    def test_several_signer_pick_generates_one_batch_per_word_and_reports_policy(self):
+        from gen.training import NULL_SIGNER
+        run, _ = self.bundle(source="word_gpt_nosigner",
+                             sampling={"top_k": 3, "guidance": 2.0, "signers": ["TRAIN", NULL_SIGNER], "per_signer": 2})
+        generator = Generator(run)
+        adapter = generator._adapter
+        ids = [adapter.signers["TRAIN"], adapter.signers[NULL_SIGNER]] * 2
+        policy = generator.connection_policy
+        self.assertEqual((policy["samples"], policy["signers"], policy["per_signer"], policy["signer"], policy["pick"]),
+                         (4, ["TRAIN", NULL_SIGNER], 2, None, "medoid_body_hands55"))
+        with patch.object(adapter.model, "generate", wraps=adapter.model.generate) as sample:
+            result = generator.generate(["가", "나", "미등록"], seed=5)
+        self.assert_motion(result)
+        self.assertEqual(sample.call_count, 2)                       # 단어마다 한 번, 후보 4개를 한 묶음으로
+        self.assertEqual(sample.call_args.args[1].tolist(), ids)
+        self.assertEqual(sample.call_args.args[0].tolist(), [adapter.classes["WORD2"]] * 4)
+        self.assertEqual(result["tokens"], generator.generate(["가", "나", "미등록"], seed=5)["tokens"])
+        # "all" = trained signers without the learned NO_SIGNER entry.
+        run, _ = self.bundle(source="word_gpt_nosigner", sampling={"top_k": 3, "signers": "all"})
+        policy = Generator(run).connection_policy
+        self.assertEqual((policy["signers"], policy["per_signer"], policy["samples"], policy["pick"]),
+                         (["TRAIN"], 1, 1, "single"))
+
+    def test_several_signer_settings_are_validated(self):
+        cases = [("word_gpt", {"signers": "all", "signer": "TRAIN"}), ("word_gpt", {"signers": "all", "samples": 2}),
+                 ("word_gpt", {"signers": []}), ("word_gpt", {"signers": ["TRAIN", "TRAIN"]}),
+                 ("word_gpt", {"signers": ["NOBODY"]}), ("word_gpt", {"signers": "TRAIN"}),
+                 ("word_gpt", {"signers": "all", "per_signer": 0}), ("word_gpt", {"signers": "all", "per_signer": 33}),
+                 ("word_gpt", {"per_signer": 2}), ("word_regress", {"signers": "all"})]
+        for kind, sampling in cases:
+            run, _ = self.bundle(kind, sampling=sampling)
+            with self.subTest(kind=kind, sampling=sampling), self.assertRaises(ValueError):
+                Generator(run)
+
     def test_guidance_and_samples_settings_are_validated(self):
         cases = [("word_gpt", None, {"guidance": 2.0}),  # no null condition
                  ("word_gpt", "word_gpt_cond", {"guidance": 0}),

@@ -22,6 +22,13 @@ one with the smallest summed body+hands distance to the others after the same
 active-span trim and 32-frame resample as gen.word_accuracy. No reference
 motion is consulted.
 
+Several-signer pick (GPT only): sampling.signers ("all" = every trained signer
+except the learned NO_SIGNER, or a list of trained names) with per_signer (default
+1) generates per_signer sequences under each signer's condition in one batch and
+returns their medoid, as gen.word_accuracy --medoid-signers. It replaces signer
+and samples (setting either with signers is rejected); samples becomes
+len(signers) * per_signer, at most MAX_SAMPLES.
+
 All adapters share an RNG lock, compatible with C's serialized worker. Seeded
 requests use isolated Torch states; unseeded requests advance private states
 initialized from OS entropy. Caller CPU/CUDA RNG states are restored. This lock
@@ -148,8 +155,26 @@ class WordModelAdapter:
         saved_signer = checkpoint.get("generation_signer")
         if not isinstance(saved_signer, str) or saved_signer not in self.signers:
             raise ValueError("checkpoint generation_signer is not trained")
-        self.signer = sampling.get("signer", saved_signer)
-        if not isinstance(self.signer, str) or self.signer not in self.signers:
+        if "signers" in sampling:
+            if "signer" in sampling or "samples" in sampling:
+                raise ValueError("sampling signers replaces signer and samples")
+            if self.kind != "word_gpt":
+                raise ValueError("sampling signers is GPT only")
+            pool = sampling["signers"]
+            if pool == "all":
+                from gen.training import NULL_SIGNER
+                pool = sorted(s for s in self.signers if s != NULL_SIGNER)
+            if (not isinstance(pool, list) or not pool or len(set(pool)) != len(pool)
+                    or any(not isinstance(s, str) or s not in self.signers for s in pool)):
+                raise ValueError("sampling signers must be 'all' or distinct trained signers")
+            per_signer = _positive_integer(sampling.get("per_signer", 1), "per_signer")
+            self.signer_pool, self.per_signer = pool, per_signer
+        elif "per_signer" in sampling:
+            raise ValueError("per_signer requires sampling signers")
+        else:
+            self.signer_pool, self.per_signer = None, None
+        self.signer = None if self.signer_pool else sampling.get("signer", saved_signer)
+        if self.signer_pool is None and (not isinstance(self.signer, str) or self.signer not in self.signers):
             raise ValueError("sampling signer is not trained")
         self.top_k, self.temperature = sampling.get("top_k", 10), sampling.get("temperature", 1.0)
         if type(self.top_k) is not int or self.top_k < 0:
@@ -167,7 +192,8 @@ class WordModelAdapter:
             raise ValueError("guidance must be finite and positive")
         if self.guidance != 1 and getattr(self.model, "null", None) is None:
             raise ValueError("guidance requires a null-condition GPT checkpoint")
-        self.samples = _positive_integer(sampling.get("samples", 1), "samples")
+        self.samples = (len(self.signer_pool) * self.per_signer if self.signer_pool
+                        else _positive_integer(sampling.get("samples", 1), "samples"))
         if self.samples > MAX_SAMPLES or (self.samples > 1 and self.kind != "word_gpt"):
             raise ValueError(f"samples must be 1..{MAX_SAMPLES} and GPT only")
         if self.kind == "word_gpt":
@@ -186,6 +212,7 @@ class WordModelAdapter:
             "frames_per_word_upper_bound": self.frames_per_word, "signer": self.signer,
             "top_k": self.top_k, "temperature": self.temperature, "min_len": self.min_len,
             "guidance": self.guidance, "samples": self.samples,
+            "signers": self.signer_pool, "per_signer": self.per_signer,
             "pick": "medoid_body_hands55" if self.samples > 1 else "single",
             "sentence_model": False, "nonmanual_supported": False}
         entropy = secrets.randbits(63)
@@ -204,10 +231,13 @@ class WordModelAdapter:
 
     def _word(self, item):
         condition = torch.tensor([self.classes[item]], dtype=torch.long, device=self.device)
-        signer = torch.tensor([self.signers[self.signer]], dtype=torch.long, device=self.device)
         if self.kind == "word_regress":
+            signer = torch.tensor([self.signers[self.signer]], dtype=torch.long, device=self.device)
             return self._motion(self.model(condition, signer), self.frames_per_word), []
-        sequences = self.model.generate(condition.repeat(self.samples), signer.repeat(self.samples),
+        # Several-signer pick: per_signer rounds over the pool, all in one batch.
+        names = self.signer_pool * self.per_signer if self.signer_pool else [self.signer] * self.samples
+        signer = torch.tensor([self.signers[n] for n in names], dtype=torch.long, device=self.device)
+        sequences = self.model.generate(condition.repeat(self.samples), signer,
                                         top_k=self.top_k, temperature=self.temperature,
                                         min_len=self.min_len, guidance=self.guidance)
         if not isinstance(sequences, list) or len(sequences) != self.samples:
