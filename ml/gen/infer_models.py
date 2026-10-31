@@ -47,7 +47,6 @@ from gen.train_word import load_generator
 from gen.training import resolve_device
 from gen.verify_bundle import KNOWN_SHA256
 from gen.word_accuracy import prepare
-from gen.word_test_eval import medoid
 from vq.model import load_vqvae
 
 
@@ -229,6 +228,11 @@ class WordModelAdapter:
             raise ValueError("nonfinite model/decoder output")
         return value[0].cpu().numpy().copy().reshape(frames, 125, 3)
 
+    def _medoid(self, prepared):
+        """gen.word_test_eval.medoid와 같은 계산(몸+손 55점 평균 거리 합이 가장 작은 후보)을 이 장치에서 float32로."""
+        x = torch.from_numpy(np.stack(prepared)[:, :, BODY_HANDS].astype(np.float32)).to(self.device)
+        return int((x[:, None] - x[None]).norm(dim=-1).mean(dim=(2, 3)).sum(1).argmin())
+
     def _word(self, item):
         condition = torch.tensor([self.classes[item]], dtype=torch.long, device=self.device)
         if self.kind == "word_regress":
@@ -250,7 +254,7 @@ class WordModelAdapter:
             indices = torch.tensor([tokens], dtype=torch.long, device=self.device)
             motions.append(self._motion(self.decoder.decode(indices), len(tokens) * self.down))
         # Several samples: keep the one closest to the others (never sees a reference motion).
-        pick = 0 if self.samples == 1 else medoid([prepare(m.reshape(len(m), 375)) for m in motions], BODY_HANDS)
+        pick = 0 if self.samples == 1 else self._medoid([prepare(m.reshape(len(m), 375)) for m in motions])
         return motions[pick], sequences[pick]
 
     def generate(self, gloss, seed):

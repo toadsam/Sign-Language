@@ -570,6 +570,16 @@ class WordModelTests(unittest.TestCase):
         self.assertEqual((policy["signers"], policy["per_signer"], policy["samples"], policy["pick"]),
                          (["TRAIN"], 1, 1, "single"))
 
+    def test_device_medoid_matches_reference_medoid(self):
+        from gen.word_test_eval import medoid
+        run, _ = self.bundle(sampling={"top_k": 3, "signer": "TRAIN", "samples": 2})
+        adapter = Generator(run)._adapter
+        rng = np.random.default_rng(3)
+        for n in (2, 5, 24):
+            prepared = [rng.normal(size=(32, 125, 3)) for _ in range(n)]
+            prepared[0][:, 55:] += 50.0                      # 얼굴은 고르기에 쓰지 않음
+            self.assertEqual(adapter._medoid(prepared), medoid(prepared, slice(0, 55)))
+
     def test_several_signer_settings_are_validated(self):
         cases = [("word_gpt", {"signers": "all", "signer": "TRAIN"}), ("word_gpt", {"signers": "all", "samples": 2}),
                  ("word_gpt", {"signers": []}), ("word_gpt", {"signers": ["TRAIN", "TRAIN"]}),
