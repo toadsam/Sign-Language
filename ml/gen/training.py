@@ -68,6 +68,18 @@ class TrainingConfig:
     max_len: int | None = None
     deterministic: bool = True
     generation_signer: str | None = None
+    # gpt only. Both off reproduces the original architecture and RNG stream.
+    cond_every: bool = False   # add the word condition at every position
+    cond_drop: float = 0.0     # >0 adds a null condition, swapped in at this rate (guidance)
+    # gpt only. "val_motion" keeps the step whose generated motion is closest to the
+    # val signers' motion (hand shape distance, gen.word_accuracy) instead of val loss.
+    select_metric: str = "val_loss"
+    select_words: int = 0       # 0 = every val word; otherwise a fixed seed-17 subset
+    select_guidance: float = 1.0
+    # gpt only. >0 appends the NULL_SIGNER entry ("no signer") to the signer
+    # dictionary and swaps it in at this rate during training. generation_signer
+    # then defaults to NULL_SIGNER, so val loss, val_motion and inference all use it.
+    signer_drop: float = 0.0
 
     def validate(self):
         for field in ("iters", "batch", "d", "layers", "eval_every", "save_every", "max_src"):
@@ -86,6 +98,21 @@ class TrainingConfig:
             raise TrainingError("invalid_config", "seed")
         if type(self.deterministic) is not bool:
             raise TrainingError("invalid_config", "deterministic")
+        if type(self.cond_every) is not bool:
+            raise TrainingError("invalid_config", "cond_every")
+        if (type(self.cond_drop) not in (int, float) or not math.isfinite(self.cond_drop)
+                or not 0 <= self.cond_drop < 1):
+            raise TrainingError("invalid_config", "cond_drop")
+        if (type(self.signer_drop) not in (int, float) or not math.isfinite(self.signer_drop)
+                or not 0 <= self.signer_drop < 1):
+            raise TrainingError("invalid_config", "signer_drop")
+        if self.select_metric not in ("val_loss", "val_motion"):
+            raise TrainingError("invalid_config", "select_metric")
+        if type(self.select_words) is not int or self.select_words < 0:
+            raise TrainingError("invalid_config", "select_words")
+        if (type(self.select_guidance) not in (int, float) or not math.isfinite(self.select_guidance)
+                or self.select_guidance <= 0 or (self.select_guidance != 1 and not self.cond_drop)):
+            raise TrainingError("invalid_config", "select_guidance")
 
 
 def resolve_device(requested="auto"):
@@ -184,6 +211,50 @@ class MotionSegments:
             mapped._mmap.close()
 
 
+class MotionValidator:
+    """Generated-motion distance to the val signers, as in gen.word_accuracy.
+
+    References are the val clips decoded once by the run's VQ decoder. Each check
+    generates one sequence per word under a fixed seed inside a forked RNG, so
+    training randomness and exact resume are unaffected.
+    """
+
+    def __init__(self, rows, vq_path, device, words=0, guidance=1.0, batch=500):
+        from vq.model import load_vqvae
+        from gen.word_accuracy import references
+        self.device, self.guidance, self.batch = device, guidance, batch
+        self.decoder = load_vqvae(str(vq_path))[0].to(device).eval()
+        truth = references(rows, self.decode)
+        names = sorted(truth)
+        if words and words < len(names):
+            names = [names[i] for i in sorted(np.random.default_rng(17).choice(len(names), words, replace=False))]
+        self.truth = {w: truth[w] for w in names}
+
+    def decode(self, tokens):
+        from gen.word_accuracy import prepare
+        with torch.inference_mode():
+            motion = self.decoder.decode(torch.tensor([tokens], dtype=torch.long, device=self.device))
+        return prepare(motion[0].float().cpu().numpy()).astype(np.float32)
+
+    def __call__(self, model, classes, signer):
+        from gen.word_accuracy import score_words
+        words = list(self.truth)
+        devices = [self.device.index or 0] if self.device.type == "cuda" else []
+        motions = {}
+        with torch.random.fork_rng(devices=devices):
+            torch.manual_seed(17)
+            for start in range(0, len(words), self.batch):
+                chunk = words[start:start + self.batch]
+                cond = torch.tensor([classes[w] for w in chunk], dtype=torch.long, device=self.device)
+                sig = torch.full_like(cond, signer)
+                for w, seq in zip(chunk, model.generate(cond, sig, top_k=10, temperature=1.0, min_len=2,
+                                                        guidance=self.guidance)):
+                    motions[w] = self.decode(seq)
+        scores = score_words(motions, self.truth).values()
+        return {"body": float(np.mean([s["body"] for s in scores])),
+                "shape": float(np.mean([s["shape"] for s in scores])), "words": len(words)}
+
+
 def _source_ids(row, vocab, max_src):
     symbols = source_symbols(row)
     if not symbols or len(symbols) > max_src:
@@ -193,13 +264,18 @@ def _source_ids(row, vocab, max_src):
     return [vocab[symbol] for symbol in symbols]
 
 
+NULL_SIGNER = "NO_SIGNER"  # signer_drop > 0: the learned "no signer" entry, last in the signer dictionary
+
+
 def build_model(checkpoint):
     """Construct an unchanged model architecture from inference metadata."""
     c = checkpoint["config"]
     common = {"d": c["d"], "layers": c["layers"], "n_signer": len(checkpoint["signers"])}
     kind = checkpoint["kind"]
     if kind == "gpt":
-        return MotionGPT(len(checkpoint["classes"]), checkpoint["nb_code"], max_len=checkpoint["max_len"], **common)
+        # Checkpoints from before these options lack the keys: original architecture.
+        return MotionGPT(len(checkpoint["classes"]), checkpoint["nb_code"], max_len=checkpoint["max_len"],
+                         cond_every=c.get("cond_every", False), null_cond=c.get("cond_drop", 0) > 0, **common)
     if kind == "regress":
         return MotionRegressor(len(checkpoint["classes"]), 375, c["length"], **common)
     if kind == "sentence":
@@ -228,18 +304,29 @@ def load_trained_model(path, device="cpu"):
 
 
 class Trainer:
-    def __init__(self, selection, kind, config, data_dir=None):
+    def __init__(self, selection, kind, config, data_dir=None, vq_path=None):
         config.validate()
         if kind not in ("gpt", "regress", "sentence"):
             raise TrainingError("invalid_kind", str(kind))
+        if kind != "gpt" and (config.cond_every or config.cond_drop or config.signer_drop
+                              or config.select_metric != "val_loss"):
+            raise TrainingError("invalid_config", "cond_every/cond_drop/signer_drop/select_metric are gpt only")
+        if config.select_metric == "val_motion" and vq_path is None:
+            raise TrainingError("invalid_config", "select_metric val_motion requires vq_path")
         if not selection.train:
             raise TrainingError("empty_train", "train")
         if not selection.signers:
             raise TrainingError("empty_signers", "signers")
         self.selection, self.kind, self.config = selection, kind, config
         self.device = resolve_device(config.device)
-        self.generation_signer = config.generation_signer or selection.report["generation_signer"]
-        if self.generation_signer not in selection.signers:
+        self.signers = dict(selection.signers)
+        if config.signer_drop:
+            if NULL_SIGNER in self.signers:
+                raise TrainingError("invalid_signer", NULL_SIGNER)
+            self.signers[NULL_SIGNER] = len(self.signers)
+        self.generation_signer = (config.generation_signer
+                                  or (NULL_SIGNER if config.signer_drop else selection.report["generation_signer"]))
+        if self.generation_signer not in self.signers:
             raise TrainingError("untrained_signer", "generation_signer")
         self.max_len = config.max_len or max(len(r["tokens"]) for r in selection.train) + 8
         for row in selection.train:
@@ -273,11 +360,19 @@ class Trainer:
         seed_run(config.seed, config.deterministic)
         self.rng = np.random.default_rng(config.seed)
         self.metadata = {"checkpoint_schema_version": 1, "checkpoint_type": "inference", "kind": kind,
-                         "classes": selection.classes, "vocab": selection.vocab, "signers": selection.signers,
+                         "classes": selection.classes, "vocab": selection.vocab, "signers": self.signers,
                          "nb_code": selection.tokens["nb_code"], "max_len": self.max_len,
                          "max_src": config.max_src, "config": asdict(config),
                          "generation_signer": self.generation_signer}
         self.model = build_model(self.metadata).to(self.device)
+        self.motion_validator = None
+        if config.select_metric == "val_motion" and self.val:
+            # Decoder construction must not shift the training RNG stream.
+            with torch.random.fork_rng(devices=[self.device.index or 0] if self.device.type == "cuda" else []):
+                self.motion_validator = MotionValidator(self.val, vq_path, self.device, config.select_words,
+                                                        config.select_guidance)
+        self.selection_metric = ("smoke_unvalidated" if not self.val else
+                                 "val_motion_shape" if self.motion_validator else "ordinary_val_loss")
         self.weights = None
         if kind == "regress":
             from vq.train import joint_weights
@@ -290,7 +385,7 @@ class Trainer:
 
     def loss(self, rows, *, training):
         device, model, sel = self.device, self.model, self.selection
-        signers = [sel.signers[r["signer"]] if training else sel.signers[self.generation_signer] for r in rows]
+        signers = [sel.signers[r["signer"]] if training else self.signers[self.generation_signer] for r in rows]
         sig = torch.tensor(signers, dtype=torch.long, device=device)
         if self.kind == "sentence":
             sources = [_source_ids(r, sel.vocab, self.config.max_src) for r in rows]
@@ -317,6 +412,12 @@ class Trainer:
                 inputs[i, :len(tokens)] = tokens
             targets[i, :len(tokens)] = tokens
             targets[i, len(tokens)] = model.end
+        if training and self.config.cond_drop:
+            condition = torch.where(torch.rand(len(rows), device=device) < self.config.cond_drop,
+                                    torch.full_like(condition, model.null), condition)
+        if training and self.config.signer_drop:  # drawn after cond_drop: off keeps the old RNG stream
+            sig = torch.where(torch.rand(len(rows), device=device) < self.config.signer_drop,
+                              torch.full_like(sig, self.signers[NULL_SIGNER]), sig)
         logits = model(condition, inputs, sig)
         return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100), \
             sum(len(r["tokens"]) + 1 for r in rows)
@@ -336,6 +437,17 @@ class Trainer:
             raise TrainingError("nonfinite_validation", "loss")
         return value
 
+    def validate_motion(self):
+        """None unless select_metric is val_motion; else {body, shape, words} on val signers."""
+        if self.motion_validator is None:
+            return None
+        self.model.eval()
+        result = self.motion_validator(self.model, self.selection.classes,
+                                       self.signers[self.generation_signer])
+        if not math.isfinite(result["shape"]):
+            raise TrainingError("nonfinite_validation", "motion")
+        return result
+
     def signature(self, manifest):
         stable_manifest = {k: v for k, v in manifest.items() if k not in ("code_commit", "code_dirty")}
         return {"schema_version": 1, "kind": self.kind, "config": asdict(self.config),
@@ -344,7 +456,7 @@ class Trainer:
                 "model_metadata": {k: v for k, v in self.metadata.items() if k not in ("artifact_manifest", "tokens")},
                 "scheduler": {"kind": "OneCycleLR", "pct_start": self.pct_start},
                 "implementation": {name: sha256_file(Path(__file__).with_name(name))
-                                   for name in ("model.py", "training.py")},
+                                   for name in ("model.py", "training.py", "word_accuracy.py")},
                 "motion_root": str(self.motion.root) if self.motion else None,
                 "motion_files": self.motion.inventory if self.motion else None}
 
@@ -357,7 +469,7 @@ def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
     remain the original total. Checkpoints contain Python/NumPy/Torch RNG state
     and are loaded with weights_only=True. No real dataset is needed for smoke.
     """
-    trainer = Trainer(selection, kind, config, data_dir)
+    trainer = Trainer(selection, kind, config, data_dir, vq_path=vq_path)
     end_step = config.iters if stop_after is None else stop_after
     if type(end_step) is not int or not 1 <= end_step <= config.iters:
         raise TrainingError("invalid_config", "stop_after")
@@ -390,14 +502,14 @@ def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
         manifest = prepare_run(selection, run, vq_path=vq_path, vq_version=vq_version)
         write_json_atomic(run / "training.json", {"schema_version": 1, "signature": trainer.signature(manifest),
             "validation": {"eligible": len(trainer.val), "skipped": dict(trainer.val_skipped)},
-            "selection_metric": "ordinary_val_loss" if trainer.val else "smoke_unvalidated",
+            "selection_metric": trainer.selection_metric,
             "generation_signer": trainer.generation_signer})
     trainer.metadata.update(artifact_manifest=manifest, tokens=str(tokens_path) if tokens_path else None)
 
     def inference_artifact(current_step, metric):
         return {**trainer.metadata, "model": _cpu_state(trainer.model), "global_step": current_step,
                 "best_validation": metric, "best_step": best_step,
-                "selection_metric": "ordinary_val_loss" if trainer.val else "smoke_unvalidated"}
+                "selection_metric": trainer.selection_metric}
 
     def save_latest():
         recovery = {"checkpoint_schema_version": 1, "checkpoint_type": "recovery",
@@ -425,12 +537,16 @@ def train(selection, run_dir, *, kind, config, data_dir=None, vq_path=None,
             trainer.scheduler.step()
             step += 1
             if step % config.eval_every == 0 or step == config.iters:
-                metric = trainer.validate()
+                val_loss, motion = trainer.validate(), trainer.validate_motion()
+                metric = motion["shape"] if motion else val_loss
                 if metric is not None and (best is None or metric < best):
                     best, best_step = metric, step
                     best_artifact = inference_artifact(step, metric)
-                log.write(json.dumps({"step": step, "train_loss": float(loss.detach()), "val_loss": metric,
-                                      "best_validation": best, "lr": trainer.optimizer.param_groups[0]["lr"]}) + "\n")
+                entry = {"step": step, "train_loss": float(loss.detach()), "val_loss": val_loss,
+                         "best_validation": best, "lr": trainer.optimizer.param_groups[0]["lr"]}
+                if motion:
+                    entry.update(val_motion_body=motion["body"], val_motion_shape=motion["shape"])
+                log.write(json.dumps(entry) + "\n")
                 log.flush()
             if not trainer.val:
                 best_artifact = inference_artifact(step, None)

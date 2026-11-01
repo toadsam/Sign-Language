@@ -40,9 +40,13 @@ def medoid(motions, part):
 
 
 def load_quick_fit(path, device):
+    """quick_fit 실험 형식과 training.py 정식(schema 1) 체크포인트를 모두 읽는다."""
     import torch
     from gen.model import MotionGPT
     ck = torch.load(path, map_location=device, weights_only=False)
+    if "arch" not in ck:
+        from gen.training import load_trained_model
+        return load_trained_model(path, device)
     a = ck["arch"]
     model = MotionGPT(len(ck["classes"]), ck["nb_code"], d=a["d"], layers=a["layers"], max_len=ck["max_len"],
                       n_signer=len(ck["signers"]), dropout=a["dropout"], cond_every=a["cond_every"],

@@ -62,11 +62,16 @@ class MotionGPT(nn.Module):
         done = torch.zeros(B, dtype=torch.bool, device=cond.device)
         if guidance != 1.0 and self.null is None:
             raise ValueError("guidance requires null_cond")
+        if guidance != 1.0:  # 조건 있는/없는 예측을 한 묶음으로 계산(두 번 부르는 것보다 빠르다)
+            pair_cond = torch.cat([cond, torch.full_like(cond, self.null)])
+            pair_signer = None if signer is None else torch.cat([signer, signer])
         for t in range(self.max_len):
-            logits = self.forward(cond, seq, signer)[:, -1]
             if guidance != 1.0:
-                free = self.forward(torch.full_like(cond, self.null), seq, signer)[:, -1]
+                both = self.forward(pair_cond, torch.cat([seq, seq]), pair_signer)[:, -1]
+                logits, free = both[:B], both[B:]
                 logits = free + guidance * (logits - free)
+            else:
+                logits = self.forward(cond, seq, signer)[:, -1]
             if t < min_len:
                 logits[:, self.end] = float("-inf")
             nxt = sample_next(logits, top_k, temperature)

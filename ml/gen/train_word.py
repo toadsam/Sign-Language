@@ -57,6 +57,15 @@ def main():
     ap.add_argument("--corrupt", type=float, default=0.3, help="gpt: 입력 토큰을 무작위로 바꾸는 최대 비율")
     ap.add_argument("--length", type=int, default=64, help="regress: 출력 프레임 수")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--cond-every", action="store_true", help="gpt: 단어 조건을 모든 위치에 더한다")
+    ap.add_argument("--cond-drop", type=float, default=0.0,
+                    help="gpt: >0이면 '단어 없음' 조건을 두고 이 비율로 바꿔 넣는다(생성 때 guidance용)")
+    ap.add_argument("--signer-drop", type=float, default=0.0,
+                    help="gpt: >0이면 '화자 없음'(NO_SIGNER)을 두고 이 비율로 바꿔 넣는다. 생성 화자 기본값도 NO_SIGNER가 된다")
+    ap.add_argument("--select-metric", choices=["val_loss", "val_motion"], default="val_loss",
+                    help="gpt: 남길 시점 기준. val_motion = val 화자 동작과의 손 모양 거리(--vq-checkpoint 필요)")
+    ap.add_argument("--select-words", type=int, default=0, help="val_motion 채점 단어 수(0이면 val 전체)")
+    ap.add_argument("--select-guidance", type=float, default=1.0, help="val_motion 생성 guidance(--cond-drop>0일 때)")
     add_training_arguments(ap)
     args = ap.parse_args()
 
