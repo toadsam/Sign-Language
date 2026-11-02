@@ -34,6 +34,22 @@ The production factory never substitutes synthetic coordinates if loading fails.
 `{"status":"unavailable"}` (503). A load failure leaves generation unavailable.
 Loading happens once per app lifespan. Restart the process to replace the model.
 
+### Word GPT sampling (`generator.json` `sampling`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `top_k`, `temperature`, `min_len` | 10, 1.0, 2 | Token sampling per word |
+| `guidance` | 1 | >1 mixes in the "no word" prediction; needs a `cond_drop` checkpoint |
+| `signer` | checkpoint `generation_signer` | Signer condition for every candidate |
+| `samples` | 1 | Candidates per word (1..32); keeps the medoid by body+hands distance |
+| `signers` | – | `"all"` (trained signers except `NO_SIGNER`) or a list; replaces `signer` and `samples` |
+| `per_signer` | 1 | With `signers`: candidates per signer, all in one batch |
+
+The medoid never looks at a reference motion. Deployed word model
+(2026-11-02): `{"guidance": 2.0, "signers": "all", "per_signer": 2}` = 24
+candidates per word. Measured word-model time for 3 words: 0.40 s on a T4
+(`SIGN_DEVICE=cuda`), 2.3 s on 8 CPU cores; on CPU, `"samples": 5` takes 0.65 s.
+
 For local HTTP checks with explicitly synthetic data, from the repository root:
 
 ```powershell
