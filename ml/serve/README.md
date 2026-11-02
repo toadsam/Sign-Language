@@ -34,21 +34,21 @@ The production factory never substitutes synthetic coordinates if loading fails.
 `{"status":"unavailable"}` (503). A load failure leaves generation unavailable.
 Loading happens once per app lifespan. Restart the process to replace the model.
 
-### Word GPT sampling (`generator.json` `sampling`)
+### 단어 GPT 생성 설정 (`generator.json`의 `sampling`)
 
-| Key | Default | Meaning |
+| 키 | 기본값 | 뜻 |
 |---|---|---|
-| `top_k`, `temperature`, `min_len` | 10, 1.0, 2 | Token sampling per word |
-| `guidance` | 1 | >1 mixes in the "no word" prediction; needs a `cond_drop` checkpoint |
-| `signer` | checkpoint `generation_signer` | Signer condition for every candidate |
-| `samples` | 1 | Candidates per word (1..32); keeps the medoid by body+hands distance |
-| `signers` | – | `"all"` (trained signers except `NO_SIGNER`) or a list; replaces `signer` and `samples` |
-| `per_signer` | 1 | With `signers`: candidates per signer, all in one batch |
+| `top_k`, `temperature`, `min_len` | 10, 1.0, 2 | 단어마다 토큰을 뽑는 방식 |
+| `guidance` | 1 | 1보다 크면 '단어 없음' 예측과 섞어 단어 조건을 강하게 한다. `cond_drop`으로 학습한 체크포인트 필요 |
+| `signer` | 체크포인트의 `generation_signer` | 모든 후보에 쓸 화자 조건 |
+| `samples` | 1 | 단어당 후보 수(1~32). 몸+손 거리로 가장 가운데 후보(medoid)를 고른다 |
+| `signers` | – | `"all"`(`NO_SIGNER`를 뺀 학습 화자 전부) 또는 화자 이름 목록. `signer`·`samples` 대신 쓴다 |
+| `per_signer` | 1 | `signers`와 함께: 화자마다 만들 후보 수. 전부 한 묶음으로 계산한다 |
 
-The medoid never looks at a reference motion. Deployed word model
-(2026-11-02): `{"guidance": 2.0, "signers": "all", "per_signer": 2}` = 24
-candidates per word. Measured word-model time for 3 words: 0.40 s on a T4
-(`SIGN_DEVICE=cuda`), 2.3 s on 8 CPU cores; on CPU, `"samples": 5` takes 0.65 s.
+대표 고르기는 정답 동작을 보지 않는다. 배포 중인 단어 모델(2026-11-02):
+`{"guidance": 2.0, "signers": "all", "per_signer": 2}` = 단어당 후보 24개.
+단어 모델 부분 응답 시간(3단어): T4 GPU(`SIGN_DEVICE=cuda`) 0.40초, CPU 8코어 2.3초.
+CPU로 운영하면 `"samples": 5`(0.65초)를 고려한다.
 
 For local HTTP checks with explicitly synthetic data, from the repository root:
 
