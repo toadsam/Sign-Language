@@ -16,6 +16,7 @@ import {
 import { saveWrongNote } from '@/lib/api/wrong-note-saved';
 import { recordQuizAttempt } from '@/lib/api/users';
 import { useAuth } from '@/context/auth-context';
+import { Mascot } from '@/components/mascot';
 
 const PRIMARY = '#1f80e3';
 const QUIZ_COUNT = 10;
@@ -867,16 +868,12 @@ export default function QuizScreen() {
                 },
               ]}>
               <View style={styles.feedbackTop}>
-                <View style={[styles.feedbackIconWrap, isCorrect ? styles.iconCorrect : styles.iconWrong]}>
-                  <Ionicons
-                    name={isCorrect ? 'checkmark' : 'close'}
-                    size={20}
-                    color={isCorrect ? '#22c55e' : '#ef4444'}
-                  />
+                <View style={styles.feedbackMascot}>
+                  <Mascot mood={isCorrect ? 'correct' : 'wrong'} size={72} interactive />
                 </View>
                 <View style={styles.feedbackTextWrap}>
                   <Text style={[styles.feedbackTitle, isCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
-                    {isCorrect ? '정답입니다' : '오답입니다'}
+                    {isCorrect ? '정답이에요!' : '아깝다! 다시 보면 돼요'}
                   </Text>
                   <Text style={[styles.feedbackDesc, isCorrect ? styles.feedbackDescCorrect : styles.feedbackDescWrong]}>
                     정답: {answerResult.correctChoiceText}
@@ -1446,22 +1443,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  feedbackIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  iconCorrect: {
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-  },
-  iconWrong: {
-    borderWidth: 1,
-    borderColor: '#fecaca',
+  feedbackMascot: {
+    marginRight: 6,
+    marginTop: -28,
   },
   feedbackTextWrap: {
     flex: 1,

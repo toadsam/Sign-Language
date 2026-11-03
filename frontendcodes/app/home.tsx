@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { BookOpenTextIcon } from 'phosphor-react-native';
+import { Mascot, MascotMood } from '@/components/mascot';
 import { useAuth } from '@/context/auth-context';
-import { Fonts } from '@/constants/theme';
+import { Palette, Radius, Shadow, Space, Type } from '@/constants/design';
 import {
   DAILY_GOAL_TARGET,
   getGoalPercent,
@@ -15,11 +15,16 @@ import {
 } from '@/lib/daily-goal';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 
-const PRIMARY = '#1f80e3';
-const ACCENT = '#7c6cf2';
-const FONT = Fonts.rounded;
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
-const HOME_CARD_ANIMATION_COUNT = 4;
+const HOME_CARD_ANIMATION_COUNT = 3;
+
+// 마스코트를 누를 때마다 차례로 나오는 반응
+const MASCOT_TAP_REACTIONS: { mood: MascotMood; line: string }[] = [
+  { mood: 'correct', line: '히히, 간지러워요!' },
+  { mood: 'thinking', line: '오늘은 어떤 단어를 배워 볼까요?' },
+  { mood: 'hello', line: '손가락 다섯 개, 다 보이죠?' },
+  { mood: 'cheer', line: '같이 하면 금방이에요!' },
+];
 
 type ChartPoint = {
   dateKey: string;
@@ -94,6 +99,23 @@ export default function HomeScreen() {
     [weeklyChartData]
   );
   const remainingToday = Math.max(DAILY_GOAL_TARGET - solvedToday, 0);
+  const [mascotReaction, setMascotReaction] = useState<{ mood: MascotMood; line: string } | null>(null);
+  const [mascotTapCount, setMascotTapCount] = useState(0);
+  const mascotReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baseMood: MascotMood = solvedToday === 0 ? 'hello' : remainingToday > 0 ? 'cheer' : 'celebrate';
+  const baseLine =
+    solvedToday === 0
+      ? `${nickname}님, 오늘 첫 퀴즈 같이 풀어 볼까요?`
+      : remainingToday > 0
+        ? `좋아요! ${remainingToday}문제만 더 풀면 목표 달성!`
+        : '오늘 목표 달성! 정말 멋져요';
+
+  useEffect(
+    () => () => {
+      if (mascotReactionTimerRef.current) clearTimeout(mascotReactionTimerRef.current);
+    },
+    []
+  );
   const weeklyTotal = useMemo(
     () => weeklyChartData.reduce((sum, point) => sum + point.solvedCount, 0),
     [weeklyChartData]
@@ -304,6 +326,16 @@ export default function HomeScreen() {
     });
   }
 
+  function handleMascotPress() {
+    const next = mascotTapCount + 1;
+    setMascotTapCount(next);
+    setMascotReaction(MASCOT_TAP_REACTIONS[next % MASCOT_TAP_REACTIONS.length]);
+    if (mascotReactionTimerRef.current) {
+      clearTimeout(mascotReactionTimerRef.current);
+    }
+    mascotReactionTimerRef.current = setTimeout(() => setMascotReaction(null), 2200);
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.root}>
@@ -324,102 +356,124 @@ export default function HomeScreen() {
           </Animated.View>
           <View style={styles.header}>
             <View style={styles.profileWrap}>
-              <Image
-                source={
-                  profileImageUri
-                    ? { uri: profileImageUri }
-                    : { uri: 'https://cdn-icons-png.flaticon.com/512/149/149071.png' }
-                }
-                style={styles.profileImage}
-              />
-              <Text style={styles.profileName}>{nickname}</Text>
+              {profileImageUri ? (
+                <Image source={{ uri: profileImageUri }} style={styles.profileImage} />
+              ) : (
+                <View style={[styles.profileImage, styles.profileFallback]}>
+                  <Text style={styles.profileInitial}>{nickname.slice(0, 1)}</Text>
+                </View>
+              )}
+              <View>
+                <Text style={styles.greetingSmall}>안녕하세요</Text>
+                <Text style={styles.profileName}>{nickname}님</Text>
+              </View>
             </View>
-            <Pressable style={styles.iconButton}>
-              <Ionicons name="notifications" size={20} color="#111827" />
+            <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel="알림">
+              <Ionicons name="notifications" size={20} color={Palette.ink} />
             </Pressable>
           </View>
 
-          <View style={styles.intro}>
-            <Text style={styles.greeting}>안녕하세요, {nickname}님</Text>
-            <Text style={styles.greetingSub}>수어 학습을 응원합니다!</Text>
-          </View>
+          <Animated.View style={[styles.heroCard, getHomeCardEnterStyle(0)]}>
+            <View style={[styles.heroBlob, styles.heroBlobA]} />
+            <View style={[styles.heroBlob, styles.heroBlobB]} />
+            <View style={styles.heroTop}>
+              <Mascot mood={mascotReaction?.mood ?? baseMood} size={128} interactive onPress={handleMascotPress} />
+              <View style={styles.bubble}>
+                <View style={styles.bubbleTail} />
+                <Text style={styles.bubbleText}>{mascotReaction?.line ?? baseLine}</Text>
+              </View>
+            </View>
 
-          <Animated.View style={[styles.goalCard, getHomeCardEnterStyle(0)]}>
             <View style={styles.goalRow}>
               <Text style={styles.goalTitle}>오늘의 목표</Text>
-              <Text style={styles.goalPercent}>{goalPercent}%</Text>
+              <Text style={styles.goalCount}>
+                {solvedToday}
+                <Text style={styles.goalCountTotal}> / {DAILY_GOAL_TARGET}문제</Text>
+              </Text>
             </View>
-            <View style={styles.progressTrack}>
-              <Animated.View style={[styles.progressFill, { width: goalFillWidth }]} />
+            <View
+              style={styles.progressTrack}
+              accessible
+              accessibilityRole="progressbar"
+              accessibilityLabel="오늘의 목표 진행률"
+              accessibilityValue={{ min: 0, max: 100, now: goalPercent }}>
+              <Animated.View style={[styles.progressFill, { width: goalFillWidth }]}>
+                <View style={styles.progressShine} />
+              </Animated.View>
             </View>
-            <Text style={styles.goalDesc}>
-              오늘의 퀴즈 {DAILY_GOAL_TARGET}개 중 {solvedToday}개 완료
-            </Text>
+            <View style={styles.goalDots}>
+              {Array.from({ length: DAILY_GOAL_TARGET }, (_, index) => (
+                <View key={index} style={[styles.goalDot, index < solvedToday && styles.goalDotDone]}>
+                  {index < solvedToday && <Ionicons name="checkmark" size={12} color={Palette.ink} />}
+                </View>
+              ))}
+            </View>
+
+            <Animated.View style={{ transform: [{ scale: challengeButtonScale }] }}>
+              <Pressable
+                style={styles.heroButton}
+                onPress={() => router.push('/quiz')}
+                onPressIn={() => animatePressScale(challengeButtonScale, true)}
+                onPressOut={() => animatePressScale(challengeButtonScale, false)}
+                accessibilityRole="button">
+                <Text style={styles.heroButtonText}>{remainingToday > 0 ? '오늘의 퀴즈 풀기' : '한 판 더 하기'}</Text>
+                <View style={styles.heroButtonIcon}>
+                  <Ionicons name="arrow-forward" size={16} color="#ffffff" />
+                </View>
+              </Pressable>
+            </Animated.View>
           </Animated.View>
 
-          <Animated.View style={[styles.challengeCard, getHomeCardEnterStyle(1)]}>
-            <View style={styles.challengeHero}>
-              <View style={styles.challengeHeroText}>
-                <View style={styles.challengeBadge}>
-                  <Ionicons name="sparkles" size={12} color="#ffffff" />
-                  <Text style={styles.challengeBadgeText}>오늘의 챌린지</Text>
-                </View>
-                <Text style={styles.challengeHeroTitle}>오늘의 퀴즈 풀기</Text>
-                <Text style={styles.challengeHeroSub}>
-                  {remainingToday > 0 ? `${remainingToday}문제만 더 풀면 목표 달성` : '오늘 목표를 완료했어요'}
-                </Text>
-              </View>
-              <View style={styles.challengeIconPanel}>
-                <BookOpenTextIcon size={42} color={PRIMARY} weight="duotone" duotoneOpacity={0.28} />
-                <View style={styles.challengeIconDot} />
-              </View>
-            </View>
-
-            <View style={styles.challengeBody}>
-              <View style={styles.challengeMetaRow}>
-                <View style={styles.challengeMetaPill}>
-                  <Ionicons name="help-circle" size={14} color={PRIMARY} />
-                  <Text style={styles.challengeMetaText}>{DAILY_GOAL_TARGET}문제</Text>
-                </View>
-                <View style={styles.challengeMetaPill}>
-                  <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
-                  <Text style={styles.challengeMetaText}>{solvedToday}개 완료</Text>
-                </View>
-                <View style={styles.challengeMetaPill}>
-                  <Ionicons name="time-outline" size={14} color="#64748b" />
-                  <Text style={styles.challengeMetaText}>약 3분</Text>
-                </View>
-              </View>
-              <Animated.View style={{ transform: [{ scale: challengeButtonScale }] }}>
-                <Pressable
-                  style={styles.challengeButton}
-                  onPress={() => router.push('/quiz')}
-                  onPressIn={() => animatePressScale(challengeButtonScale, true)}
-                  onPressOut={() => animatePressScale(challengeButtonScale, false)}>
-                  <Text style={styles.challengeButtonText}>퀴즈 시작하기</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#ffffff" />
-                </Pressable>
-              </Animated.View>
+          <Animated.View style={[styles.quickWrap, getHomeCardEnterStyle(1)]}>
+            <Text style={styles.sectionTitle}>무엇을 해 볼까요?</Text>
+            <View style={styles.quickGrid}>
+              {QUICK_ACTIONS.map((action, index) => (
+                <Animated.View
+                  key={action.route}
+                  style={[styles.quickTileWrap, { transform: [{ scale: quickActionScales[index] }] }]}>
+                  <Pressable
+                    style={[styles.quickTile, { backgroundColor: action.soft }]}
+                    onPress={() => router.push(action.route as any)}
+                    onPressIn={() => animatePressScale(quickActionScales[index], true)}
+                    onPressOut={() => animatePressScale(quickActionScales[index], false)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${action.title}, ${action.desc}`}>
+                    <View style={[styles.quickTileIcon, { backgroundColor: action.color }]}>
+                      {action.icon}
+                    </View>
+                    <Text style={styles.quickTileText}>{action.title}</Text>
+                    <Text style={styles.quickTileDesc}>{action.desc}</Text>
+                  </Pressable>
+                </Animated.View>
+              ))}
             </View>
           </Animated.View>
 
           <Animated.View style={[styles.weeklyCard, getHomeCardEnterStyle(2)]}>
             <View style={styles.weeklyHeader}>
-              <Text style={styles.weeklyTitle}>최근 7일 풀이 그래프</Text>
+              <Text style={styles.sectionTitleInCard}>최근 7일 기록</Text>
               <View style={styles.weeklyBadge}>
+                <Ionicons name="flame" size={13} color={Palette.warning} />
                 <Text style={styles.weeklyBadgeText}>총 {weeklyTotal}문제</Text>
               </View>
             </View>
             <View style={styles.weeklyBarsRow}>
               {weeklyChartData.map((point, index) => {
                 const barHeight = Math.max((point.solvedCount / maxWeeklySolved) * 80, 6);
+                const isToday = index === weeklyChartData.length - 1;
+                const reachedGoal = point.solvedCount >= DAILY_GOAL_TARGET;
                 return (
-                  <View key={point.dateKey} style={styles.weeklyBarItem}>
-                    <Text style={styles.weeklyValue}>{point.solvedCount}</Text>
+                  <View
+                    key={point.dateKey}
+                    style={styles.weeklyBarItem}
+                    accessible
+                    accessibilityLabel={`${point.dayLabel}요일 ${point.solvedCount}문제`}>
+                    <Text style={[styles.weeklyValue, isToday && styles.weeklyValueToday]}>{point.solvedCount}</Text>
                     <View style={styles.weeklyTrack}>
                       <Animated.View
                         style={[
                           styles.weeklyFill,
+                          isToday && styles.weeklyFillToday,
                           {
                             height: weeklyRevealAnims[index].interpolate({
                               inputRange: [0, 1],
@@ -430,93 +484,49 @@ export default function HomeScreen() {
                         ]}
                       />
                     </View>
-                    <Text style={styles.weeklyLabel}>{point.dayLabel}</Text>
+                    <View style={[styles.weeklyLabelWrap, isToday && styles.weeklyLabelToday]}>
+                      <Text style={[styles.weeklyLabel, isToday && styles.weeklyLabelTodayText]}>{point.dayLabel}</Text>
+                    </View>
+                    {reachedGoal && <Ionicons name="star" size={11} color="#fbbf24" style={styles.weeklyStar} />}
                   </View>
                 );
               })}
             </View>
+            {weeklyTotal === 0 && (
+              <View style={styles.weeklyEmpty}>
+                <Mascot mood="sleepy" size={56} />
+                <Text style={styles.weeklyEmptyText}>아직 기록이 없어요. 첫 문제를 풀면 막대가 자라요!</Text>
+              </View>
+            )}
           </Animated.View>
 
-          <Animated.View style={[styles.quickWrap, getHomeCardEnterStyle(3)]}>
-            <Text style={styles.quickTitle}>빠른 메뉴</Text>
-            <View style={styles.quickGrid}>
-              <Animated.View style={[styles.quickTileWrap, { transform: [{ scale: quickActionScales[0] }] }]}>
-                <Pressable
-                  style={styles.quickTile}
-                  onPress={() => router.push('/translator')}
-                  onPressIn={() => animatePressScale(quickActionScales[0], true)}
-                  onPressOut={() => animatePressScale(quickActionScales[0], false)}>
-                  <View style={[styles.quickTileIcon, { backgroundColor: '#e8f2ff' }]}>
-                    <MaterialCommunityIcons name="sign-language" size={21} color={PRIMARY} />
-                  </View>
-                  <Text style={styles.quickTileText}>수어 통역</Text>
-                </Pressable>
-              </Animated.View>
-              <Animated.View style={[styles.quickTileWrap, { transform: [{ scale: quickActionScales[1] }] }]}>
-                <Pressable
-                  style={styles.quickTile}
-                  onPress={() => router.push('/learn')}
-                  onPressIn={() => animatePressScale(quickActionScales[1], true)}
-                  onPressOut={() => animatePressScale(quickActionScales[1], false)}>
-                  <View style={[styles.quickTileIcon, { backgroundColor: '#effdf5' }]}>
-                    <Ionicons name="school" size={21} color="#22c55e" />
-                  </View>
-                  <Text style={styles.quickTileText}>학습하기</Text>
-                </Pressable>
-              </Animated.View>
-              <Animated.View style={[styles.quickTileWrap, { transform: [{ scale: quickActionScales[2] }] }]}>
-                <Pressable
-                  style={styles.quickTile}
-                  onPress={() => router.push('/quiz')}
-                  onPressIn={() => animatePressScale(quickActionScales[2], true)}
-                  onPressOut={() => animatePressScale(quickActionScales[2], false)}>
-                  <View style={[styles.quickTileIcon, { backgroundColor: '#fff7df' }]}>
-                    <Ionicons name="help-circle" size={21} color="#f59e0b" />
-                  </View>
-                  <Text style={styles.quickTileText}>퀴즈</Text>
-                </Pressable>
-              </Animated.View>
-              <Animated.View style={[styles.quickTileWrap, { transform: [{ scale: quickActionScales[3] }] }]}>
-                <Pressable
-                  style={styles.quickTile}
-                  onPress={() => router.push('/wrongnote')}
-                  onPressIn={() => animatePressScale(quickActionScales[3], true)}
-                  onPressOut={() => animatePressScale(quickActionScales[3], false)}>
-                  <View style={[styles.quickTileIcon, { backgroundColor: '#fff1f2' }]}>
-                    <Ionicons name="book" size={21} color="#ef4444" />
-                  </View>
-                  <Text style={styles.quickTileText}>오답노트</Text>
-                </Pressable>
-              </Animated.View>
-            </View>
-          </Animated.View>
           <Animated.View pointerEvents="none" style={[styles.bottomStretch, { height: bottomStretchHeight }]}>
             <View style={styles.bottomStretchHandle} />
           </Animated.View>
         </ScrollView>
 
         <View style={styles.bottomNav}>
-          <Pressable style={styles.navItem}>
+          <Pressable style={styles.navItem} accessibilityRole="tab" accessibilityState={{ selected: true }}>
             <View style={[styles.navIconBubble, styles.navIconBubbleActive]}>
-              <Ionicons name="home" size={18} color={PRIMARY} />
+              <Ionicons name="home" size={18} color={Palette.primaryDeep} />
             </View>
             <Text style={[styles.navText, styles.navTextActive]}>홈</Text>
           </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/learn')}>
+          <Pressable style={styles.navItem} onPress={() => router.push('/learn')} accessibilityRole="tab">
             <View style={styles.navIconBubble}>
-              <Ionicons name="school-outline" size={18} color="#94a3b8" />
+              <Ionicons name="school-outline" size={18} color={Palette.muted} />
             </View>
             <Text style={styles.navText}>학습하기</Text>
           </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/translator')}>
+          <Pressable style={styles.navItem} onPress={() => router.push('/translator')} accessibilityRole="tab">
             <View style={styles.navIconBubble}>
-              <MaterialCommunityIcons name="sign-language" size={18} color="#94a3b8" />
+              <MaterialCommunityIcons name="sign-language" size={18} color={Palette.muted} />
             </View>
             <Text style={styles.navText}>통역기</Text>
           </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/mypage')}>
+          <Pressable style={styles.navItem} onPress={() => router.push('/mypage')} accessibilityRole="tab">
             <View style={styles.navIconBubble}>
-              <Ionicons name="person-outline" size={18} color="#94a3b8" />
+              <Ionicons name="person-outline" size={18} color={Palette.muted} />
             </View>
             <Text style={styles.navText}>마이페이지</Text>
           </Pressable>
@@ -526,18 +536,53 @@ export default function HomeScreen() {
   );
 }
 
+const QUICK_ACTIONS = [
+  {
+    route: '/translator',
+    title: '수어 통역',
+    desc: '문장을 수어로',
+    color: Palette.info,
+    soft: Palette.infoSoft,
+    icon: <MaterialCommunityIcons name="sign-language" size={22} color="#ffffff" />,
+  },
+  {
+    route: '/learn',
+    title: '학습하기',
+    desc: '단어 하나씩',
+    color: Palette.success,
+    soft: Palette.successSoft,
+    icon: <Ionicons name="school" size={22} color="#ffffff" />,
+  },
+  {
+    route: '/quiz',
+    title: '퀴즈',
+    desc: '실력 확인',
+    color: Palette.warning,
+    soft: Palette.warningSoft,
+    icon: <Ionicons name="help-circle" size={22} color="#ffffff" />,
+  },
+  {
+    route: '/wrongnote',
+    title: '오답노트',
+    desc: '틀린 것 다시',
+    color: Palette.danger,
+    soft: Palette.dangerSoft,
+    icon: <Ionicons name="book" size={20} color="#ffffff" />,
+  },
+];
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8f7ff',
+    backgroundColor: Palette.bg,
   },
   root: {
     flex: 1,
-    backgroundColor: '#f8f7ff',
+    backgroundColor: Palette.bg,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.md,
     paddingBottom: 104,
   },
   header: {
@@ -548,137 +593,276 @@ const styles = StyleSheet.create({
   profileWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: Space.md,
   },
   profileImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: Palette.surface,
   },
-  profileName: {
-    fontFamily: FONT,
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#ffffff',
+  profileFallback: {
+    backgroundColor: Palette.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#d7d9ef',
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
   },
-  intro: {
-    marginTop: 14,
-  },
-  greeting: {
-    fontFamily: FONT,
-    fontSize: 21,
+  profileInitial: {
+    fontFamily: Type.family,
+    fontSize: Type.bodyStrong,
     fontWeight: '800',
-    color: '#111827',
-    lineHeight: 29,
+    color: Palette.primaryDeep,
   },
-  greetingSub: {
-    fontFamily: FONT,
-    marginTop: 3,
-    fontSize: 15,
-    color: '#5a7da1',
-    fontWeight: '500',
+  greetingSmall: {
+    fontFamily: Type.family,
+    fontSize: Type.caption,
+    fontWeight: '700',
+    color: Palette.muted,
   },
-  goalCard: {
-    marginTop: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    shadowColor: '#d8daee',
-    shadowOpacity: 0.55,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+  profileName: {
+    fontFamily: Type.family,
+    fontSize: Type.title,
+    fontWeight: '800',
+    color: Palette.ink,
   },
-  goalRow: {
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Palette.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadow.soft,
+  },
+  heroCard: {
+    marginTop: Space.xl,
+    padding: Space.xl,
+    borderRadius: Radius.xl,
+    backgroundColor: Palette.primarySoft,
+    overflow: 'hidden',
+    ...Shadow.card,
+  },
+  heroBlob: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: Palette.primary,
+  },
+  heroBlobA: {
+    width: 180,
+    height: 180,
+    right: -50,
+    top: -60,
+    opacity: 0.35,
+  },
+  heroBlobB: {
+    width: 110,
+    height: 110,
+    left: -30,
+    bottom: 40,
+    opacity: 0.25,
+  },
+  heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Space.sm,
+  },
+  bubble: {
+    flex: 1,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
+    borderRadius: Radius.md,
+    backgroundColor: Palette.surface,
+  },
+  bubbleTail: {
+    position: 'absolute',
+    left: -6,
+    top: '50%',
+    marginTop: -6,
+    width: 14,
+    height: 14,
+    backgroundColor: Palette.surface,
+    transform: [{ rotate: '45deg' }],
+  },
+  bubbleText: {
+    fontFamily: Type.family,
+    fontSize: Type.body,
+    lineHeight: 21,
+    fontWeight: '800',
+    color: Palette.ink,
+  },
+  goalRow: {
+    marginTop: Space.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
   goalTitle: {
-    fontFamily: FONT,
-    fontSize: 20,
+    fontFamily: Type.family,
+    fontSize: Type.bodyStrong,
     fontWeight: '800',
-    color: '#111827',
+    color: Palette.ink,
   },
-  goalPercent: {
-    fontFamily: FONT,
-    fontSize: 16,
-    color: PRIMARY,
+  goalCount: {
+    fontFamily: Type.family,
+    fontSize: Type.heading,
+    fontWeight: '900',
+    color: Palette.ink,
+  },
+  goalCountTotal: {
+    fontSize: Type.body,
     fontWeight: '700',
+    color: Palette.inkSoft,
   },
   progressTrack: {
-    marginTop: 13,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: '#eef1f7',
+    marginTop: Space.sm,
+    height: 14,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.surface,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    width: '60%',
-    borderRadius: 999,
-    backgroundColor: PRIMARY,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.primaryWarm,
   },
-  goalDesc: {
-    fontFamily: FONT,
-    marginTop: 8,
-    color: '#5a7da1',
-    fontSize: 14,
-    fontWeight: '500',
+  progressShine: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    top: 3,
+    height: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  goalDots: {
+    marginTop: Space.md,
+    flexDirection: 'row',
+    gap: Space.sm,
+  },
+  goalDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#e8cf98',
+    backgroundColor: Palette.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalDotDone: {
+    backgroundColor: Palette.primary,
+    borderColor: Palette.primary,
+  },
+  heroButton: {
+    marginTop: Space.xl,
+    height: 56,
+    borderRadius: Radius.pill,
+    paddingLeft: Space.xxl,
+    paddingRight: Space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Palette.primary,
+    ...Shadow.soft,
+  },
+  heroButtonText: {
+    fontFamily: Type.family,
+    color: Palette.ink,
+    fontSize: Type.bodyStrong + 1,
+    fontWeight: '900',
+  },
+  heroButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Palette.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickWrap: {
+    marginTop: Space.xxl,
+  },
+  sectionTitle: {
+    fontFamily: Type.family,
+    fontSize: Type.title,
+    fontWeight: '800',
+    color: Palette.ink,
+    marginBottom: Space.md,
+  },
+  sectionTitleInCard: {
+    fontFamily: Type.family,
+    fontSize: Type.bodyStrong + 1,
+    fontWeight: '800',
+    color: Palette.ink,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Space.md,
+  },
+  quickTileWrap: {
+    width: '47%',
+    flexGrow: 1,
+  },
+  quickTile: {
+    minHeight: 112,
+    padding: Space.lg,
+    borderRadius: Radius.lg,
+  },
+  quickTileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadow.soft,
+  },
+  quickTileText: {
+    fontFamily: Type.family,
+    marginTop: Space.md,
+    color: Palette.ink,
+    fontSize: Type.bodyStrong,
+    fontWeight: '800',
+  },
+  quickTileDesc: {
+    fontFamily: Type.family,
+    marginTop: 2,
+    color: Palette.inkSoft,
+    fontSize: Type.caption + 1,
+    fontWeight: '600',
   },
   weeklyCard: {
-    marginTop: 22,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 16,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    shadowColor: '#d8daee',
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    marginTop: Space.xxl,
+    paddingHorizontal: Space.xl,
+    paddingTop: Space.xl,
+    paddingBottom: Space.lg,
+    borderRadius: Radius.lg,
+    backgroundColor: Palette.surface,
+    ...Shadow.card,
   },
   weeklyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-  },
-  weeklyTitle: {
-    fontFamily: FONT,
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#111827',
+    gap: Space.sm,
   },
   weeklyBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: '#f0edff',
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.warningSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   weeklyBadgeText: {
-    fontFamily: FONT,
-    fontSize: 11,
-    color: ACCENT,
+    fontFamily: Type.family,
+    fontSize: Type.caption,
+    color: '#92400e',
     fontWeight: '800',
   },
   weeklyBarsRow: {
-    marginTop: 12,
+    marginTop: Space.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
@@ -688,206 +872,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   weeklyValue: {
-    fontFamily: FONT,
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '600',
+    fontFamily: Type.family,
+    fontSize: Type.caption,
+    color: Palette.muted,
+    fontWeight: '700',
     marginBottom: 4,
   },
+  weeklyValueToday: {
+    color: Palette.primaryDeep,
+    fontWeight: '900',
+  },
   weeklyTrack: {
-    width: 18,
+    width: 20,
     height: 84,
-    borderRadius: 12,
-    backgroundColor: '#f0f1f5',
+    borderRadius: Radius.sm,
+    backgroundColor: '#fbf3e1',
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   weeklyFill: {
     width: '100%',
-    borderRadius: 12,
-    backgroundColor: ACCENT,
+    borderRadius: Radius.sm,
+    backgroundColor: '#ffe08a',
+  },
+  weeklyFillToday: {
+    backgroundColor: Palette.primary,
+  },
+  weeklyLabelWrap: {
+    marginTop: 6,
+    width: 26,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weeklyLabelToday: {
+    backgroundColor: Palette.primary,
   },
   weeklyLabel: {
-    fontFamily: FONT,
-    marginTop: 6,
-    fontSize: 12,
-    color: '#64748b',
+    fontFamily: Type.family,
+    fontSize: Type.caption,
+    color: Palette.muted,
     fontWeight: '700',
   },
-  challengeCard: {
-    marginTop: 22,
-    borderRadius: 28,
-    backgroundColor: '#ffffff',
-    overflow: 'hidden',
-    shadowColor: '#d5d7ec',
-    shadowOpacity: 0.6,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 5,
+  weeklyLabelTodayText: {
+    color: Palette.ink,
   },
-  challengeHero: {
-    minHeight: 150,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    backgroundColor: '#f1f6ff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
-  challengeHeroText: {
-    flex: 1,
-  },
-  challengeBadge: {
-    backgroundColor: ACCENT,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  challengeBadgeText: {
-    fontFamily: FONT,
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  challengeHeroTitle: {
-    fontFamily: FONT,
-    marginTop: 14,
-    color: '#111827',
-    fontSize: 25,
-    fontWeight: '900',
-  },
-  challengeHeroSub: {
-    fontFamily: FONT,
-    marginTop: 5,
-    color: '#5a7da1',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '700',
-  },
-  challengeIconPanel: {
-    width: 82,
-    height: 82,
-    borderRadius: 26,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    shadowColor: '#c6d8f5',
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  challengeIconDot: {
+  weeklyStar: {
     position: 'absolute',
-    right: 16,
-    top: 15,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: '#facc15',
+    top: -2,
   },
-  challengeBody: {
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-  },
-  challengeMetaRow: {
-    marginBottom: 14,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  challengeMetaPill: {
-    minHeight: 30,
-    paddingHorizontal: 11,
-    borderRadius: 999,
-    backgroundColor: '#f7f8fc',
+  weeklyEmpty: {
+    marginTop: Space.md,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    backgroundColor: Palette.bg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: Space.sm,
   },
-  challengeMetaText: {
-    fontFamily: FONT,
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  challengeButton: {
-    height: 54,
-    borderRadius: 27,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: ACCENT,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
-  },
-  challengeButtonText: {
-    fontFamily: FONT,
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  quickWrap: {
-    marginTop: 24,
-  },
-  quickTitle: {
-    fontFamily: FONT,
-    fontSize: 21,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 18,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    shadowColor: '#d8daee',
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  quickTileWrap: {
+  weeklyEmptyText: {
     flex: 1,
-  },
-  quickTile: {
-    minHeight: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickTileIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#d8daee',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  quickTileText: {
-    fontFamily: FONT,
-    marginTop: 9,
-    color: '#111827',
-    fontSize: 13,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontFamily: Type.family,
+    fontSize: Type.caption + 1,
+    lineHeight: 19,
+    color: Palette.inkSoft,
+    fontWeight: '700',
   },
   bottomStretch: {
     alignItems: 'center',
@@ -900,17 +950,15 @@ const styles = StyleSheet.create({
   topStretchHandle: {
     width: 42,
     height: 4,
-    borderRadius: 999,
-    backgroundColor: '#cbd5e1',
-    opacity: 0.7,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.line,
     marginTop: 10,
   },
   bottomStretchHandle: {
     width: 42,
     height: 4,
-    borderRadius: 999,
-    backgroundColor: '#cbd5e1',
-    opacity: 0.7,
+    borderRadius: Radius.pill,
+    backgroundColor: Palette.line,
     marginBottom: 10,
   },
   bottomNav: {
@@ -918,40 +966,41 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: Palette.surface,
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: Palette.line,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     height: 70,
     paddingBottom: 4,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: Radius.md,
+    borderTopRightRadius: Radius.md,
   },
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    minWidth: 58,
+    minWidth: 64,
+    minHeight: 48,
   },
   navIconBubble: {
-    width: 30,
-    height: 26,
-    borderRadius: 13,
+    width: 36,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   navIconBubbleActive: {
-    backgroundColor: '#e8f2ff',
+    backgroundColor: Palette.primarySoft,
   },
   navText: {
-    fontFamily: FONT,
-    fontSize: 10,
-    color: '#94a3b8',
-    fontWeight: '600',
+    fontFamily: Type.family,
+    fontSize: Type.caption,
+    color: Palette.muted,
+    fontWeight: '700',
   },
   navTextActive: {
-    color: PRIMARY,
+    color: Palette.primaryDeep,
   },
 });
