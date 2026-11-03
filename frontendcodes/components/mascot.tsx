@@ -23,7 +23,9 @@ export type MascotMood = 'hello' | 'correct' | 'wrong' | 'cheer' | 'thinking' | 
  * 예) hello: require('@/assets/mascot/kkuljit-hello.png'),
  * 비어 있는 표정은 아래의 임시 그림으로 그린다. (프롬프트는 docs/design/mascot-prompts.md)
  */
-const MASCOT_IMAGES: Partial<Record<MascotMood, ImageSourcePropType>> = {};
+const MASCOT_IMAGES: Partial<Record<MascotMood, ImageSourcePropType>> = {
+  hello: require('@/assets/mascot/kkuljit-hello.png'),
+};
 
 const MOOD_LABELS: Record<MascotMood, string> = {
   hello: '손을 흔들며 인사하는',
@@ -104,6 +106,9 @@ export function Mascot({ mood = 'hello', size = 120, onPress, interactive = fals
   const pop = useRef(new Animated.Value(1)).current;
   const wave = useRef(new Animated.Value(0)).current;
   const flap = useRef(new Animated.Value(1)).current;
+  const sway = useRef(new Animated.Value(0)).current;
+  const jump = useRef(new Animated.Value(0)).current;
+  const [burstKey, setBurstKey] = useState(0);
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled()
@@ -181,6 +186,19 @@ export function Mascot({ mood = 'hello', size = 120, onPress, interactive = fals
     return () => loop.stop();
   }, [flap, mood, reduceMotion]);
 
+  // 좌우로 살랑살랑. 가만히 있어도 살아 있는 것처럼 보이게.
+  useEffect(() => {
+    if (reduceMotion) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sway, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(sway, { toValue: -1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reduceMotion, sway]);
+
   // 표정이 바뀔 때 살짝 튀어 오른다.
   useEffect(() => {
     if (reduceMotion) return;
@@ -193,8 +211,13 @@ export function Mascot({ mood = 'hello', size = 120, onPress, interactive = fals
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     if (!reduceMotion) {
-      pop.setValue(1.14);
-      Animated.spring(pop, { toValue: 1, tension: 200, friction: 5, useNativeDriver: true }).start();
+      // 폴짝 뛰었다가 말랑하게 착지하고, 하트와 반짝이가 터진다.
+      jump.setValue(0);
+      Animated.sequence([
+        Animated.timing(jump, { toValue: 1, duration: 170, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.spring(jump, { toValue: 0, tension: 160, friction: 4, useNativeDriver: true }),
+      ]).start();
+      setBurstKey((key) => key + 1);
     }
     onPress?.();
   }
@@ -203,11 +226,28 @@ export function Mascot({ mood = 'hello', size = 120, onPress, interactive = fals
     inputRange: [0, 1],
     outputRange: [0, mood === 'correct' || mood === 'celebrate' ? -u(8) : -u(3.5)],
   });
-  const image = MASCOT_IMAGES[mood];
+  // 아직 이미지가 없는 표정은 인사 이미지로 대신한다. 임시 그림과 섞이면 어색해서.
+  const image = MASCOT_IMAGES[mood] ?? MASCOT_IMAGES.hello;
+  const jumpY = jump.interpolate({ inputRange: [0, 1], outputRange: [0, -u(18)] });
+  // 뛰어오를 때는 길쭉하게, 착지 반동(0 아래로 튕길 때)에는 납작하게
+  const stretchY = jump.interpolate({ inputRange: [-0.3, 0, 1], outputRange: [0.9, 1, 1.07] });
+  const stretchX = jump.interpolate({ inputRange: [-0.3, 0, 1], outputRange: [1.08, 1, 0.94] });
+  const swayRotate = sway.interpolate({ inputRange: [-1, 1], outputRange: ['-4deg', '4deg'] });
 
   const figure = (
     <Animated.View
-      style={{ width: size, height: size, transform: [{ translateY: floatY }, { scale: pop }] }}>
+      style={{
+        width: size,
+        height: size,
+        transform: [
+          { translateY: floatY },
+          { translateY: jumpY },
+          { rotate: swayRotate },
+          { scaleX: stretchX },
+          { scaleY: stretchY },
+          { scale: pop },
+        ],
+      }}>
       {image ? (
         <Image source={image} style={{ width: size, height: size }} resizeMode="contain" />
       ) : (
@@ -217,6 +257,12 @@ export function Mascot({ mood = 'hello', size = 120, onPress, interactive = fals
   );
 
   const label = `마스코트 꿀짓이, ${MOOD_LABELS[mood]} 모습`;
+  const withBurst = (
+    <View style={{ width: size, height: size }}>
+      {figure}
+      {burstKey > 0 && <Burst key={burstKey} size={size} />}
+    </View>
+  );
 
   if (!interactive && !onPress) {
     return (
@@ -232,8 +278,56 @@ export function Mascot({ mood = 'hello', size = 120, onPress, interactive = fals
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint="누르면 꿀짓이가 반응해요">
-      {figure}
+      {withBurst}
     </Pressable>
+  );
+}
+
+const BURST = [
+  { angle: -150, icon: 'heart', color: '#ff7a8a' },
+  { angle: -110, icon: 'sparkles', color: '#fbbf24' },
+  { angle: -70, icon: 'star', color: '#ffc233' },
+  { angle: -30, icon: 'heart', color: '#ff9b85' },
+  { angle: 10, icon: 'sparkles', color: '#fbbf24' },
+  { angle: 170, icon: 'water', color: '#f2a93b' },
+] as const;
+
+/** 누를 때 꿀짓이 주변으로 하트 · 반짝이 · 꿀방울이 퍼진다. */
+function Burst({ size }: { size: number }) {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 750,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [progress]);
+
+  const radius = size * 0.62;
+  const iconSize = Math.max(14, size * 0.16);
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+      {BURST.map((particle, index) => {
+        const rad = (particle.angle * Math.PI) / 180;
+        return (
+          <Animated.View
+            key={index}
+            style={{
+              position: 'absolute',
+              opacity: progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 1, 0] }),
+              transform: [
+                { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [0, Math.cos(rad) * radius] }) },
+                { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, Math.sin(rad) * radius] }) },
+                { scale: progress.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0.3, 1.15, 0.8] }) },
+              ],
+            }}>
+            <Ionicons name={particle.icon} size={iconSize} color={particle.color} />
+          </Animated.View>
+        );
+      })}
+    </View>
   );
 }
 

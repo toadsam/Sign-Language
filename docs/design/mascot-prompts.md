@@ -85,3 +85,23 @@ Same character and pose as the reference image, identical in every way except th
 - 이미지 도구는 손가락을 자주 틀린다. 네 개거나 붙어 나온 장은 다시 만든다.
 - 실제 수어 동작은 이미지 도구가 정확히 그리기 어렵다. 정확한 수어는 2학기 3D 아바타가 맡는다.
 - 잘 알려진 꿀벌 캐릭터와 비슷해 보이면 다시 만든다.
+
+## 4. 추가 포즈 (2026-11-04)
+
+기본 장(`kkuljit-hello.png`, 손 흔들며 나는 모습)을 레퍼런스로 넣고 같은 틀을 쓴다.
+
+| 파일 이름 | 쓰는 곳 | `<…>`에 넣을 문장 |
+|---|---|---|
+| `kkuljit-point.png` | 버튼 안내 · 온보딩 | pointing to the right with the index finger, looking at where it points, encouraging smile |
+| `kkuljit-read.png` | 학습하기 | holding an open picture book with both hands, eyes curious and sparkling, sitting in mid-air |
+| `kkuljit-listen.png` | 통역기 입력 대기 | leaning forward with one hand cupped near the face, attentive eyes, eyebrows raised, wings slowly fluttering |
+| `kkuljit-signing.png` | 통역 결과 | both hands raised in front of the chest with fingers spread and slightly curved, as if signing, focused happy face |
+| `kkuljit-heart.png` | 북마크 저장 | hugging a big honey-colored heart with both arms, eyes closed, blissful smile |
+| `kkuljit-honey.png` | 보상 · 연속 학습 | holding a small honey jar up proudly with both hands, sparkles, big grin |
+| `kkuljit-streak.png` | 연속 학습일 | standing on a honeycomb cell, one fist raised, the other hand making a V sign, confident |
+| `kkuljit-sad-soft.png` | 오류 · 연결 끊김 | sitting, hugging knees, antennae drooping, small worried eyebrows, still gentle, not crying |
+| `kkuljit-peek.png` | 빈 화면 | peeking in from the right edge of the frame, only head, one hand and one antenna visible, curious |
+| `kkuljit-bow.png` | 처음 인사 · 감사 | a small polite bow with both hands together in front, eyes closed, warm smile |
+| `kkuljit-fly-side.png` | 화면 전환 | flying sideways to the right, body tilted, wings blurred, motion lines, joyful |
+
+**같은 크기 · 구도를 지킬 것.** "full body, centered, same framing as the reference"를 꼭 넣는다. 단, `kkuljit-peek.png`는 일부만 보이는 게 의도라 예외다.
