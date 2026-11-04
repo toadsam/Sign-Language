@@ -1,15 +1,15 @@
 /**
  * 표현 화면 · 북마크 화면이 같이 쓰는 부품.
- * 고르기 칩, 물감 동그라미, 뒤로 가기 머리, 물감 진행 막대.
+ * 고르기 칩, 물감 동그라미, 뒤로 가기 머리, 물감 진행 막대, 손 모양 그림.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { G, Path } from 'react-native-svg';
 
 import { Font, Paint, Size } from '@/constants/paint';
-import { BodyText, PaintIcon, RoughBox, StoryText, Wash } from './paint-ui';
-import { blob, roughRect } from './rough';
+import { BodyText, PaintIcon, RoughBox, StoryText, Wash, useBoil } from './paint-ui';
+import { blob, jitterPath, rng, roughRect } from './rough';
 
 /* ── 고르기 칩: 고르면 잎사귀색 물감이 번진다 ── */
 export function LearnChips<K extends string>({ items, value, onChange, label }: { items: { key: K; label: string }[]; value: K; onChange: (k: K) => void; label: string }) {
@@ -118,6 +118,35 @@ export function LearnIconButton({ children, onPress, label, disabled, style }: {
         {children}
       </RoughBox>
     </Pressable>
+  );
+}
+
+/* ── 손 모양 그림 (카드 뒷면): 펜 선 손 + 뒤에 번진 물감. seed마다 모양과 기울기가 조금씩 다르다 ── */
+const HAND_POSES = [
+  // 편 손바닥
+  'M34 92 Q26 74 28 58 L22 34 Q20 26 27 25 Q33 25 34 33 L39 52 L38 20 Q38 12 45 12 Q52 12 52 20 L53 50 L56 16 Q57 8 64 9 Q70 10 70 18 L67 52 L74 26 Q76 19 82 21 Q88 23 86 31 L78 64 Q86 58 92 60 Q98 63 94 70 L80 88 Q70 100 52 100 Q40 100 34 92',
+  // 주먹
+  'M30 96 Q26 78 30 62 Q32 44 44 40 Q50 34 58 38 Q64 32 72 37 Q80 33 86 40 Q94 42 92 56 L90 78 Q86 98 64 100 Q42 102 30 96 M44 40 Q42 52 46 60 M58 38 Q56 50 60 58 M72 37 Q70 50 74 58 M34 66 Q50 58 68 66 Q74 70 70 76',
+  // 검지로 가리키기
+  'M34 96 Q28 80 32 64 Q34 54 42 52 L50 50 L50 18 Q50 10 57 10 Q64 10 64 18 L64 52 Q72 48 78 54 Q86 52 90 60 Q94 64 92 74 L88 86 Q80 102 58 102 Q42 102 34 96 M64 56 Q70 62 66 68 M78 56 Q82 64 78 70 M42 52 Q36 64 50 70 Q60 72 62 66',
+  // 두 손가락 (브이)
+  'M36 96 Q28 80 32 64 Q34 56 42 54 L34 22 Q32 14 39 12 Q46 11 48 19 L56 50 L62 18 Q64 10 71 11 Q78 13 76 21 L70 54 Q80 52 86 58 Q92 64 90 74 L86 86 Q78 102 58 102 Q44 102 36 96 M70 58 Q76 64 72 70 M42 56 Q36 66 50 72 Q60 74 62 68',
+];
+export function HandSketch({ seed = 1, color = Paint.yellowSoft, size = 64, boil }: { seed?: number; color?: string; size?: number; boil?: boolean }) {
+  const t = useBoil(!!boil);
+  const pose = HAND_POSES[Math.abs(Math.floor(seed)) % HAND_POSES.length];
+  const tilt = useMemo(() => (rng(seed + 11)() - 0.5) * 18, [seed]);
+  const d = useMemo(() => jitterPath(pose, seed * 7 + t, 0.8), [pose, seed, t]);
+  const washD = useMemo(() => blob(60, 62, 40, 36, seed + 2, 0.14, 11), [seed]);
+  return (
+    <View style={{ width: size, height: size }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Svg width={size} height={size} viewBox="0 0 116 116">
+        <Path d={washD} fill={color} opacity={0.85} />
+        <G transform={`rotate(${tilt.toFixed(1)} 58 58)`}>
+          <Path d={d} fill="none" stroke={Paint.ink} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        </G>
+      </Svg>
+    </View>
   );
 }
 

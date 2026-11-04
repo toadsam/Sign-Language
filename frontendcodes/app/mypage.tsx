@@ -1,6 +1,6 @@
 ﻿import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -11,7 +11,9 @@ import { getCompletedCells, LEARNING_UNITS } from '@/lib/learning-units';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 import { fetchTopWrongWords, TopWrongWordItem } from '@/lib/api/top-wrong-words';
 import { getBaseUrl } from '@/lib/api/base-url';
-import { MeAvatar, MeHeader, MeRow, StatBlob, WeekDrops, useCountUp } from '@/components/paint/me-parts';
+import { EmptyState, errorKind } from '@/components/paint/empty-state';
+import { MeAvatar, MeHeader, MeRow, StatBlob, useCountUp } from '@/components/paint/me-parts';
+import { StampCalendar } from '@/components/paint/stamp-calendar';
 import { BodyText, Mark, PaintButton, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
 import { usePaintNav } from '@/components/paint/transition';
 
@@ -26,11 +28,16 @@ export default function MyPageScreen() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [topWrongWords, setTopWrongWords] = useState<TopWrongWordItem[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  // 불러오기에 실패했을 때의 오류 문장 (없으면 null)
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // 화면에 들어올 때마다 하나씩 늘려서 달력 도장을 다시 찍게 한다
+  const [stampPlay, setStampPlay] = useState(0);
 
   const loadUserInfo = useCallback(async () => {
     if (!user?.id) {
       setUserInfo(null);
       setTopWrongWords([]);
+      setLoadError(null);
       return;
     }
     try {
@@ -40,9 +47,11 @@ export default function MyPageScreen() {
       ]);
       setUserInfo(data);
       setTopWrongWords(topWords);
-    } catch {
+      setLoadError(null);
+    } catch (error) {
       setUserInfo(null);
       setTopWrongWords([]);
+      setLoadError(error instanceof Error ? error.message : String(error));
     }
   }, [user?.id]);
 
@@ -52,6 +61,7 @@ export default function MyPageScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setStampPlay((n) => n + 1);
       void loadUserInfo();
     }, [loadUserInfo])
   );
@@ -117,8 +127,9 @@ export default function MyPageScreen() {
   const total = userInfo?.totalQuestionNum ?? 0;
   const incorrect = Math.max(total - correct, 0);
   const accuracy = total === 0 ? 0 : Math.floor((correct / total) * 100);
-  const dailySolvedCounts = normalizeDailySolvedCounts(
-    (userInfo?.dailySolvedCounts ?? null) as Record<string, unknown> | null
+  const dailySolvedCounts = useMemo(
+    () => normalizeDailySolvedCounts((userInfo?.dailySolvedCounts ?? null) as Record<string, unknown> | null),
+    [userInfo?.dailySolvedCounts]
   );
   const goalStreakDays = getConsecutiveGoalDays(dailySolvedCounts, DAILY_GOAL_TARGET);
   const paintedPlaces = getCompletedCells(total);
@@ -172,11 +183,22 @@ export default function MyPageScreen() {
         </Animated.View>
 
         <Animated.View entering={appear(3)}>
-          <StoryText size={Size.lead} style={styles.sub}>이번 주</StoryText>
-          <WeekDrops counts={dailySolvedCounts} />
-          <BodyText soft size={Size.caption} style={styles.weekNote}>
-            하루 {DAILY_GOAL_TARGET}문제를 채우면 '이어서 배움'이 하루 늘어요
-          </BodyText>
+          <StoryText size={Size.lead} style={styles.sub}>이번 달</StoryText>
+          {loadError ? (
+            <EmptyState
+              kind={errorKind(loadError)}
+              compact
+              actionLabel="다시 불러오기"
+              onAction={() => void loadUserInfo()}
+            />
+          ) : (
+            <>
+              <StampCalendar counts={dailySolvedCounts} playKey={stampPlay} />
+              <BodyText soft size={Size.caption} style={styles.weekNote}>
+                하루 {DAILY_GOAL_TARGET}문제를 채우면 큰 도장과 별이 찍히고, '이어서 배움'이 하루 늘어요
+              </BodyText>
+            </>
+          )}
         </Animated.View>
 
         {/* 자주 틀린 단어 */}

@@ -108,6 +108,16 @@ const SKY: Record<SkyPhase, { wash?: string; washO: number; band?: string; sun: 
 };
 const STARS: [number, number][] = [[210, 60], [330, 92], [460, 52], [610, 84], [760, 46], [900, 78], [1040, 58], [1180, 90], [1320, 50], [1460, 80], [260, 120], [700, 118], [1120, 122]];
 
+/* ── 계절: 봄 꽃잎, 여름 반딧불(밤)·햇살, 가을 낙엽, 겨울 눈 ── */
+export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
+export function seasonOf(month: number): Season {
+  if (month >= 3 && month <= 5) return 'spring';
+  if (month >= 6 && month <= 8) return 'summer';
+  if (month >= 9 && month <= 11) return 'autumn';
+  return 'winter';
+}
+const FALL_N = 16;
+
 /** 살아 있는 장면용 시계: 0.11초마다 1씩 오른다. 펜 그림처럼 뚝뚝 끊겨 움직이는 게 오히려 어울린다 */
 function useLifeTick(enabled: boolean) {
   const [tk, setTk] = useState(0);
@@ -127,16 +137,19 @@ type Props = {
   height?: number;
   /** 하늘 시각 (0~23). 비우면 지금 시각 */
   hour?: number;
+  /** 계절을 정하는 달 (1~12). 비우면 이번 달 */
+  month?: number;
   onPressPlace: (index: number, at: { x: number; y: number }) => void;
 };
 
-export function Village({ titles, completed, paintIndex = null, height = 290, hour, onPressPlace }: Props) {
+export function Village({ titles, completed, paintIndex = null, height = 290, hour, month, onPressPlace }: Props) {
   const reduce = useReducedMotion();
   const boil = useBoil();
   const tk = useLifeTick(!reduce);
   const phase = skyOf(hour ?? new Date().getHours());
   const sky = SKY[phase];
   const dark = phase === 'evening' || phase === 'night';
+  const season = seasonOf(month ?? new Date().getMonth() + 1);
   const scale = height / H;
   const width = (X0 + (titles.length - 1) * GAP + 140) * scale;
   const current = Math.min(completed, titles.length - 1);
@@ -392,6 +405,28 @@ export function Village({ titles, completed, paintIndex = null, height = 290, ho
               );
             })}
 
+            {/* 계절 */}
+            {season === 'winter' && (
+              <Path d={jitterPath(`M0 302 ` + Array.from({ length: 24 }, (_, k) => `Q${(k + 0.5) * (vbW / 24)} ${292 + (k % 2) * 4} ${(k + 1) * (vbW / 24)} 298`).join(' ') + ` V306 H0 Z`, 77 + boil, 0.6)} fill={Paint.snow} stroke={Paint.ink} strokeWidth={1.6} strokeLinejoin="round" />
+            )}
+            {!reduce &&
+              Array.from({ length: season === 'summer' ? (phase === 'night' ? 10 : 0) : FALL_N }, (_, k) => {
+                const speed = season === 'winter' ? 0.9 : season === 'summer' ? 0 : 1.3;
+                const x0 = (k * 97.3) % vbW;
+                const y0 = (k * 53.7) % H;
+                const y = season === 'summer' ? TOP + 160 + Math.sin(tk * 0.07 + k) * 40 : TOP + ((y0 + tk * speed * (0.7 + (k % 3) * 0.2)) % H);
+                const x = season === 'summer' ? x0 + Math.cos(tk * 0.05 + k * 2) * 20 : x0 + Math.sin(tk * 0.06 + k) * 14 + (season === 'winter' ? 0 : ((tk * 0.4) % vbW));
+                const xx = ((x % vbW) + vbW) % vbW;
+                const fade = y > 296 ? 0 : 1;
+                if (season === 'winter')
+                  return <Path key={'f' + k} d={`M${xx - 3.5} ${y} h7 M${xx} ${y - 3.5} v7 M${xx - 2.5} ${y - 2.5} l5 5 M${xx + 2.5} ${y - 2.5} l-5 5`} stroke={Paint.ink} strokeWidth={1.2} strokeLinecap="round" opacity={0.7 * fade} />;
+                if (season === 'summer')
+                  return <G key={'f' + k} opacity={(tk + k * 4) % 12 < 7 ? 1 : 0.2}><Path d={blob(xx, y, 6, 6, k, 0.1, 7)} fill={Paint.yellowSoft} opacity={0.6} /><Path d={blob(xx, y, 2.4, 2.4, k + 1, 0.1, 6)} fill={Paint.yellow} /></G>;
+                const c = season === 'spring' ? Paint.blossom : k % 2 ? Paint.maple : Paint.coral;
+                const r = season === 'spring' ? 4 : 5;
+                return <Path key={'f' + k} d={blob(xx, y, r, r * 0.6, k + 3, 0.25, 6)} fill={c} stroke={Paint.ink} strokeWidth={1} opacity={0.95 * fade} transform={`rotate(${(tk * 6 + k * 40) % 360} ${xx} ${y})`} />;
+              })}
+
             {/* 이름: 건물 위 간판, 땅 아래에 단원 이름 */}
             {titles.map((t, i) => (
               <G key={'t' + i}>
@@ -411,7 +446,7 @@ export function Village({ titles, completed, paintIndex = null, height = 290, ho
             <Rect x={0} y={TOP} width={width / scale} height={H} fill="transparent" />
           </Svg>
           <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { width: 56, height: 56 }, beeStyle]}>
-            <Bee size={56} />
+            <Bee size={56} phase={phase} />
           </Animated.View>
         </View>
       </Pressable>

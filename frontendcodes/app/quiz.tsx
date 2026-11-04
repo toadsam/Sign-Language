@@ -31,6 +31,7 @@ import {
   StoryText,
   Wash,
 } from '@/components/paint/paint-ui';
+import { EmptyState, errorKind } from '@/components/paint/empty-state';
 import { QuizAnswer, QuizAnswerGrid, type QuizAnswerState } from '@/components/paint/quiz-answer';
 import { usePaintNav } from '@/components/paint/transition';
 import { Paint, Size } from '@/constants/paint';
@@ -526,16 +527,13 @@ export default function QuizScreen() {
     return (
       <PaperScreen edges={['top', 'bottom']}>
         <View style={styles.center}>
-          <Bee size={72} still />
-          <StoryText size={Size.lead} style={{ textAlign: 'center' }}>
-            {isWrongOnlyMode ? '오답 복습 문제가 없습니다.' : '출제 가능한 문제가 없습니다.'}
-          </StoryText>
-          {errorMessage && (
-            <BodyText style={styles.errorText}>
-              <Mark color={Paint.wrongSoft}>{errorMessage}</Mark>
-            </BodyText>
+          {errorMessage ? (
+            <EmptyState kind={errorKind(errorMessage)} actionLabel="돌아가기" onAction={(at) => void nav.back(at)} />
+          ) : isWrongOnlyMode ? (
+            <EmptyState kind="empty-note" title="복습할 오답이 없어요" sub="틀린 문제가 생기면 여기서 다시 풀 수 있어요." actionLabel="돌아가기" onAction={(at) => void nav.back(at)} />
+          ) : (
+            <EmptyState kind="no-quiz" actionLabel="돌아가기" onAction={(at) => void nav.back(at)} />
           )}
-          <PaintButton label="돌아가기" variant="ghost" small onPress={(at) => void nav.back(at)} style={{ marginTop: 8 }} />
         </View>
       </PaperScreen>
     );

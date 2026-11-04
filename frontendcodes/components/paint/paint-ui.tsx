@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ImageBackground,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -21,7 +22,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { Font, Paint, Size, TabColor } from '@/constants/paint';
 import { feel } from '@/lib/feel';
-import { blob, jitterPath, roughRect } from './rough';
+import { blob, jitterPath, pathLength, roughRect } from './rough';
 import { usePaintNav } from './transition';
 
 /* ── 선 떨림: 앱 전체가 시계 하나를 같이 쓴다 (160ms마다 0→1→2→3) ── */
@@ -66,10 +67,20 @@ function useSize() {
 
 /* ── 종이 화면 ── */
 const paperTile = require('@/assets/paint/paper.png');
+// 웹에서는 ImageBackground의 repeat가 먹지 않아 종이결이 왼쪽 위 한 칸에만 깔린다 → CSS 배경으로 깐다
+const paperUri: string | undefined =
+  Platform.OS === 'web' ? (typeof paperTile === 'string' ? paperTile : (paperTile?.uri ?? paperTile?.default?.uri ?? paperTile?.default)) : undefined;
+const webPaper = paperUri
+  ? ({ backgroundImage: `url(${paperUri})`, backgroundRepeat: 'repeat', backgroundSize: '256px 256px', opacity: 0.5 } as unknown as ViewStyle)
+  : null;
 export function PaperScreen({ children, edges = ['top'], style }: { children: ReactNode; edges?: Edge[]; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.paper, style]}>
-      <ImageBackground source={paperTile} resizeMode="repeat" style={StyleSheet.absoluteFill} imageStyle={{ opacity: 0.9 }} />
+      {webPaper ? (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, webPaper]} />
+      ) : (
+        <ImageBackground source={paperTile} resizeMode="repeat" style={StyleSheet.absoluteFill} imageStyle={{ opacity: 0.5 }} />
+      )}
       <SafeAreaView edges={edges} style={{ flex: 1 }}>
         {children}
       </SafeAreaView>
@@ -103,19 +114,95 @@ type RoughBoxProps = {
   wash?: string;
   washOpacity?: number;
   boil?: boolean;
+  /** 처음 나타날 때 펜으로 테두리를 그리고 물감이 번진다 (기본 켬) */
+  draw?: boolean;
 };
-export function RoughBox({ children, style, fill = Paint.card, stroke = Paint.ink, strokeWidth = 2, seed = 1, dashed, radius = 16, wash, washOpacity = 1, boil }: RoughBoxProps) {
+
+/*
+ * 처음 나타날 때 그려지기: 같은 순간에 나타난 상자들은 위에서부터 차례로 그려지도록
+ * 0.04초씩 늦게 시작한다. 시계 하나(requestAnimationFrame)를 모든 상자가 같이 쓴다.
+ */
+const DRAW_MS = 520;
+let drawChainAt = 0;
+let drawChainN = 0;
+function nextDrawDelay() {
+  const now = Date.now();
+  if (now - drawChainAt > 120) drawChainN = 0;
+  drawChainAt = now;
+  return Math.min(drawChainN++ * 40, 400);
+}
+const drawListeners = new Set<(now: number) => void>();
+let drawRaf = 0;
+function subscribeDraw(fn: (now: number) => void) {
+  drawListeners.add(fn);
+  if (!drawRaf) {
+    const loop = () => {
+      const now = Date.now();
+      drawListeners.forEach((l) => l(now));
+      drawRaf = drawListeners.size ? requestAnimationFrame(loop) : 0;
+    };
+    drawRaf = requestAnimationFrame(loop);
+  }
+  return () => {
+    drawListeners.delete(fn);
+  };
+}
+/** 0 → 1: 처음 나타날 때 한 번만 그려지는 진행도 */
+function useDrawIn(enabled: boolean) {
+  const reduce = useReducedMotion();
+  const [k, setK] = useState(enabled && !reduce ? 0 : 1);
+  useEffect(() => {
+    if (!enabled || reduce) {
+      setK(1);
+      return;
+    }
+    const start = Date.now() + nextDrawDelay();
+    let un: (() => void) | null = subscribeDraw((now) => {
+      const t = Math.max(0, Math.min(1, (now - start) / DRAW_MS));
+      setK(t);
+      if (t >= 1 && un) {
+        un();
+        un = null;
+      }
+    });
+    return () => {
+      if (un) un();
+    };
+    // 처음 한 번만
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return k;
+}
+
+export function RoughBox({ children, style, fill = Paint.card, stroke = Paint.ink, strokeWidth = 2, seed = 1, dashed, radius = 16, wash, washOpacity = 1, boil, draw = true }: RoughBoxProps) {
   const [size, onLayout] = useSize();
   const t = useBoil(!!boil);
+  const k = useDrawIn(draw);
   const d = useMemo(() => (size.w ? roughRect(size.w, size.h, { seed: seed + t * 0.37, r: radius }) : ''), [size.w, size.h, seed, t, radius]);
+  const len = useMemo(() => (d && k < 1 ? pathLength(d) : 0), [d, k < 1]); // eslint-disable-line react-hooks/exhaustive-deps
   const washD = useMemo(() => (size.w && wash ? blob(size.w / 2, size.h / 2, size.w / 2 - 6, size.h / 2 - 5, seed + 5, 0.06, 14) : ''), [size.w, size.h, seed, wash]);
+  // 펜 선은 앞 70% 동안 그려지고, 바탕과 물감은 뒤따라 번진다
+  const pen = Math.min(k / 0.7, 1);
+  const ease = 1 - Math.pow(1 - pen, 2);
+  const paint = k <= 0.35 ? 0 : (k - 0.35) / 0.65;
+  const drawing = k < 1 && len > 0 && !dashed;
   return (
     <View style={style} onLayout={onLayout}>
       {size.w > 0 && (
         <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Path d={d} fill={fill} stroke="none" />
-          {wash ? <Path d={washD} fill={wash} opacity={washOpacity} /> : null}
-          <Path d={d} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dashed ? '5 6' : undefined} />
+          <Path d={d} fill={fill} stroke="none" opacity={k < 1 ? 0.35 + 0.65 * paint : 1} />
+          {wash ? <Path d={washD} fill={wash} opacity={washOpacity * (k < 1 ? paint : 1)} transform={k < 1 ? `translate(${(size.w / 2) * (1 - paint)} ${(size.h / 2) * (1 - paint)}) scale(${paint})` : undefined} /> : null}
+          <Path
+            d={d}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={dashed ? '5 6' : drawing ? `${len} ${len}` : undefined}
+            strokeDashoffset={drawing ? len * (1 - ease) : undefined}
+            opacity={dashed && k < 1 ? pen : 1}
+          />
         </Svg>
       )}
       {children}

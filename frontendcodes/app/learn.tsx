@@ -1,6 +1,8 @@
 ﻿/**
  * 표현 탭: 오늘 목표, 추천 코스, 학습 과정 목록.
- * 과정을 누르면 붓 전환으로 퀴즈에 들어간다.
+ * 스케치북처럼 꾸몄다. 위쪽 칩을 바꾸면 스케치북 장이 넘어가고,
+ * 과정 카드를 누르면 카드가 뒤집혀 손 모양 그림과 설명이 나온다.
+ * 카드의 '시작' 단추를 누르면 붓 전환으로 퀴즈에 들어간다.
  */
 import { useFocusEffect } from '@react-navigation/native';
 import type { Href } from 'expo-router';
@@ -8,11 +10,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 
-import { LearnChips, LearnHeader, PaintProgress, Swatch } from '@/components/paint/learn-parts';
+import { EmptyState } from '@/components/paint/empty-state';
+import { HandSketch, LearnChips, LearnHeader, PaintProgress, Swatch } from '@/components/paint/learn-parts';
 import { BodyText, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash } from '@/components/paint/paint-ui';
+import { PenLoader } from '@/components/paint/pen-loader';
+import { FlipCard, SketchbookPage } from '@/components/paint/sketchbook';
 import { usePaintNav } from '@/components/paint/transition';
 import { Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
+import { feel } from '@/lib/feel';
 import { DAILY_GOAL_TARGET, getGoalPercent, getTodaySolvedCount, normalizeDailySolvedCounts } from '@/lib/daily-goal';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 
@@ -51,10 +57,13 @@ export default function LearnScreen() {
   const { user } = useAuth();
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  // 처음 한 번 불러오기가 끝났는지 (그 전에는 목표 칸에 펜 그림을 띄운다)
+  const [loaded, setLoaded] = useState(false);
 
   const loadUserInfo = useCallback(async () => {
     if (!user?.id) {
       setUserInfo(null);
+      setLoaded(true);
       return;
     }
     try {
@@ -62,6 +71,8 @@ export default function LearnScreen() {
       setUserInfo(info);
     } catch {
       setUserInfo(null);
+    } finally {
+      setLoaded(true);
     }
   }, [user?.id]);
 
@@ -97,6 +108,7 @@ export default function LearnScreen() {
         </Animated.View>
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <SketchbookPage pageKey={filter} seed={95} style={styles.book}>
           {showToday && (
             <>
               <StoryText size={Size.lead} style={styles.sub}>오늘의 추천</StoryText>
@@ -122,11 +134,15 @@ export default function LearnScreen() {
                   <RoughBox seed={62} style={styles.gcard}>
                     <View style={styles.gblob}><Wash color={Paint.leaf} opacity={0.8} seed={64} /></View>
                     <BodyText soft size={Size.caption}>오늘의 목표</BodyText>
-                    <View style={{ gap: 6 }}>
-                      <StoryText size={Size.title}>{goalPercent}%</StoryText>
-                      <PaintProgress percent={goalPercent} label={`오늘의 목표 ${goalPercent}퍼센트`} />
-                      <BodyText soft size={Size.caption}>{DAILY_GOAL_TARGET}개 중 {solvedToday}개 완료</BodyText>
-                    </View>
+                    {!loaded ? (
+                      <PenLoader size={56} label="목표를 불러오는 중" style={{ alignSelf: 'flex-start' }} />
+                    ) : (
+                      <View style={{ gap: 6 }}>
+                        <StoryText size={Size.title}>{goalPercent}%</StoryText>
+                        <PaintProgress percent={goalPercent} label={`오늘의 목표 ${goalPercent}퍼센트`} />
+                        <BodyText soft size={Size.caption}>{DAILY_GOAL_TARGET}개 중 {solvedToday}개 완료</BodyText>
+                      </View>
+                    )}
                   </RoughBox>
                 </Animated.View>
               </View>
@@ -134,13 +150,18 @@ export default function LearnScreen() {
           )}
 
           <StoryText size={Size.lead} style={styles.sub}>학습 과정</StoryText>
-          <View style={styles.places}>
-            {courses.map((c, i) => (
-              <Animated.View key={c.key} entering={FadeInDown.delay(260 + i * 70).duration(320)}>
-                <CourseCard course={c} index={i} onGo={(href, p) => nav.go(href, p)} />
-              </Animated.View>
-            ))}
-          </View>
+          {courses.length === 0 ? (
+            <EmptyState kind="no-quiz" compact />
+          ) : (
+            <View style={styles.places}>
+              {courses.map((c, i) => (
+                <Animated.View key={c.key} entering={FadeInDown.delay(260 + i * 70).duration(320)}>
+                  <CourseCard course={c} index={i} onGo={(href, p) => nav.go(href, p)} />
+                </Animated.View>
+              ))}
+            </View>
+          )}
+          </SketchbookPage>
         </ScrollView>
       </View>
       <PaintTabBar current="learn" />
@@ -152,60 +173,96 @@ function CourseCard({ course, index, onGo }: { course: Course; index: number; on
   const reduce = useReducedMotion();
   const shake = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${shake.value}deg` }] }));
+  const [flipped, setFlipped] = useState(false);
   const ready = !!course.href && !course.locked;
   const note = course.locked ? '아직 잠겨 있어요' : ready ? course.description : `${course.description} (준비 중)`;
+  const stroke = ready ? Paint.ink : 'rgba(46,38,32,0.45)';
 
-  function onPress(e: { nativeEvent: { pageX: number; pageY: number } }) {
-    if (ready && course.href) {
-      onGo(course.href, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
-      return;
-    }
-    // 잠긴 곳은 살짝 흔들린다
-    if (!reduce) shake.value = withSequence(withTiming(-3, { duration: 80 }), withTiming(3, { duration: 110 }), withTiming(-2, { duration: 90 }), withTiming(0, { duration: 80 }));
+  // 카드 몸통: 누르면 뒤집힌다. 잠긴 곳은 뒤집히면서 살짝 흔들린다
+  function onFlip() {
+    feel.tap();
+    setFlipped((f) => !f);
+    if (!ready && !reduce) shake.value = withSequence(withTiming(-3, { duration: 80 }), withTiming(3, { duration: 110 }), withTiming(-2, { duration: 90 }), withTiming(0, { duration: 80 }));
   }
+
+  // '시작' 단추: 붓 전환으로 퀴즈에 들어간다 (앞면 · 뒷면 둘 다 있다)
+  function goButton() {
+    if (!ready || !course.href) return null;
+    const href = course.href;
+    return (
+      <Pressable
+        onPress={(e) => onGo(href, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+        accessibilityRole="button"
+        accessibilityLabel={`${course.title} 시작하기`}
+        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+        style={({ pressed }) => [styles.go, { transform: pressed ? [{ rotate: '-3deg' }, { scale: 0.95 }] : [] }]}
+      >
+        <StoryText size={14}>시작</StoryText>
+      </Pressable>
+    );
+  }
+
+  const front = (
+    <RoughBox seed={70 + index} dashed={!ready} stroke={stroke} fill={ready ? Paint.card : 'transparent'} style={styles.pcard}>
+      <Pressable
+        onPress={onFlip}
+        accessibilityRole="button"
+        accessibilityLabel={`${course.title}, ${course.level}. ${note}`}
+        accessibilityHint="카드를 뒤집어 손 모양과 설명을 봐요"
+        accessibilityState={{ expanded: false }}
+        style={({ pressed }) => [styles.body, { transform: pressed ? [{ scale: 0.98 }] : [] }]}
+      >
+        <Swatch color={course.color} locked={!ready} seed={80 + index} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <StoryText size={Size.lead} style={!ready ? { color: Paint.inkSoft } : undefined}>{course.title}</StoryText>
+            <BodyText soft size={Size.caption}>{course.level}</BodyText>
+          </View>
+          <BodyText soft size={Size.small} numberOfLines={1}>{note}</BodyText>
+        </View>
+      </Pressable>
+      {goButton()}
+    </RoughBox>
+  );
+
+  const back = (
+    <RoughBox seed={170 + index} dashed={!ready} stroke={stroke} fill={Paint.paperDeep} style={[styles.pcard, styles.pback]}>
+      <Pressable
+        onPress={onFlip}
+        accessibilityRole="button"
+        accessibilityLabel={`${course.title} 뒷면. ${course.description}${ready ? '' : course.locked ? '. 아직 잠겨 있어요' : '. 준비 중이에요'}`}
+        accessibilityHint="다시 누르면 앞면으로 돌아가요"
+        accessibilityState={{ expanded: true }}
+        style={styles.body}
+      >
+        <HandSketch seed={index} color={course.color} size={60} boil={flipped} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <StoryText size={Size.small} style={{ color: Paint.inkSoft }}>{course.title}</StoryText>
+          <BodyText size={Size.caption} numberOfLines={3}>{course.description}</BodyText>
+          {!ready ? <BodyText soft size={Size.caption}>{course.locked ? '아직 잠겨 있어요' : '준비 중이에요'}</BodyText> : null}
+        </View>
+      </Pressable>
+      {goButton()}
+    </RoughBox>
+  );
 
   return (
     <Animated.View style={shakeStyle}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${course.title}, ${course.level}. ${note}`}
-        accessibilityState={{ disabled: !ready }}
-        style={({ pressed }) => ({ transform: pressed && ready ? [{ scale: 0.98 }] : [] })}
-      >
-        <RoughBox
-          seed={70 + index}
-          dashed={!ready}
-          stroke={ready ? Paint.ink : 'rgba(46,38,32,0.45)'}
-          fill={ready ? Paint.card : 'transparent'}
-          style={styles.pcard}
-        >
-          <Swatch color={course.color} locked={!ready} seed={80 + index} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <StoryText size={Size.lead} style={!ready ? { color: Paint.inkSoft } : undefined}>{course.title}</StoryText>
-              <BodyText soft size={Size.caption}>{course.level}</BodyText>
-            </View>
-            <BodyText soft size={Size.small} numberOfLines={1}>{note}</BodyText>
-          </View>
-          {ready && (
-            <View style={styles.go}>
-              <StoryText size={14}>시작</StoryText>
-            </View>
-          )}
-        </RoughBox>
-      </Pressable>
+      <FlipCard flipped={flipped} front={front} back={back} />
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },
-  sub: { paddingHorizontal: 22, marginTop: 20, marginBottom: 10 },
-  greet: { flexDirection: 'row', gap: 12, paddingHorizontal: 20 },
+  book: { marginHorizontal: 14, marginTop: 22 },
+  sub: { paddingHorizontal: 6, marginTop: 6, marginBottom: 10 },
+  greet: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   gcard: { minHeight: 132, padding: 14, justifyContent: 'space-between', overflow: 'hidden' },
   gblob: { position: 'absolute', right: 10, top: 10, width: 30, height: 30 },
-  places: { gap: 10, paddingHorizontal: 20 },
-  pcard: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingLeft: 10, paddingRight: 14 },
+  places: { gap: 10 },
+  pcard: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingLeft: 8, paddingRight: 12 },
+  pback: { flex: 1 },
+  body: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 64 },
   go: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: Paint.yellowSoft },
 });

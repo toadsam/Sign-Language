@@ -21,6 +21,10 @@ export const Paint = {
   sky: '#A9CFEA',
   mint: '#7CC6A4',
   skin: '#F6CDA8',
+  // 계절 물감
+  blossom: '#F6C3CF',
+  maple: '#E9A04F',
+  snow: '#FFFFFF',
   hair: '#5B4636',
 
   // 맞음 · 틀림 (물감 색 위에 진한 글씨를 쓴다)

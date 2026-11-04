@@ -2,13 +2,15 @@
  * 통역 화면의 낱말 줄.
  * 1) 쓴 문장을 낱말 조각으로 보여 준다
  * 2) 수어에 없는 조사·어미가 아래로 떨어지고, 기본형 글자가 붙는다 (카페에서 → 카페, 주세요 → 주다)
- * 3) 수어 순서(gloss) 조각으로 바뀌고, 지금 손짓하는 조각이 노랗게 칠해진다
+ * 3) 수어 순서(gloss) 조각으로 바뀌고, 조각 글자가 펜으로 한 자씩 쓰인다. 지금 손짓하는 조각이 노랗게 칠해진다
+ * 4) 수어로 바꾼 문장이 있으면 그 아래에 펜으로 써 주고 밑줄을 긋는다
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { Font, Paint, Size } from '@/constants/paint';
+import { Handwrite } from './handwrite';
 import { BodyText, RoughBox } from './paint-ui';
 
 type Piece = { stem: string; drop: string; add: string };
@@ -59,9 +61,14 @@ type Props = {
   muted?: boolean[];
   /** 끝난 뒤 안내 문구 */
   doneNote?: string;
+  /** 수어로 바꾼 문장. 조각을 다 쓴 뒤 그 아래에 펜으로 쓴다 */
+  sentence?: string;
 };
 
-export function TalkChain({ words, tokens, gloss, active, runKey, onPick, muted, doneNote }: Props) {
+// 조각 글자 한 자 쓰는 시간(ms)
+const WRITE_MS = 52;
+
+export function TalkChain({ words, tokens, gloss, active, runKey, onPick, muted, doneNote, sentence }: Props) {
   const reduce = useReducedMotion();
   const pieces = useMemo(() => pairWords(words, tokens), [words, tokens]);
   const [phase, setPhase] = useState<Phase>(runKey ? 'written' : 'gloss');
@@ -87,6 +94,20 @@ export function TalkChain({ words, tokens, gloss, active, runKey, onPick, muted,
     return () => timers.forEach(clearTimeout);
   }, [runKey, pieces]);
 
+  // 조각을 앞에서부터 차례로 쓴다: 앞 조각 글자 수만큼 기다렸다가 쓰기 시작
+  const glossDelays = useMemo(() => {
+    let at = 220;
+    return gloss.map((g, i) => {
+      const d = at + i * 90;
+      at += Array.from(g).length * WRITE_MS;
+      return d;
+    });
+  }, [gloss]);
+  const sentenceDelay = useMemo(
+    () => 220 + gloss.length * 90 + gloss.reduce((n, g) => n + Array.from(g).length, 0) * WRITE_MS + 250,
+    [gloss]
+  );
+
   const note = phase === 'gloss' && active < 0 && doneNote ? doneNote : NOTE[phase];
 
   return (
@@ -102,6 +123,8 @@ export function TalkChain({ words, tokens, gloss, active, runKey, onPick, muted,
                   on={i === active}
                   muted={!!muted?.[i]}
                   reduce={reduce}
+                  runKey={runKey}
+                  writeDelay={glossDelays[i] ?? 0}
                   onPress={onPick ? () => onPick(i) : undefined}
                 />
               </View>
@@ -113,6 +136,12 @@ export function TalkChain({ words, tokens, gloss, active, runKey, onPick, muted,
               </View>
             ))}
       </View>
+      {phase === 'gloss' && sentence ? (
+        <View style={styles.sentence}>
+          <BodyText soft size={Size.caption}>수어로 바꾼 문장</BodyText>
+          <Handwrite text={sentence} runKey={runKey} size={Size.lead} align="center" delay={sentenceDelay} seed={runKey + 5} />
+        </View>
+      ) : null}
       <BodyText soft size={Size.small} style={styles.note}>
         {note}
       </BodyText>
@@ -179,7 +208,25 @@ function WordChip({ piece, index, cut, reduce }: { piece: Piece; index: number; 
 }
 
 /* 수어 순서 조각: 지금 손짓하는 조각은 노랗게 칠하고 살짝 들린다 */
-function GlossChip({ label, index, on, muted, reduce, onPress }: { label: string; index: number; on: boolean; muted: boolean; reduce: boolean; onPress?: () => void }) {
+function GlossChip({
+  label,
+  index,
+  on,
+  muted,
+  reduce,
+  runKey,
+  writeDelay,
+  onPress,
+}: {
+  label: string;
+  index: number;
+  on: boolean;
+  muted: boolean;
+  reduce: boolean;
+  runKey: number;
+  writeDelay: number;
+  onPress?: () => void;
+}) {
   const enter = useRef(new Animated.Value(reduce ? 1 : 0)).current;
   useEffect(() => {
     if (reduce) return;
@@ -197,7 +244,17 @@ function GlossChip({ label, index, on, muted, reduce, onPress }: { label: string
       washOpacity={on ? 1 : 0.55}
       style={styles.chip}
     >
-      <Text style={[styles.chipText, muted && { color: Paint.inkSoft }]}>{label}</Text>
+      {/* 조각 글자를 펜으로 한 자씩 쓴다. 지금 손짓 표시가 바뀌어도 다시 쓰지 않는다 */}
+      <Handwrite
+        text={label}
+        runKey={runKey}
+        size={19}
+        color={muted ? Paint.inkSoft : Paint.ink}
+        underline={false}
+        speed={WRITE_MS}
+        delay={writeDelay}
+        seed={index + 3}
+      />
     </RoughBox>
   );
   const a11y = `${label}${muted ? ', 영상 없음' : ''}${on ? ', 지금 손짓 중' : ''}`;
@@ -225,4 +282,5 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: Font.story, fontSize: 19, color: Paint.ink },
   drop: { color: Paint.inkSoft },
   note: { textAlign: 'center', marginTop: 8, minHeight: 20 },
+  sentence: { alignItems: 'center', marginTop: 12, gap: 2 },
 });

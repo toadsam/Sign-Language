@@ -126,8 +126,9 @@ export default function HomeScreen() {
   const nav = usePaintNav();
   const { user } = useAuth();
   const nickname = user?.name?.trim() || '';
-  // 발표·확인용: /home?hour=21 은 밤 마을, ?cells=5 는 칠한 곳 5개, ?demo=goal 은 목표 달성 축하, ?demo=paint 는 칠하는 장면
-  const params = useLocalSearchParams<{ hour?: string; demo?: string; cells?: string }>();
+  // 발표·확인용: /home?hour=21 은 밤 마을, ?month=1 은 겨울 마을, ?cells=5 는 칠한 곳 5개, ?demo=goal 은 목표 달성 축하, ?demo=paint 는 칠하는 장면
+  const params = useLocalSearchParams<{ hour?: string; demo?: string; cells?: string; month?: string }>();
+  const monthParam = params.month && !Number.isNaN(Number(params.month)) ? Number(params.month) : undefined;
   const hourParam = params.hour !== undefined && params.hour !== '' && !Number.isNaN(Number(params.hour)) ? Number(params.hour) : undefined;
   const phase = skyOf(hourParam ?? new Date().getHours());
   const loadUserInfoRef = useRef<() => Promise<void>>(async () => {});
@@ -247,7 +248,11 @@ export default function HomeScreen() {
     beeTap !== null
       ? BEE_LINES[beeTap]
       : solvedToday === 0
-        ? `${nickname ? nickname + '님, ' : ''}오늘 첫 퀴즈 같이 풀어 볼까요?`
+        ? phase === 'night'
+          ? `${nickname ? nickname + '님, ' : ''}졸려도… 한 문제만 같이 풀고 잘까요?`
+          : phase === 'morning'
+            ? `좋은 아침! ${nickname ? nickname + '님, ' : ''}오늘 첫 퀴즈 같이 풀어 볼까요?`
+            : `${nickname ? nickname + '님, ' : ''}오늘 첫 퀴즈 같이 풀어 볼까요?`
         : remainingToday > 0
           ? `${remainingToday}문제만 더 풀면 오늘 물방울이 가득 차요`
           : '오늘 물방울 가득! 정말 멋져요';
@@ -306,12 +311,13 @@ export default function HomeScreen() {
             completed={params.demo === 'paint' ? Math.max(completedCells, 1) : completedCells}
             paintIndex={paintIndex}
             hour={hourParam}
+            month={monthParam}
             onPressPlace={onPlace}
           />
         </View>
 
         <Pressable onPress={onBee} accessibilityRole="button" accessibilityLabel="꿀짓이에게 말 걸기" style={styles.talkRow}>
-          <Bee size={52} />
+          <Bee size={52} phase={phase} />
           <RoughBox seed={17} style={styles.bubble}>
             <BodyText>{beeLine}</BodyText>
           </RoughBox>

@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/wrong-note-saved';
 import { MeHeader } from '@/components/paint/me-parts';
 import { BodyText, Mark, PaintButton, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { EmptyState, errorKind } from '@/components/paint/empty-state';
 import { PenLoader } from '@/components/paint/pen-loader';
 import { usePaintNav } from '@/components/paint/transition';
 
@@ -168,15 +169,16 @@ export default function WrongNoteScreen() {
 
         {isLoading ? <PenLoader label="오답 노트를 펼치는 중이에요" size={84} style={{ marginTop: 24 }} /> : null}
         {!isLoading && errorMessage ? (
-          <BodyText style={[styles.helper, { color: Paint.ink }]} accessibilityRole="alert">
-            <Mark color={Paint.wrongSoft}>{errorMessage}</Mark>
-          </BodyText>
+          <EmptyState kind={errorKind(errorMessage)} compact style={{ marginTop: 16 }} />
         ) : null}
         {isEmpty ? (
-          <RoughBox seed={44} dashed style={styles.emptyBox}>
-            <PaintIcon name="check" size={32} color={Paint.inkSoft} />
-            <BodyText soft style={{ textAlign: 'center' }}>저장된 오답이 없어요</BodyText>
-          </RoughBox>
+          <EmptyState
+            kind="empty-note"
+            compact
+            style={{ marginTop: 16 }}
+            actionLabel="오늘의 퀴즈 풀러 가기"
+            onAction={(p) => void nav.go('/quiz', p)}
+          />
         ) : null}
 
         <View style={styles.list}>

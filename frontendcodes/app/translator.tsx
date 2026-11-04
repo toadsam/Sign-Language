@@ -3,6 +3,7 @@
  * 문장을 쓰면 서버가 수어 순서로 바꾸고, 낱말 조각에서 조사·어미가 떨어진 뒤
  * 손짓하는 낱말 조각이 차례로 노랗게 칠해진다.
  * AI 동작(/generate)이 오면 펜 선 아바타로, 없으면 1학기 영상을 그대로 이어 튼다.
+ * 결과 글자(수어 순서 조각, 바꾼 문장, 지금 낱말)는 펜으로 한 자씩 쓰듯 나타난다.
  */
 import { useEventListener } from 'expo';
 import * as SecureStore from 'expo-secure-store';
@@ -12,8 +13,11 @@ import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInpu
 import { useReducedMotion } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
+import { EmptyState, errorKind } from '@/components/paint/empty-state';
+import { Handwrite } from '@/components/paint/handwrite';
 import { BodyText, PaintButton, PaintHeader, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash, type PaintIconName } from '@/components/paint/paint-ui';
 import { PenAvatar } from '@/components/paint/pen-avatar';
+import { PenLoader } from '@/components/paint/pen-loader';
 import { TalkChain } from '@/components/paint/talk-chain';
 import { usePaintNav } from '@/components/paint/transition';
 import { Font, Paint, Size } from '@/constants/paint';
@@ -37,8 +41,9 @@ export default function TranslatorScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingDotCount, setLoadingDotCount] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 오류가 났을 때 「다시 해 보기」로 다시 바꿔 볼 문장 (다시 할 게 없는 오류면 null)
+  const [retryText, setRetryText] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
@@ -281,6 +286,7 @@ export default function TranslatorScreen() {
           player.pause();
         }
       } catch {
+        setRetryText(inputText.trim() || null);
         setErrorMessage('영상 재생 준비 중 오류가 발생했습니다. 다시 시도해 주세요.');
       }
     } finally {
@@ -523,6 +529,7 @@ export default function TranslatorScreen() {
         }
       } catch (error) {
         if (mounted) {
+          setRetryText(null);
           setErrorMessage(error instanceof Error ? error.message : '북마크를 불러오지 못했습니다.');
         }
       }
@@ -531,19 +538,6 @@ export default function TranslatorScreen() {
       mounted = false;
     };
   }, [user?.id]);
-  useEffect(() => {
-    if (!loading) {
-      setLoadingDotCount(1);
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setLoadingDotCount((prev) => (prev >= 3 ? 1 : prev + 1));
-    }, 350);
-
-    return () => clearInterval(timer);
-  }, [loading]);
-
   useEffect(() => {
     // 움직임 줄이기: 바로 제자리
     if (reduce) {
@@ -673,6 +667,7 @@ export default function TranslatorScreen() {
     try {
       setLoading(true);
       setErrorMessage(null);
+      setRetryText(null);
       if (overrideText) {
         setInputText(text);
       }
@@ -733,6 +728,7 @@ export default function TranslatorScreen() {
       setResult(null);
       setPlaybackUrlMap({});
       setCurrentClipIndex(0);
+      setRetryText(text);
       setErrorMessage(error instanceof Error ? error.message : '번역 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
@@ -771,6 +767,7 @@ export default function TranslatorScreen() {
       animateSavedFeedback();
       setFeedbackMessage('저장되었습니다!');
     } catch (error) {
+      setRetryText(null);
       setErrorMessage(error instanceof Error ? error.message : '북마크 저장에 실패했습니다.');
     }
   }
@@ -825,6 +822,7 @@ export default function TranslatorScreen() {
   }
 
   function handleWebSlotError(slot: 0 | 1) {
+    setRetryText(inputText.trim() || null);
     setErrorMessage('영상 재생 중 오류가 발생했습니다. 다시 시도해 주세요.');
     if (webPendingSlotRef.current === slot) {
       webPendingSlotRef.current = null;
@@ -1040,7 +1038,7 @@ export default function TranslatorScreen() {
           </RoughBox>
 
           <PaintButton
-            label={loading ? `바꾸는 중${'.'.repeat(loadingDotCount)}` : '수어로 보기'}
+            label={loading ? '바꾸는 중' : '수어로 보기'}
             accessibilityLabel={loading ? '번역 중' : '수어로 보기'}
             color={Paint.sky}
             onPress={() => void handleTranslate()}
@@ -1048,12 +1046,20 @@ export default function TranslatorScreen() {
             style={styles.goButton}
           />
 
+          {/* 오류: 그림 + 한 줄 말. 다시 바꿔 볼 문장이 있으면 「다시 해 보기」 */}
           {errorMessage ? (
-            <RoughBox seed={17} radius={12} fill={Paint.wrongSoft} stroke={Paint.wrong} style={styles.errorBox}>
-              <BodyText size={Size.small} style={{ textAlign: 'center' }} accessibilityRole="alert">
-                {errorMessage}
-              </BodyText>
-            </RoughBox>
+            <View style={styles.errorBox} accessibilityRole="alert">
+              {retryText ? (
+                <EmptyState
+                  kind={errorKind(errorMessage)}
+                  compact
+                  actionLabel="다시 해 보기"
+                  onAction={() => void handleTranslate(retryText)}
+                />
+              ) : (
+                <EmptyState kind={errorKind(errorMessage)} compact sub={errorMessage} />
+              )}
+            </View>
           ) : null}
 
           {/* 낱말 줄: 쓴 문장 → 조사·어미 떨어짐 → 수어 순서 */}
@@ -1068,6 +1074,7 @@ export default function TranslatorScreen() {
                 runKey={chainRunKey}
                 onPick={motion ? undefined : (index) => setCurrentClipIndex(index)}
                 doneNote={motion ? '다시 보려면 「다시 보기」를 눌러요' : undefined}
+                sentence={result.simplifiedSentence || undefined}
               />
             </View>
           ) : null}
@@ -1078,7 +1085,7 @@ export default function TranslatorScreen() {
               {signer}
               {loading ? (
                 <View style={styles.avatarLoadingOverlay} pointerEvents="none">
-                  <StoryText size={Size.lead}>{`손짓 준비 중${'.'.repeat(loadingDotCount)}`}</StoryText>
+                  <PenLoader label="손짓을 그리는 중" />
                 </View>
               ) : null}
             </Animated.View>
@@ -1093,9 +1100,16 @@ export default function TranslatorScreen() {
               }}>
               {caption ? (
                 <RoughBox seed={23} radius={12} fill={Paint.yellowSoft} strokeWidth={1.4} style={styles.captionPill}>
-                  <StoryText size={Size.title} accessibilityLiveRegion="polite">
-                    {caption}
-                  </StoryText>
+                  {/* 낱말이 바뀔 때마다 펜으로 새로 쓴다 */}
+                  <Handwrite
+                    text={caption}
+                    runKey={motion ? `m${motionSeg}` : avatarAnimationKey}
+                    size={Size.title}
+                    underline={false}
+                    speed={45}
+                    seed={currentClipIndex + 23}
+                    accessibilityLiveRegion="polite"
+                  />
                 </RoughBox>
               ) : null}
             </Animated.View>
@@ -1195,7 +1209,11 @@ export default function TranslatorScreen() {
               <ScrollView style={styles.sheetList} contentContainerStyle={styles.sheetListContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.resultSection}>
                   <StoryText size={Size.small}>수어용 변환 문장</StoryText>
-                  <BodyText>{result?.simplifiedSentence || '-'}</BodyText>
+                  {result?.simplifiedSentence ? (
+                    <Handwrite text={result.simplifiedSentence} runKey={chainRunKey} font="body" size={Size.body} seed={71} />
+                  ) : (
+                    <BodyText>-</BodyText>
+                  )}
                 </View>
                 <View style={styles.resultSection}>
                   <StoryText size={Size.small}>매칭된 토큰</StoryText>
@@ -1372,7 +1390,7 @@ const styles = StyleSheet.create({
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   presetChip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
   goButton: { marginHorizontal: 20, marginTop: 12 },
-  errorBox: { marginHorizontal: 20, marginTop: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  errorBox: { marginHorizontal: 20, marginTop: 12 },
   chainWrap: { marginHorizontal: 16, marginTop: 18 },
   signerFrame: { alignSelf: 'center', marginTop: 16 },
   signerInner: { position: 'absolute', top: 6, left: 6, right: 6, bottom: 6, borderRadius: 13, overflow: 'hidden', backgroundColor: Paint.paperDeep },
