@@ -1,30 +1,39 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { GowunBatang_400Regular, GowunBatang_700Bold } from '@expo-google-fonts/gowun-batang';
+import { GowunDodum_400Regular } from '@expo-google-fonts/gowun-dodum';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from 'expo-font';
 import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 
+import { PaintTransitionProvider } from '@/components/paint/transition';
 import { SplashOverlay } from '@/components/splash-overlay';
+import { Paint } from '@/constants/paint';
 import { AuthProvider, useAuth } from '@/context/auth-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+
+// 색칠 마을은 종이 위 그림이라 어두운 모드에서도 종이색을 쓴다
+const PaperTheme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: Paint.paper, card: Paint.paper, text: Paint.ink } };
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const [showSplash, setShowSplash] = useState(true);
+  const [fontsLoaded] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, GowunDodum_400Regular });
 
   return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View style={{ flex: 1 }}>
-          <AuthGate />
-          {showSplash && <SplashOverlay onDone={() => setShowSplash(false)} />}
-        </View>
-        <StatusBar style="auto" />
+      <ThemeProvider value={PaperTheme}>
+        <PaintTransitionProvider>
+          <View style={{ flex: 1, backgroundColor: Paint.paper }}>
+            {fontsLoaded && <AuthGate />}
+            {showSplash && <SplashOverlay ready={fontsLoaded} onDone={() => setShowSplash(false)} />}
+          </View>
+        </PaintTransitionProvider>
+        <StatusBar style="dark" />
       </ThemeProvider>
     </AuthProvider>
   );
@@ -67,7 +76,7 @@ function AuthGate() {
   }
 
   return (
-    <Stack>
+    <Stack screenOptions={{ headerShown: false, animation: 'none', contentStyle: { backgroundColor: Paint.paper } }}>
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="signup" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

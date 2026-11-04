@@ -1,28 +1,38 @@
-﻿﻿import { Ionicons } from '@expo/vector-icons';
+﻿/**
+ * 통역 화면 (색칠 마을).
+ * 문장을 쓰면 서버가 수어 순서로 바꾸고, 낱말 조각에서 조사·어미가 떨어진 뒤
+ * 손짓하는 낱말 조각이 차례로 노랗게 칠해진다.
+ * AI 동작(/generate)이 오면 펜 선 아바타로, 없으면 1학기 영상을 그대로 이어 튼다.
+ */
 import { useEventListener } from 'expo';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
+import { BodyText, PaintButton, PaintHeader, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash, type PaintIconName } from '@/components/paint/paint-ui';
+import { PenAvatar } from '@/components/paint/pen-avatar';
+import { TalkChain } from '@/components/paint/talk-chain';
+import { usePaintNav } from '@/components/paint/transition';
+import { Font, Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
-import { Fonts } from '@/constants/theme';
+import { generateMotion, type Motion } from '@/lib/api/generate';
 import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
 import { TranslateClip, TranslatePlaybackItem, TranslateResponse, translateText } from '@/lib/api/translate';
 
-const PRIMARY = '#1f80e3';
-const ACCENT = '#7c6cf2';
-const FONT = Fonts.rounded;
 const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v2';
 const MAX_BOOKMARKS = 20;
 const PRELOAD_NEXT_SECONDS = 1.1;
 const SWITCH_READY_SECONDS = 0.18;
+// 눌러서 바로 해 보는 예문
+const PRESETS = ['카페에서 커피 주세요', '화장실이 어디예요?', '고마워요'];
 
 export default function TranslatorScreen() {
   const router = useRouter();
+  const nav = usePaintNav();
+  const reduce = useReducedMotion();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const [inputText, setInputText] = useState('');
@@ -45,6 +55,18 @@ export default function TranslatorScreen() {
   const [nativeVideoReady, setNativeVideoReady] = useState<[boolean, boolean]>([false, false]);
   const [transitionPreviousSlot, setTransitionPreviousSlot] = useState<0 | 1 | null>(null);
 
+  // AI 동작: 있으면 아바타, 없으면 영상
+  const [motion, setMotion] = useState<Motion | null>(null);
+  const [motionSeg, setMotionSeg] = useState(-1);
+  const [motionDone, setMotionDone] = useState(false);
+  const [motionPlayKey, setMotionPlayKey] = useState(0);
+  const motionRunRef = useRef(0);
+  const motionSegRef = useRef(-1);
+  // 낱말 줄을 처음부터 다시 보여 줄 때 바꾸는 값
+  const [chainRunKey, setChainRunKey] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const chainYRef = useRef(0);
+
   const clips = useMemo<TranslateClip[]>(() => result?.clips ?? [], [result]);
   const playbackItems = useMemo<TranslatePlaybackItem[]>(
     () => result?.items ?? clips.map((clip) => ({ ...clip, hasVideo: true })),
@@ -62,6 +84,26 @@ export default function TranslatorScreen() {
   const currentClip = currentPlaybackItem?.hasVideo ? currentPlaybackItem : null;
   const currentClipUrl = currentClip ? playbackUrlMap[currentClip.url] ?? currentClip.url : null;
   const progressFraction = playbackItems.length > 0 ? (currentClipIndex + 1) / playbackItems.length : 0;
+
+  // 낱말 줄에 보여 줄 것: 쓴 낱말, 수어 순서 조각, 지금 조각
+  const chainWords = useMemo(() => (result?.input || inputText).trim().split(/\s+/).filter(Boolean), [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  const motionGloss = useMemo(
+    () => (motion ? (motion.segments.length > 0 ? motion.segments.map((s) => s.gloss) : normalizedTokens) : []),
+    [motion, normalizedTokens]
+  );
+  const chainGloss = motion ? motionGloss : playbackItems.map((item) => item.word);
+  const chainMuted = motion ? undefined : playbackItems.map((item) => !item.hasVideo);
+  const chainActive = motion ? motionSeg : playbackItems.length > 0 ? currentClipIndex : -1;
+  const caption = motion
+    ? motionSeg >= 0
+      ? motionGloss[motionSeg] ?? ''
+      : motionDone
+      ? motionGloss.join(' · ')
+      : ''
+    : currentPlaybackItem?.word ?? '';
+  const stepTotal = motion ? motionGloss.length : playbackItems.length;
+  const stepNow = motion ? (motionDone ? stepTotal : motionSeg + 1) : playbackItems.length > 0 ? currentClipIndex + 1 : 0;
+  const shownProgress = motion ? (stepTotal > 0 ? Math.max(stepNow, 0) / stepTotal : 0) : progressFraction;
 
   const nativePlayerA = useVideoPlayer(null, (videoPlayer) => {
     videoPlayer.loop = false;
@@ -96,8 +138,6 @@ export default function TranslatorScreen() {
   const wordOpacity = useRef(new Animated.Value(1)).current;
   const wordTranslateY = useRef(new Animated.Value(0)).current;
   const wordTranslateX = useRef(new Animated.Value(0)).current;
-  const translateButtonScale = useRef(new Animated.Value(1)).current;
-  const loadingSpin = useRef(new Animated.Value(0)).current;
   const progressFill = useRef(new Animated.Value(0)).current;
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
   const feedbackTranslateY = useRef(new Animated.Value(8)).current;
@@ -106,11 +146,10 @@ export default function TranslatorScreen() {
   const saveButtonScale = useRef(new Animated.Value(1)).current;
   const videoSlideAnim = useRef(new Animated.Value(1)).current;
   const avatarAnimationKey = `${currentClipIndex}:${currentPlaybackItem?.word ?? ''}:${currentClipUrl ?? 'text'}`;
-  const avatarSlideWidth = Math.max(screenWidth - 16, 1);
-  const spinRotation = loadingSpin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
+  // 손짓 액자 크기. 영상이 옆으로 밀려 들어오는 거리도 이 너비
+  const frameWidth = Math.max(Math.min(screenWidth - 40, 520), 1);
+  const frameHeight = Math.round(frameWidth * 0.78);
+  const avatarSlideWidth = frameWidth;
   const progressWidth = progressFill.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
@@ -141,6 +180,7 @@ export default function TranslatorScreen() {
   useEffect(() => {
     clipsLengthRef.current = playbackItems.length;
   }, [playbackItems.length]);
+
 
   useEffect(() => {
     currentClipIndexRef.current = currentClipIndex;
@@ -185,7 +225,7 @@ export default function TranslatorScreen() {
     videoSlideAnim.setValue(0);
     Animated.timing(videoSlideAnim, {
       toValue: 1,
-      duration: 220,
+      duration: reduce ? 0 : 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start(() => setTransitionPreviousSlot(null));
@@ -341,6 +381,8 @@ export default function TranslatorScreen() {
   useEventListener(nativePlayerB, 'timeUpdate', ({ currentTime }) => handleNativeTimeUpdate(1, currentTime));
 
   useEffect(() => {
+    // AI 동작을 보여 줄 때는 영상을 틀지 않는다
+    if (motion) return;
     if (isWeb) {
       pendingAutoplayVersionRef.current = 0;
       return;
@@ -390,7 +432,7 @@ export default function TranslatorScreen() {
     return () => {
       cancelled = true;
     };
-  }, [currentClipIndex, currentClipUrl, isWeb, nativePlayerA, nativePlayerB]);
+  }, [currentClipIndex, currentClipUrl, isWeb, nativePlayerA, nativePlayerB, motion]);
 
   useEffect(() => {
     if (!isWeb) {
@@ -449,7 +491,7 @@ export default function TranslatorScreen() {
   }, [currentClipIndex, isWeb, playbackItems, playbackUrlMap]);
 
   useEffect(() => {
-    if (!currentPlaybackItem || currentClipUrl) {
+    if (motion || !currentPlaybackItem || currentClipUrl) {
       return;
     }
 
@@ -461,7 +503,7 @@ export default function TranslatorScreen() {
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, [currentClipIndex, currentClipUrl, currentPlaybackItem]);
+  }, [currentClipIndex, currentClipUrl, currentPlaybackItem, motion]);
 
   useEffect(() => {
     let mounted = true;
@@ -503,26 +545,15 @@ export default function TranslatorScreen() {
   }, [loading]);
 
   useEffect(() => {
-    if (!loading) {
-      loadingSpin.stopAnimation();
-      loadingSpin.setValue(0);
+    // 움직임 줄이기: 바로 제자리
+    if (reduce) {
+      avatarOpacity.setValue(1);
+      avatarScale.setValue(1);
+      wordOpacity.setValue(1);
+      wordTranslateY.setValue(0);
+      wordTranslateX.setValue(0);
       return;
     }
-
-    const loop = Animated.loop(
-      Animated.timing(loadingSpin, {
-        toValue: 1,
-        duration: 900,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      })
-    );
-    loop.start();
-
-    return () => loop.stop();
-  }, [loading, loadingSpin]);
-
-  useEffect(() => {
     avatarOpacity.setValue(0.35);
     avatarScale.setValue(0.985);
     wordOpacity.setValue(0);
@@ -561,19 +592,23 @@ export default function TranslatorScreen() {
         useNativeDriver: false,
       }),
     ]).start();
-  }, [avatarAnimationKey, avatarOpacity, avatarScale, wordOpacity, wordTranslateX, wordTranslateY]);
+  }, [avatarAnimationKey, avatarOpacity, avatarScale, wordOpacity, wordTranslateX, wordTranslateY, reduce]);
 
   useEffect(() => {
     Animated.timing(progressFill, {
-      toValue: progressFraction,
-      duration: 260,
+      toValue: shownProgress,
+      duration: reduce ? 0 : 260,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [progressFill, progressFraction]);
+  }, [progressFill, shownProgress, reduce]);
 
   useEffect(() => {
     if (!bookmarksOpen) return;
+    if (reduce) {
+      bookmarkSheetAnim.setValue(1);
+      return;
+    }
     bookmarkSheetAnim.setValue(0);
     Animated.spring(bookmarkSheetAnim, {
       toValue: 1,
@@ -581,10 +616,14 @@ export default function TranslatorScreen() {
       friction: 11,
       useNativeDriver: false,
     }).start();
-  }, [bookmarkSheetAnim, bookmarksOpen]);
+  }, [bookmarkSheetAnim, bookmarksOpen, reduce]);
 
   useEffect(() => {
     if (!resultOpen) return;
+    if (reduce) {
+      resultSheetAnim.setValue(1);
+      return;
+    }
     resultSheetAnim.setValue(0);
     Animated.spring(resultSheetAnim, {
       toValue: 1,
@@ -592,13 +631,13 @@ export default function TranslatorScreen() {
       friction: 11,
       useNativeDriver: false,
     }).start();
-  }, [resultOpen, resultSheetAnim]);
+  }, [resultOpen, resultSheetAnim, reduce]);
 
   useEffect(() => {
     if (!feedbackMessage) return;
-    feedbackOpacity.setValue(0);
-    feedbackTranslateY.setValue(8);
-    Animated.parallel([
+    feedbackOpacity.setValue(reduce ? 1 : 0);
+    feedbackTranslateY.setValue(reduce ? 0 : 8);
+    if (!reduce) Animated.parallel([
       Animated.timing(feedbackOpacity, {
         toValue: 1,
         duration: 160,
@@ -614,18 +653,10 @@ export default function TranslatorScreen() {
     ]).start();
     const timer = setTimeout(() => setFeedbackMessage(null), 1600);
     return () => clearTimeout(timer);
-  }, [feedbackMessage, feedbackOpacity, feedbackTranslateY]);
-
-  function pressTranslateButton(active: boolean) {
-    Animated.spring(translateButtonScale, {
-      toValue: active ? 0.97 : 1,
-      tension: 180,
-      friction: 12,
-      useNativeDriver: false,
-    }).start();
-  }
+  }, [feedbackMessage, feedbackOpacity, feedbackTranslateY, reduce]);
 
   function animateSavedFeedback() {
+    if (reduce) return;
     saveButtonScale.setValue(0.9);
     Animated.spring(saveButtonScale, {
       toValue: 1,
@@ -645,6 +676,12 @@ export default function TranslatorScreen() {
       if (overrideText) {
         setInputText(text);
       }
+      // 전 문장의 AI 동작은 지운다
+      const motionRun = ++motionRunRef.current;
+      setMotion(null);
+      motionSegRef.current = -1;
+      setMotionSeg(-1);
+      setMotionDone(false);
       const next = await translateText(text);
       if (isWeb) {
         webPendingSlotRef.current = null;
@@ -669,6 +706,11 @@ export default function TranslatorScreen() {
       setResult(next);
       setCurrentClipIndex(0);
       lastAutoAdvancedIndexRef.current = -1;
+      setChainRunKey((k) => k + 1);
+      // AI 동작을 물어본다. 없으면(null) 영상 그대로
+      void generateMotion(next.normalizedTokens ?? []).then((m) => {
+        if (m && motionRun === motionRunRef.current) setMotion(m);
+      });
     } catch (error) {
       if (isWeb) {
         webPendingSlotRef.current = null;
@@ -816,346 +858,431 @@ export default function TranslatorScreen() {
     advanceClip();
   }
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.root}>
-        <View style={styles.header}>
-          <Pressable style={styles.headerIcon} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={22} color="#111827" />
-          </Pressable>
-          <Text style={styles.headerTitle}>번역 모드 (Translation)</Text>
-          <View style={styles.headerIcon} />
-        </View>
+  // AI 동작이 오면 숨은 영상은 멈춘다 (영상 경로는 motion이 없을 때 그대로)
+  useEffect(() => {
+    if (!motion) return;
+    try {
+      nativePlayerA.pause();
+      nativePlayerB.pause();
+    } catch {
+      // ignore pause race
+    }
+  }, [motion, nativePlayerA, nativePlayerB]);
 
-        <Animated.View style={[styles.avatarCard, { opacity: avatarOpacity, transform: [{ scale: avatarScale }] }]}>
-          {currentClipUrl ? (
-            isWeb ? (
-              <View style={styles.webVideoStack}>
-                <Animated.View
-                  style={getVideoSlotContainerStyle(0, webActiveSlot, webVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
-                  <WebVideoTag
-                    ref={webVideoRefA}
-                    src={webVideoSources[0] || undefined}
-                    muted
-                    autoPlay
-                    playsInline
-                    controls={webActiveSlot === 0}
-                    preload="auto"
-                    onLoadedData={() => handleWebSlotLoaded(0)}
-                    onCanPlay={() => handleWebSlotCanPlay(0)}
-                    onPlaying={() => handleWebSlotPlaying(0)}
-                    onError={() => handleWebSlotError(0)}
-                    onEnded={() => handleWebSlotEnded(0)}
-                    style={styles.webVideoElement as any}
-                  />
-                </Animated.View>
-                <Animated.View
-                  style={getVideoSlotContainerStyle(1, webActiveSlot, webVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
-                  <WebVideoTag
-                    ref={webVideoRefB}
-                    src={webVideoSources[1] || undefined}
-                    muted
-                    autoPlay
-                    playsInline
-                    controls={webActiveSlot === 1}
-                    preload="auto"
-                    onLoadedData={() => handleWebSlotLoaded(1)}
-                    onCanPlay={() => handleWebSlotCanPlay(1)}
-                    onPlaying={() => handleWebSlotPlaying(1)}
-                    onError={() => handleWebSlotError(1)}
-                    onEnded={() => handleWebSlotEnded(1)}
-                    style={styles.webVideoElement as any}
-                  />
-                </Animated.View>
-              </View>
-            ) : (
-              <View style={styles.nativeVideoStack}>
-                <Animated.View
-                  style={getVideoSlotContainerStyle(0, nativeActiveSlot, nativeVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
-                  <VideoView
-                    style={styles.avatarVideo}
-                    player={nativePlayerA}
-                    nativeControls={nativeActiveSlot === 0}
-                    contentFit="cover"
-                    surfaceType="textureView"
-                    useExoShutter={false}
-                  />
-                </Animated.View>
-                <Animated.View
-                  style={getVideoSlotContainerStyle(1, nativeActiveSlot, nativeVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
-                  <VideoView
-                    style={styles.avatarVideo}
-                    player={nativePlayerB}
-                    nativeControls={nativeActiveSlot === 1}
-                    contentFit="cover"
-                    surfaceType="textureView"
-                    useExoShutter={false}
-                  />
-                </Animated.View>
-              </View>
-            )
-          ) : currentPlaybackItem ? (
-            <View style={styles.textAvatar}>
-              <Text style={styles.textAvatarWord} adjustsFontSizeToFit numberOfLines={1}>
-                {currentPlaybackItem.word}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.emptyAvatar}>
-              <Ionicons name="chatbubble-ellipses-outline" size={30} color="#94a3b8" />
-              <Text style={styles.emptyAvatarText}>문장을 입력하면 아바타가 표시됩니다</Text>
-            </View>
-          )}
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>Live</Text>
-          </View>
-          {loading ? (
-            <View style={styles.avatarLoadingOverlay} pointerEvents="none">
-              <Animated.View style={[styles.avatarLoadingIcon, { transform: [{ rotate: spinRotation }] }]}>
-                <Ionicons name="sync" size={18} color="#fff" />
-              </Animated.View>
-            </View>
-          ) : null}
+  // 번역이 끝나면 낱말 줄이 보이게 내려 준다
+  useEffect(() => {
+    if (!chainRunKey) return;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(chainYRef.current - 12, 0), animated: !reduce });
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [chainRunKey, reduce]);
+
+  // 아바타 프레임마다 지금 낱말 조각을 찾는다
+  const handleMotionFrame = useCallback(
+    (frame: number) => {
+      const segs = motion?.segments ?? [];
+      const index = segs.findIndex((s) => frame >= s.start && frame < s.end);
+      if (index !== motionSegRef.current) {
+        motionSegRef.current = index;
+        setMotionSeg(index);
+      }
+    },
+    [motion]
+  );
+  const handleMotionEnd = useCallback(() => {
+    motionSegRef.current = -1;
+    setMotionSeg(-1);
+    setMotionDone(true);
+  }, []);
+  function replayMotion() {
+    motionSegRef.current = -1;
+    setMotionSeg(-1);
+    setMotionDone(false);
+    setMotionPlayKey((k) => k + 1);
+  }
+
+  const signer = motion ? (
+    <PenAvatar
+      key={motionPlayKey}
+      motion={motion}
+      playing
+      loop={false}
+      onFrame={handleMotionFrame}
+      onEnd={handleMotionEnd}
+      style={styles.penAvatar}
+    />
+  ) : currentClipUrl ? (
+    isWeb ? (
+      <View style={styles.webVideoStack}>
+        <Animated.View
+          style={getVideoSlotContainerStyle(0, webActiveSlot, webVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+          <WebVideoTag
+            ref={webVideoRefA}
+            src={webVideoSources[0] || undefined}
+            muted
+            autoPlay
+            playsInline
+            controls={webActiveSlot === 0}
+            preload="auto"
+            onLoadedData={() => handleWebSlotLoaded(0)}
+            onCanPlay={() => handleWebSlotCanPlay(0)}
+            onPlaying={() => handleWebSlotPlaying(0)}
+            onError={() => handleWebSlotError(0)}
+            onEnded={() => handleWebSlotEnded(0)}
+            style={styles.webVideoElement as any}
+          />
         </Animated.View>
+        <Animated.View
+          style={getVideoSlotContainerStyle(1, webActiveSlot, webVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+          <WebVideoTag
+            ref={webVideoRefB}
+            src={webVideoSources[1] || undefined}
+            muted
+            autoPlay
+            playsInline
+            controls={webActiveSlot === 1}
+            preload="auto"
+            onLoadedData={() => handleWebSlotLoaded(1)}
+            onCanPlay={() => handleWebSlotCanPlay(1)}
+            onPlaying={() => handleWebSlotPlaying(1)}
+            onError={() => handleWebSlotError(1)}
+            onEnded={() => handleWebSlotEnded(1)}
+            style={styles.webVideoElement as any}
+          />
+        </Animated.View>
+      </View>
+    ) : (
+      <View style={styles.nativeVideoStack}>
+        <Animated.View
+          style={getVideoSlotContainerStyle(0, nativeActiveSlot, nativeVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+          <VideoView
+            style={styles.avatarVideo}
+            player={nativePlayerA}
+            nativeControls={nativeActiveSlot === 0}
+            contentFit="cover"
+            surfaceType="textureView"
+            useExoShutter={false}
+          />
+        </Animated.View>
+        <Animated.View
+          style={getVideoSlotContainerStyle(1, nativeActiveSlot, nativeVideoReady, transitionPreviousSlot, videoSlideAnim, avatarSlideWidth)}>
+          <VideoView
+            style={styles.avatarVideo}
+            player={nativePlayerB}
+            nativeControls={nativeActiveSlot === 1}
+            contentFit="cover"
+            surfaceType="textureView"
+            useExoShutter={false}
+          />
+        </Animated.View>
+      </View>
+    )
+  ) : currentPlaybackItem ? (
+    // 영상이 없는 낱말은 글씨로 보여 준다
+    <View style={styles.textAvatar}>
+      <Wash color={Paint.sky} opacity={0.45} seed={currentClipIndex + 2} inset={24} />
+      <StoryText size={50} style={styles.textAvatarWord} adjustsFontSizeToFit numberOfLines={1}>
+        {currentPlaybackItem.word}
+      </StoryText>
+      <BodyText soft size={Size.small}>이 낱말은 아직 영상이 없어요</BodyText>
+    </View>
+  ) : (
+    <View style={styles.emptyAvatar}>
+      <PaintIcon name="translator" size={40} color={Paint.inkSoft} />
+      <BodyText soft size={Size.small} style={{ textAlign: 'center' }}>
+        문장을 입력하면 아바타가 표시됩니다
+      </BodyText>
+    </View>
+  );
 
-        <View style={styles.detectWrap}>
-          <Animated.Text
-            style={[
-              styles.detectTitle,
-              {
-                opacity: wordOpacity,
-                transform: [{ translateX: wordTranslateX }, { translateY: wordTranslateY }],
-              },
-            ]}>
-            {currentPlaybackItem?.word ?? '나 (I/Me)'}
-          </Animated.Text>
-          <Text style={styles.detectSub}>
-            {playbackItems.length > 0 ? `${currentClipIndex + 1} / ${playbackItems.length}` : '0 / 0'} 인식된 수어 (Detected Gesture)
-          </Text>
-          <View style={styles.progressTrack}>
-            <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
-          </View>
-        </View>
+  return (
+    <PaperScreen edges={['top']}>
+      <View style={styles.root}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <PaintHeader
+            title="통역"
+            sub="문장을 쓰면 수어 순서로 바꿔서 손짓으로 보여 줘요."
+            onBack={router.canGoBack() ? () => void nav.back() : undefined}
+          />
 
-        <View style={styles.actionRow}>
-          <View style={styles.actionItem}>
-            <Animated.View style={{ transform: [{ scale: saveButtonScale }] }}>
-              <Pressable style={styles.actionIconWrap} onPress={handleSaveSentence} accessibilityLabel="현재 문장 저장">
-                <Ionicons name="bookmark" size={16} color="#111827" />
-              </Pressable>
-            </Animated.View>
-            <Text style={styles.actionLabel}>저장</Text>
-          </View>
-          <View style={styles.actionItem}>
-            <Pressable
-              style={[styles.actionIconWrap, bookmarksOpen && styles.actionIconWrapActive]}
-              onPress={handleToggleBookmarks}
-              accessibilityLabel="북마크 보기">
-              <Ionicons name="bookmarks-outline" size={16} color={bookmarksOpen ? PRIMARY : '#111827'} />
-            </Pressable>
-            <Text style={styles.actionLabel}>북마크</Text>
-          </View>
-        </View>
-
-        {feedbackMessage ? (
-          <Animated.View
-            style={[
-              styles.feedbackToast,
-              {
-                opacity: feedbackOpacity,
-                transform: [{ translateY: feedbackTranslateY }],
-              },
-            ]}>
-            <Ionicons name="checkmark-circle" size={14} color="#1d4ed8" />
-            <Text style={styles.feedbackText}>{feedbackMessage}</Text>
-          </Animated.View>
-        ) : null}
-        {bookmarksOpen && (
-          <Animated.View style={[styles.bookmarkSheet, bookmarkSheetStyle]}>
-            <View style={styles.bookmarkSheetHeader}>
-              <Text style={styles.bookmarkTitle}>내 북마크 문장</Text>
-              <Pressable style={styles.bookmarkCloseBtn} onPress={handleToggleBookmarks}>
-                <Ionicons name="close" size={16} color="#64748b" />
-              </Pressable>
-            </View>
-            <View style={styles.bookmarkSearchWrap}>
-              <Ionicons name="search" size={16} color="#94a3b8" />
-              <TextInput
-                value={bookmarkQuery}
-                onChangeText={setBookmarkQuery}
-                placeholder="문장 검색"
-                placeholderTextColor="#94a3b8"
-                style={styles.bookmarkSearchInput}
-              />
-            </View>
-            <ScrollView style={styles.bookmarkList} contentContainerStyle={styles.bookmarkListContent} showsVerticalScrollIndicator={false}>
-              {filteredBookmarks.length === 0 ? (
-                <Text style={styles.bookmarkEmpty}>저장된 문장이 없습니다.</Text>
-              ) : (
-                filteredBookmarks.map((item) => (
-                  <View key={item.quizId} style={styles.bookmarkItemRow}>
-                    <Text style={styles.bookmarkItemText} numberOfLines={2}>
-                      {item.questionText || '-'}
-                    </Text>
-                    <Pressable
-                      style={styles.bookmarkPlayButton}
-                      onPress={() => {
-                        void handleTranslate(item.questionText);
-                        setBookmarksOpen(false);
-                        setBookmarkQuery('');
-                        setFeedbackMessage('북마크 문장을 재생합니다.');
-                      }}>
-                      <Ionicons name="play" size={14} color={PRIMARY} />
-                    </Pressable>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-          </Animated.View>
-        )}
-
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        <View style={styles.inputPanel}>
-          <View style={styles.inputWrap}>
-            <Ionicons name="keypad-outline" size={18} color="#94a3b8" />
+          {/* 문장 상자 + 예문 */}
+          <RoughBox seed={4} radius={16} style={styles.inputBox}>
             <TextInput
               style={styles.input}
               value={inputText}
               onChangeText={setInputText}
               placeholder="번역할 내용을 입력하세요"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={Paint.inkFaint}
+              accessibilityLabel="바꿀 문장"
               multiline
             />
-          </View>
-
-          <View style={styles.clipControlRow}>
-            <Pressable
-              style={[styles.smallControlButton, currentClipIndex <= 0 && styles.smallControlButtonDisabled]}
-              onPress={() => moveClip(-1)}
-              disabled={currentClipIndex <= 0}>
-              <Ionicons name="play-back" size={14} color="#334155" />
-            </Pressable>
-            <Pressable
-              style={[styles.smallControlButton, currentClipIndex >= playbackItems.length - 1 && styles.smallControlButtonDisabled]}
-              onPress={() => moveClip(1)}
-              disabled={currentClipIndex >= playbackItems.length - 1}>
-              <Ionicons name="play-forward" size={14} color="#334155" />
-            </Pressable>
-          </View>
-
-          <Animated.View style={{ transform: [{ scale: translateButtonScale }] }}>
-            <Pressable
-              style={[styles.translateButton, loading && styles.translateButtonDisabled]}
-              onPress={() => void handleTranslate()}
-              onPressIn={() => pressTranslateButton(true)}
-              onPressOut={() => pressTranslateButton(false)}
-              disabled={loading}>
-              <Animated.View style={loading ? { transform: [{ rotate: spinRotation }] } : undefined}>
-                <Ionicons name={loading ? 'sync' : 'language-outline'} size={18} color="#fff" />
-              </Animated.View>
-              <Text style={styles.translateButtonText}>
-                {loading ? `번역중${'.'.repeat(loadingDotCount)}` : '번역하기 (Translate)'}
-              </Text>
-            </Pressable>
-          </Animated.View>
-
-          <Pressable style={styles.detailButton} onPress={() => setResultOpen(true)}>
-            <Ionicons name="list-outline" size={16} color={ACCENT} />
-            <Text style={styles.detailButtonText}>세부 결과</Text>
-          </Pressable>
-        </View>
-
-        {resultOpen && (
-          <Animated.View style={[styles.resultSheet, resultSheetStyle]}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>번역 결과</Text>
-              <Pressable onPress={() => setResultOpen(false)}>
-                <Ionicons name="close" size={18} color="#64748b" />
-              </Pressable>
+            <View style={styles.presets}>
+              {PRESETS.map((preset, i) => (
+                <Pressable
+                  key={preset}
+                  onPress={() => void handleTranslate(preset)}
+                  disabled={loading}
+                  accessibilityRole="button"
+                  accessibilityLabel={`예문 ${preset} 수어로 보기`}
+                  style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
+                  <RoughBox seed={40 + i} radius={12} strokeWidth={1.4} stroke={Paint.inkSoft} style={styles.presetChip}>
+                    <BodyText soft size={Size.small}>{preset}</BodyText>
+                  </RoughBox>
+                </Pressable>
+              ))}
             </View>
-            <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetBodyContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>수어용 변환 문장</Text>
-                <Text style={styles.resultValue}>{result?.simplifiedSentence || '-'}</Text>
-              </View>
-              <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>매칭된 토큰</Text>
-                <View style={styles.tokenWrap}>
-                  {normalizedTokens.length === 0 ? (
-                    <Text style={styles.emptyText}>-</Text>
-                  ) : (
-                    normalizedTokens.map((token, index) => (
-                      <View key={`${token}-${index}`} style={styles.tokenChip}>
-                        <Text style={styles.tokenChipText}>{token}</Text>
-                      </View>
-                    ))
-                  )}
+          </RoughBox>
+
+          <PaintButton
+            label={loading ? `바꾸는 중${'.'.repeat(loadingDotCount)}` : '수어로 보기'}
+            accessibilityLabel={loading ? '번역 중' : '수어로 보기'}
+            color={Paint.sky}
+            onPress={() => void handleTranslate()}
+            disabled={loading}
+            style={styles.goButton}
+          />
+
+          {errorMessage ? (
+            <RoughBox seed={17} radius={12} fill={Paint.wrongSoft} stroke={Paint.wrong} style={styles.errorBox}>
+              <BodyText size={Size.small} style={{ textAlign: 'center' }} accessibilityRole="alert">
+                {errorMessage}
+              </BodyText>
+            </RoughBox>
+          ) : null}
+
+          {/* 낱말 줄: 쓴 문장 → 조사·어미 떨어짐 → 수어 순서 */}
+          {result ? (
+            <View style={styles.chainWrap} onLayout={(e) => (chainYRef.current = e.nativeEvent.layout.y)}>
+              <TalkChain
+                words={chainWords}
+                tokens={normalizedTokens}
+                gloss={chainGloss}
+                muted={chainMuted}
+                active={chainActive}
+                runKey={chainRunKey}
+                onPick={motion ? undefined : (index) => setCurrentClipIndex(index)}
+                doneNote={motion ? '다시 보려면 「다시 보기」를 눌러요' : undefined}
+              />
+            </View>
+          ) : null}
+
+          {/* 손짓 액자 */}
+          <RoughBox seed={9} radius={18} style={[styles.signerFrame, { width: frameWidth, height: frameHeight }]}>
+            <Animated.View style={[styles.signerInner, { opacity: avatarOpacity, transform: [{ scale: avatarScale }] }]}>
+              {signer}
+              {loading ? (
+                <View style={styles.avatarLoadingOverlay} pointerEvents="none">
+                  <StoryText size={Size.lead}>{`손짓 준비 중${'.'.repeat(loadingDotCount)}`}</StoryText>
                 </View>
+              ) : null}
+            </Animated.View>
+          </RoughBox>
+
+          {/* 자막 + 몇 번째인지 */}
+          <View style={styles.captionWrap}>
+            <Animated.View
+              style={{
+                opacity: wordOpacity,
+                transform: [{ translateX: wordTranslateX }, { translateY: wordTranslateY }],
+              }}>
+              {caption ? (
+                <RoughBox seed={23} radius={12} fill={Paint.yellowSoft} strokeWidth={1.4} style={styles.captionPill}>
+                  <StoryText size={Size.title} accessibilityLiveRegion="polite">
+                    {caption}
+                  </StoryText>
+                </RoughBox>
+              ) : null}
+            </Animated.View>
+            <BodyText soft size={Size.caption} style={styles.counter}>
+              {`${stepNow} / ${stepTotal} 손짓`}
+            </BodyText>
+            <View style={styles.progressTrack}>
+              <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+            </View>
+          </View>
+
+          {/* 재생 조절 · 저장 · 북마크 · 자세히 */}
+          <View style={styles.actionRow}>
+            {motion ? (
+              <IconAction icon="play" label="다시 보기" onPress={replayMotion} />
+            ) : (
+              <>
+                <IconAction icon="play" flip label="이전" onPress={() => moveClip(-1)} disabled={currentClipIndex <= 0} />
+                <IconAction icon="play" label="다음" onPress={() => moveClip(1)} disabled={currentClipIndex >= playbackItems.length - 1} />
+              </>
+            )}
+            <Animated.View style={{ transform: [{ scale: saveButtonScale }] }}>
+              <IconAction icon="bookmark" label="저장" a11y="현재 문장 저장" onPress={handleSaveSentence} />
+            </Animated.View>
+            <IconAction icon="note" label="북마크" a11y="북마크 보기" onPress={handleToggleBookmarks} active={bookmarksOpen} />
+            <IconAction icon="star" label="세부 결과" onPress={() => setResultOpen(true)} active={resultOpen} />
+          </View>
+
+          {feedbackMessage ? (
+            <Animated.View style={[styles.feedbackWrap, { opacity: feedbackOpacity, transform: [{ translateY: feedbackTranslateY }] }]}>
+              <RoughBox seed={27} radius={12} wash={Paint.yellowSoft} strokeWidth={1.4} style={styles.feedbackToast}>
+                <PaintIcon name="check" size={18} />
+                <BodyText size={Size.small} accessibilityLiveRegion="polite">{feedbackMessage}</BodyText>
+              </RoughBox>
+            </Animated.View>
+          ) : null}
+        </ScrollView>
+
+        {bookmarksOpen && (
+          <Animated.View style={[styles.sheet, bookmarkSheetStyle]}>
+            <RoughBox seed={51} radius={18} style={styles.sheetBox}>
+              <View style={styles.sheetHeader}>
+                <StoryText size={Size.lead}>내 북마크 문장</StoryText>
+                <Pressable style={styles.closeButton} onPress={handleToggleBookmarks} accessibilityRole="button" accessibilityLabel="북마크 닫기">
+                  <PaintIcon name="close" size={22} color={Paint.inkSoft} />
+                </Pressable>
               </View>
-              <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>사전에 없는 토큰</Text>
-                <View style={styles.tokenWrap}>
-                  {unknownTokens.length === 0 ? (
-                    <Text style={styles.emptyText}>없음</Text>
-                  ) : (
-                    unknownTokens.map((token, index) => (
-                      <View key={`${token}-${index}`} style={styles.unknownChip}>
-                        <Text style={styles.unknownChipText}>{token}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </View>
-              <View style={styles.resultCard}>
-                <Text style={styles.resultTitle}>영상이 없는 단어</Text>
-                <Text style={styles.resultSubTitle}>사전에는 있지만 수어 영상이 준비되지 않은 단어입니다.</Text>
-                <View style={styles.tokenWrap}>
-                  {noVideoWords.length === 0 ? (
-                    <Text style={styles.emptyText}>없음</Text>
-                  ) : (
-                    noVideoWords.map((token, index) => (
-                      <View key={`${token}-${index}`} style={styles.noVideoChip}>
-                        <Ionicons name="videocam-off-outline" size={12} color="#b45309" />
-                        <Text style={styles.noVideoChipText}>{token}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </View>
-            </ScrollView>
+              <RoughBox seed={53} radius={12} strokeWidth={1.4} stroke={Paint.inkSoft} style={styles.searchBox}>
+                <TextInput
+                  value={bookmarkQuery}
+                  onChangeText={setBookmarkQuery}
+                  placeholder="문장 검색"
+                  placeholderTextColor={Paint.inkFaint}
+                  accessibilityLabel="북마크 문장 검색"
+                  style={styles.searchInput}
+                />
+              </RoughBox>
+              <ScrollView style={styles.sheetList} contentContainerStyle={styles.sheetListContent} showsVerticalScrollIndicator={false}>
+                {filteredBookmarks.length === 0 ? (
+                  <BodyText soft size={Size.small} style={styles.sheetEmpty}>저장된 문장이 없습니다.</BodyText>
+                ) : (
+                  filteredBookmarks.map((item, i) => (
+                    <RoughBox key={item.quizId} seed={60 + i} radius={12} strokeWidth={1.4} style={styles.bookmarkRow}>
+                      <BodyText size={Size.small} style={{ flex: 1 }} numberOfLines={2}>
+                        {item.questionText || '-'}
+                      </BodyText>
+                      <Pressable
+                        style={styles.rowPlay}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.questionText || '문장'} 다시 보기`}
+                        onPress={() => {
+                          void handleTranslate(item.questionText);
+                          setBookmarksOpen(false);
+                          setBookmarkQuery('');
+                          setFeedbackMessage('북마크 문장을 재생합니다.');
+                        }}>
+                        <Wash color={Paint.sky} opacity={0.7} seed={i + 5} inset={4} />
+                        <PaintIcon name="play" size={20} />
+                      </Pressable>
+                    </RoughBox>
+                  ))
+                )}
+              </ScrollView>
+            </RoughBox>
           </Animated.View>
         )}
 
-        <View style={styles.bottomNav}>
-          <Pressable style={styles.navItem} onPress={() => router.push('/home')}>
-            <View style={styles.navIconBubble}>
-              <Ionicons name="home-outline" size={18} color="#94a3b8" />
-            </View>
-            <Text style={styles.navText}>홈</Text>
-          </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/learn')}>
-            <View style={styles.navIconBubble}>
-              <Ionicons name="school-outline" size={18} color="#94a3b8" />
-            </View>
-            <Text style={styles.navText}>학습하기</Text>
-          </Pressable>
-          <Pressable style={styles.navItem}>
-            <View style={[styles.navIconBubble, styles.navIconBubbleActive]}>
-              <MaterialCommunityIcons name="sign-language" size={18} color={PRIMARY} />
-            </View>
-            <Text style={[styles.navText, styles.navTextActive]}>통역기</Text>
-          </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/mypage')}>
-            <View style={styles.navIconBubble}>
-              <Ionicons name="person-outline" size={18} color="#94a3b8" />
-            </View>
-            <Text style={styles.navText}>마이페이지</Text>
-          </Pressable>
-        </View>
+        {resultOpen && (
+          <Animated.View style={[styles.sheet, resultSheetStyle]}>
+            <RoughBox seed={71} radius={18} style={styles.sheetBox}>
+              <View style={styles.sheetHeader}>
+                <StoryText size={Size.lead}>번역 결과</StoryText>
+                <Pressable style={styles.closeButton} onPress={() => setResultOpen(false)} accessibilityRole="button" accessibilityLabel="번역 결과 닫기">
+                  <PaintIcon name="close" size={22} color={Paint.inkSoft} />
+                </Pressable>
+              </View>
+              <ScrollView style={styles.sheetList} contentContainerStyle={styles.sheetListContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.resultSection}>
+                  <StoryText size={Size.small}>수어용 변환 문장</StoryText>
+                  <BodyText>{result?.simplifiedSentence || '-'}</BodyText>
+                </View>
+                <View style={styles.resultSection}>
+                  <StoryText size={Size.small}>매칭된 토큰</StoryText>
+                  <View style={styles.tokenWrap}>
+                    {normalizedTokens.length === 0 ? (
+                      <BodyText soft size={Size.small}>-</BodyText>
+                    ) : (
+                      normalizedTokens.map((token, index) => (
+                        <View key={`${token}-${index}`} style={[styles.tokenChip, { backgroundColor: Paint.card }]}>
+                          <BodyText size={Size.caption}>{token}</BodyText>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+                <View style={styles.resultSection}>
+                  <StoryText size={Size.small}>사전에 없는 토큰</StoryText>
+                  <View style={styles.tokenWrap}>
+                    {unknownTokens.length === 0 ? (
+                      <BodyText soft size={Size.small}>없음</BodyText>
+                    ) : (
+                      unknownTokens.map((token, index) => (
+                        <View key={`${token}-${index}`} style={[styles.tokenChip, { backgroundColor: Paint.wrongSoft }]}>
+                          <BodyText size={Size.caption}>{token}</BodyText>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+                <View style={styles.resultSection}>
+                  <StoryText size={Size.small}>영상이 없는 단어</StoryText>
+                  <BodyText soft size={Size.caption}>사전에는 있지만 수어 영상이 준비되지 않은 단어입니다.</BodyText>
+                  <View style={styles.tokenWrap}>
+                    {noVideoWords.length === 0 ? (
+                      <BodyText soft size={Size.small}>없음</BodyText>
+                    ) : (
+                      noVideoWords.map((token, index) => (
+                        <View key={`${token}-${index}`} style={[styles.tokenChip, styles.tokenChipDashed]}>
+                          <BodyText size={Size.caption}>{token}</BodyText>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </View>
+              </ScrollView>
+            </RoughBox>
+          </Animated.View>
+        )}
       </View>
-    </SafeAreaView>
+      <PaintTabBar current="translator" />
+    </PaperScreen>
+  );
+}
+
+/* 동그란 손그림 버튼 + 아래 이름 (누르는 곳 48×48) */
+function IconAction({
+  icon,
+  label,
+  a11y,
+  onPress,
+  disabled,
+  active,
+  flip,
+}: {
+  icon: PaintIconName;
+  label: string;
+  a11y?: string;
+  onPress: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  flip?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={a11y ?? label}
+      accessibilityState={{ disabled: !!disabled, selected: !!active }}
+      style={({ pressed }) => [styles.iconAction, disabled && { opacity: 0.4 }, pressed && { transform: [{ translateY: 2 }] }]}>
+      <RoughBox seed={label.length * 7} radius={24} wash={active ? Paint.sky : undefined} style={styles.iconCircle}>
+        <View style={flip ? { transform: [{ scaleX: -1 }] } : undefined}>
+          <PaintIcon name={icon} size={24} />
+        </View>
+      </RoughBox>
+      <BodyText soft size={Size.caption}>{label}</BodyText>
+    </Pressable>
   );
 }
 
@@ -1237,45 +1364,26 @@ function tryPlayVideo(videoEl: any) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f8f7ff' },
-  root: { flex: 1, backgroundColor: '#f8f7ff', paddingHorizontal: 16, paddingTop: 6, paddingBottom: 84 },
-  header: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', color: '#111827', fontFamily: FONT, fontSize: 20, fontWeight: '900' },
-  avatarCard: {
-    marginTop: 8,
-    height: '39%',
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#e5e7eb',
-    position: 'relative',
-    shadowColor: '#d5d7ec',
-    shadowOpacity: 0.55,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  avatarVideo: { width: '100%', height: '100%', backgroundColor: '#000' },
-  webVideoElement: { width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#e5e7eb' } as any,
-  webVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: '#e5e7eb' },
-  nativeVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: '#000' },
-  textAvatar: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 28,
-  },
-  textAvatarWord: {
-    width: '100%',
-    color: '#0f172a',
-    fontFamily: FONT,
-    fontSize: 54,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  emptyAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eef2f7', gap: 8, paddingHorizontal: 14 },
-  emptyAvatarText: { color: '#64748b', fontFamily: FONT, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  root: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 28 },
+  inputBox: { marginHorizontal: 20, marginTop: 10, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
+  input: { minHeight: 52, color: Paint.ink, fontFamily: Font.body, fontSize: Size.lead, lineHeight: Size.lead * 1.45, paddingVertical: 6, textAlignVertical: 'top' },
+  presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  presetChip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
+  goButton: { marginHorizontal: 20, marginTop: 12 },
+  errorBox: { marginHorizontal: 20, marginTop: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  chainWrap: { marginHorizontal: 16, marginTop: 18 },
+  signerFrame: { alignSelf: 'center', marginTop: 16 },
+  signerInner: { position: 'absolute', top: 6, left: 6, right: 6, bottom: 6, borderRadius: 13, overflow: 'hidden', backgroundColor: Paint.paperDeep },
+  penAvatar: { width: '100%', height: '100%' },
+  avatarVideo: { width: '100%', height: '100%', backgroundColor: Paint.paperDeep },
+  webVideoElement: { width: '100%', height: '100%', objectFit: 'cover', backgroundColor: Paint.paperDeep } as any,
+  webVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: Paint.paperDeep },
+  nativeVideoStack: { width: '100%', height: '100%', position: 'relative', backgroundColor: Paint.paperDeep },
+  textAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 6, backgroundColor: Paint.card },
+  textAvatarWord: { width: '100%', textAlign: 'center' },
+  emptyAvatar: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 18, backgroundColor: Paint.card },
   avatarLoadingOverlay: {
     position: 'absolute',
     left: 0,
@@ -1284,310 +1392,33 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+    backgroundColor: 'rgba(251,245,230,0.78)',
   },
-  avatarLoadingIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(124, 108, 242, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-  },
-  liveBadge: {
-    position: 'absolute',
-    right: 12,
-    top: 10,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(0,0,0,0.28)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' },
-  liveText: { color: '#fff', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
-  detectWrap: { alignItems: 'center', marginTop: 8 },
-  detectTitle: { color: '#111827', fontFamily: FONT, fontSize: 34, fontWeight: '900' },
-  detectSub: { marginTop: 2, color: '#64748b', fontFamily: FONT, fontSize: 13, fontWeight: '600' },
-  progressTrack: {
-    marginTop: 8,
-    width: '54%',
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#e2e8f0',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: ACCENT,
-  },
-  actionRow: { marginTop: 28, marginBottom: 6, flexDirection: 'row', justifyContent: 'center', gap: 52 },
-  actionItem: { alignItems: 'center', gap: 6 },
-  actionIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#eef2f7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionIconWrapActive: {
-    backgroundColor: '#e8f1ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  actionLabel: { color: '#64748b', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
-  feedbackToast: {
-    alignSelf: 'center',
-    marginTop: 2,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  feedbackText: { textAlign: 'center', color: '#1d4ed8', fontFamily: FONT, fontSize: 12, fontWeight: '700' },
-  bookmarkSheet: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 74,
-    height: 290,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 8,
-    zIndex: 35,
-  },
-  bookmarkSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  bookmarkTitle: { color: '#334155', fontFamily: FONT, fontSize: 15, fontWeight: '900' },
-  bookmarkCloseBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookmarkSearchWrap: {
-    marginTop: 8,
-    marginBottom: 8,
-    minHeight: 38,
-    borderRadius: 10,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  bookmarkSearchInput: { flex: 1, color: '#0f172a', fontFamily: FONT, fontSize: 13, paddingVertical: 7 },
-  bookmarkList: { flex: 1 },
-  bookmarkListContent: { gap: 8, paddingBottom: 4 },
-  bookmarkItemRow: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fbff',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  bookmarkItemText: { flex: 1, color: '#0f172a', fontFamily: FONT, fontSize: 12, fontWeight: '600' },
-  bookmarkPlayButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookmarkEmpty: { color: '#94a3b8', fontFamily: FONT, fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 12 },
-  errorText: { marginTop: 6, textAlign: 'center', color: '#b91c1c', fontFamily: FONT, fontSize: 12, fontWeight: '700' },
-  inputPanel: {
-    marginTop: 'auto',
-    marginBottom: 12,
-    borderRadius: 24,
-    backgroundColor: '#fff',
-    padding: 10,
-    shadowColor: '#d8daee',
-    shadowOpacity: 0.55,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  inputWrap: {
-    minHeight: 48,
-    borderRadius: 18,
-    backgroundColor: '#f8f9ff',
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  input: { flex: 1, color: '#111827', fontFamily: FONT, fontSize: 14, paddingVertical: 10 },
-  clipControlRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
-  smallControlButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: '#dbe4f3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  smallControlButtonDisabled: { opacity: 0.45 },
-  translateButton: {
-    marginTop: 8,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
-  },
-  translateButtonDisabled: { opacity: 0.6 },
-  translateButtonText: { color: '#fff', fontFamily: FONT, fontSize: 17, fontWeight: '900' },
-  detailButton: {
-    marginTop: 8,
-    height: 40,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#d8d2ff',
-    backgroundColor: '#f5f3ff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  detailButtonText: { color: ACCENT, fontFamily: FONT, fontSize: 14, fontWeight: '900' },
-  resultSheet: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 74,
-    height: 320,
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 6,
-    zIndex: 40,
-    overflow: 'hidden',
-  },
-  sheetHeader: {
-    height: 42,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf1f6',
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sheetTitle: { color: '#111827', fontFamily: FONT, fontSize: 14, fontWeight: '800' },
-  sheetBody: { flex: 1 },
-  sheetBodyContent: { padding: 10, gap: 8 },
-  resultCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e6edf8',
-    backgroundColor: '#f8fbff',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 6,
-  },
-  resultTitle: { color: '#334155', fontFamily: FONT, fontSize: 12, fontWeight: '800' },
-  resultValue: { color: '#0f172a', fontFamily: FONT, fontSize: 14, fontWeight: '600' },
+  captionWrap: { alignItems: 'center', marginTop: 12, minHeight: 64 },
+  captionPill: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center' },
+  counter: { marginTop: 6 },
+  progressTrack: { marginTop: 6, width: '54%', height: 6, borderRadius: 3, borderWidth: 1, borderColor: Paint.line, backgroundColor: Paint.paperDeep, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: Paint.sky },
+  actionRow: { marginTop: 18, marginHorizontal: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
+  iconAction: { alignItems: 'center', gap: 4, minWidth: 56 },
+  iconCircle: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  feedbackWrap: { alignSelf: 'center', marginTop: 10 },
+  feedbackToast: { minHeight: 40, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sheet: { position: 'absolute', left: 12, right: 12, bottom: 8, height: 340, zIndex: 40 },
+  sheetBox: { flex: 1, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10 },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  searchBox: { marginBottom: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
+  searchInput: { color: Paint.ink, fontFamily: Font.body, fontSize: Size.small, paddingVertical: 8 },
+  sheetList: { flex: 1 },
+  sheetListContent: { gap: 8, paddingBottom: 4 },
+  sheetEmpty: { textAlign: 'center', marginTop: 12 },
+  bookmarkRow: { minHeight: 56, paddingLeft: 12, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowPlay: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  resultSection: { gap: 6, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Paint.line },
   tokenWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  tokenChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  tokenChipText: { color: '#1d4ed8', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
-  unknownChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  unknownChipText: { color: '#b91c1c', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
-  noVideoChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    backgroundColor: '#fffbeb',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  noVideoChipText: { color: '#b45309', fontFamily: FONT, fontSize: 11, fontWeight: '700' },
-  resultSubTitle: { color: '#94a3b8', fontFamily: FONT, fontSize: 10, fontWeight: '500' },
-  emptyText: { color: '#94a3b8', fontFamily: FONT, fontSize: 11, fontWeight: '600' },
-  bottomNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    height: 70,
-    paddingBottom: 4,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    zIndex: 20,
-  },
-  navItem: { alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 58 },
-  navIconBubble: {
-    width: 30,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navIconBubbleActive: {
-    backgroundColor: '#e8f2ff',
-  },
-  navText: { fontFamily: FONT, fontSize: 10, color: '#94a3b8', fontWeight: '600' },
-  navTextActive: { color: PRIMARY },
+  tokenChip: { borderRadius: 10, borderWidth: 1.5, borderColor: Paint.ink, paddingHorizontal: 9, paddingVertical: 3 },
+  tokenChipDashed: { borderStyle: 'dashed', borderColor: Paint.inkSoft, backgroundColor: Paint.yellowSoft },
 });
 
 async function readBookmarks(): Promise<TranslatorBookmarkItem[]> {
@@ -1632,4 +1463,3 @@ function isTranslatorBookmarkItem(value: unknown): value is TranslatorBookmarkIt
     && typeof item.videoUrl === 'string'
   );
 }
-

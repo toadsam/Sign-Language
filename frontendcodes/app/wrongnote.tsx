@@ -1,21 +1,21 @@
-﻿import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+﻿import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { useAuth } from '@/context/auth-context';
+import { Paint, Size } from '@/constants/paint';
 import {
   WrongNoteSavedItem,
   deleteSavedWrongNote,
   fetchSavedWrongNotes,
 } from '@/lib/api/wrong-note-saved';
-
-const PRIMARY = '#137fec';
+import { MeHeader } from '@/components/paint/me-parts';
+import { BodyText, Mark, PaintButton, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { usePaintNav } from '@/components/paint/transition';
 
 export default function WrongNoteScreen() {
-  const router = useRouter();
+  const nav = usePaintNav();
   const { user } = useAuth();
 
   const [wrongNotes, setWrongNotes] = useState<WrongNoteSavedItem[]>([]);
@@ -23,32 +23,6 @@ export default function WrongNoteScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const heroReveal = useRef(new Animated.Value(0)).current;
-  const selectedWordOpacity = useRef(new Animated.Value(1)).current;
-  const selectedWordTranslateY = useRef(new Animated.Value(0)).current;
-  const listRevealAnims = useRef(Array.from({ length: 30 }, () => new Animated.Value(0))).current;
-  const playButtonScale = useRef(new Animated.Value(1)).current;
-  const emptyPulse = useRef(new Animated.Value(1)).current;
-  const topStretch = useRef(new Animated.Value(0)).current;
-  const topStretchValueRef = useRef(0);
-  const isTopStretchingRef = useRef(false);
-  const bottomStretch = useRef(new Animated.Value(0)).current;
-  const bottomStretchValueRef = useRef(0);
-  const isBottomStretchingRef = useRef(false);
-  const scrollRef = useRef<ScrollView | null>(null);
-  const scrollMetricsRef = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
-  const stretchTouchStartYRef = useRef<number | null>(null);
-  const wheelReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const topStretchHeight = topStretch.interpolate({
-    inputRange: [0, 220],
-    outputRange: [0, 220],
-    extrapolate: 'clamp',
-  });
-  const bottomStretchHeight = bottomStretch.interpolate({
-    inputRange: [0, 220],
-    outputRange: [0, 220],
-    extrapolate: 'clamp',
-  });
 
   useEffect(() => {
     let mounted = true;
@@ -96,209 +70,14 @@ export default function WrongNoteScreen() {
     videoPlayer.play();
   });
 
-  useEffect(() => {
-    Animated.timing(heroReveal, {
-      toValue: 1,
-      duration: 360,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [heroReveal]);
-
-  useEffect(() => {
-    selectedWordOpacity.setValue(0);
-    selectedWordTranslateY.setValue(8);
-    Animated.parallel([
-      Animated.timing(selectedWordOpacity, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-      Animated.spring(selectedWordTranslateY, {
-        toValue: 0,
-        tension: 120,
-        friction: 10,
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [selectedItem?.quizId, selectedWordOpacity, selectedWordTranslateY]);
-
-  useEffect(() => {
-    listRevealAnims.forEach((anim) => anim.setValue(0));
-    Animated.stagger(
-      55,
-      wrongNotes.slice(0, listRevealAnims.length).map((_, index) =>
-        Animated.timing(listRevealAnims[index], {
-          toValue: 1,
-          duration: 280,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        })
-      )
-    ).start();
-  }, [listRevealAnims, wrongNotes]);
-
-  useEffect(() => {
-    if (isLoading || wrongNotes.length > 0) {
-      emptyPulse.stopAnimation();
-      emptyPulse.setValue(1);
-      return;
-    }
-
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(emptyPulse, {
-          toValue: 1.08,
-          duration: 780,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: false,
-        }),
-        Animated.timing(emptyPulse, {
-          toValue: 1,
-          duration: 780,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: false,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [emptyPulse, isLoading, wrongNotes.length]);
-
   function handlePlay(quizId: string) {
     setSelectedQuizId(quizId);
-    playButtonScale.setValue(0.88);
-    Animated.spring(playButtonScale, {
-      toValue: 1,
-      tension: 190,
-      friction: 7,
-      useNativeDriver: false,
-    }).start();
     try {
       player.replay();
       player.play();
     } catch {
-      // Ignore player readiness errors and rely on selected item update.
+      // 영상이 아직 준비 안 됐으면 선택만 바꾼다
     }
-  }
-
-  function listItemAppearStyle(index: number) {
-    const anim = listRevealAnims[index] ?? listRevealAnims[listRevealAnims.length - 1];
-    return {
-      opacity: anim,
-      transform: [
-        {
-          translateY: anim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [10, 0],
-          }),
-        },
-      ],
-    };
-  }
-
-  function handleScrollStretch(event: any) {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    scrollMetricsRef.current = {
-      contentHeight: contentSize.height,
-      viewportHeight: layoutMeasurement.height,
-      offsetY: contentOffset.y,
-    };
-    if (isTopStretchingRef.current || isBottomStretchingRef.current) {
-      return;
-    }
-    setTopStretchValue(Math.min(Math.max(0, -contentOffset.y), 220));
-    const overscroll = Math.max(0, contentOffset.y + layoutMeasurement.height - contentSize.height);
-    setBottomStretchValue(Math.min(overscroll, 220));
-  }
-
-  function setTopStretchValue(value: number) {
-    const next = Math.max(0, Math.min(value, 220));
-    topStretchValueRef.current = next;
-    topStretch.setValue(next);
-  }
-
-  function setBottomStretchValue(value: number) {
-    const next = Math.max(0, Math.min(value, 220));
-    bottomStretchValueRef.current = next;
-    bottomStretch.setValue(next);
-  }
-
-  function scrollToStretchEnd() {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: false });
-    });
-  }
-
-  function isScrollAtBottom() {
-    const { contentHeight, viewportHeight, offsetY } = scrollMetricsRef.current;
-    return contentHeight <= viewportHeight || offsetY + viewportHeight >= contentHeight - 2;
-  }
-
-  function isScrollAtTop() {
-    return scrollMetricsRef.current.offsetY <= 2;
-  }
-
-  function handleStretchTouchStart(event: any) {
-    stretchTouchStartYRef.current = event.nativeEvent.pageY ?? null;
-  }
-
-  function handleStretchTouchMove(event: any) {
-    if (stretchTouchStartYRef.current == null) return;
-    const currentY = event.nativeEvent.pageY ?? stretchTouchStartYRef.current;
-    const topPullDistance = Math.max(0, currentY - stretchTouchStartYRef.current);
-    if (isScrollAtTop() && topPullDistance > 0) {
-      isTopStretchingRef.current = true;
-      setTopStretchValue(topPullDistance * 0.95);
-      return;
-    }
-    const bottomPullDistance = Math.max(0, stretchTouchStartYRef.current - currentY);
-    if (isScrollAtBottom() && bottomPullDistance > 0) {
-      isBottomStretchingRef.current = true;
-      setBottomStretchValue(bottomPullDistance * 0.95);
-      scrollToStretchEnd();
-    }
-  }
-
-  function handleStretchWheel(event: any) {
-    const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
-    if (deltaY < 0 && isScrollAtTop()) {
-      isTopStretchingRef.current = true;
-      setTopStretchValue(topStretchValueRef.current + Math.abs(deltaY) * 0.62);
-    } else if (deltaY > 0 && isScrollAtBottom()) {
-      isBottomStretchingRef.current = true;
-      setBottomStretchValue(bottomStretchValueRef.current + deltaY * 0.62);
-      scrollToStretchEnd();
-    } else {
-      return;
-    }
-    if (wheelReleaseTimerRef.current) {
-      clearTimeout(wheelReleaseTimerRef.current);
-    }
-    wheelReleaseTimerRef.current = setTimeout(releaseScrollStretch, 120);
-  }
-
-  function releaseScrollStretch() {
-    topStretchValueRef.current = 0;
-    bottomStretchValueRef.current = 0;
-    Animated.parallel([
-      Animated.spring(topStretch, {
-        toValue: 0,
-        tension: 120,
-        friction: 12,
-        useNativeDriver: false,
-      }),
-      Animated.spring(bottomStretch, {
-        toValue: 0,
-        tension: 120,
-        friction: 12,
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
-      isTopStretchingRef.current = false;
-      isBottomStretchingRef.current = false;
-    });
   }
 
   async function handleDelete(quizId: string) {
@@ -337,420 +116,142 @@ export default function WrongNoteScreen() {
     return '-';
   }
 
+  const isEmpty = !isLoading && !errorMessage && wrongNotes.length === 0;
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.root}>
-        <View style={styles.header}>
-          <Pressable style={styles.headerIcon} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={22} color="#111827" />
-          </Pressable>
-          <Text style={styles.headerTitle}>오답 노트 (단어장)</Text>
-          <View style={styles.headerIcon} />
-        </View>
+    <PaperScreen>
+      <MeHeader
+        title="오답 노트"
+        sub={wrongNotes.length > 0 ? `다시 볼 단어 ${wrongNotes.length}개` : undefined}
+        onBack={(p) => void nav.back(p)}
+      />
 
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          onScroll={handleScrollStretch}
-          onTouchStart={handleStretchTouchStart}
-          onTouchMove={handleStretchTouchMove}
-          onTouchEnd={releaseScrollStretch}
-          {...({ onWheel: handleStretchWheel } as any)}
-          onScrollEndDrag={releaseScrollStretch}
-          onMomentumScrollEnd={releaseScrollStretch}
-          scrollEventThrottle={16}>
-          <Animated.View pointerEvents="none" style={[styles.bottomStretch, styles.topStretch, { height: topStretchHeight }]}>
-            <View style={styles.topStretchHandle} />
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.heroCard,
-              {
-                opacity: heroReveal,
-                transform: [
-                  {
-                    translateY: heroReveal.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [16, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}>
-            {selectedItem?.videoUrl ? (
-              <VideoView style={styles.heroVideo} player={player} nativeControls contentFit="cover" />
-            ) : (
-              <View style={styles.heroImagePlaceholder}>
-                <Animated.View style={{ transform: [{ scale: emptyPulse }] }}>
-                  <Ionicons name="bookmark" size={42} color={PRIMARY} />
-                </Animated.View>
-              </View>
-            )}
-
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* 고른 단어의 수어 영상 */}
+        <Animated.View entering={FadeInDown.duration(320)}>
+          <RoughBox seed={41} style={styles.hero}>
+            <View style={styles.videoWrap}>
+              {selectedItem?.videoUrl ? (
+                <VideoView style={styles.video} player={player} nativeControls contentFit="cover" />
+              ) : (
+                <View style={styles.placeholder}>
+                  <PaintIcon name="note" size={44} color={Paint.inkSoft} />
+                </View>
+              )}
+            </View>
             <View style={styles.wordPanel}>
-              <Text style={styles.wordLabel}>선택된 단어</Text>
+              <BodyText soft size={Size.caption}>고른 단어</BodyText>
+              <Animated.View key={selectedItem?.quizId ?? 'none'} entering={FadeIn.duration(200)} style={{ alignItems: 'center' }}>
+                <StoryText size={Size.display}>
+                  <Mark color={Paint.wrongSoft}>{selectedItem?.word || '-'}</Mark>
+                </StoryText>
+                <BodyText soft size={Size.small} style={{ textAlign: 'center' }}>
+                  {selectedItem?.questionText || '틀린 단어를 골라 보세요.'}
+                </BodyText>
+              </Animated.View>
+            </View>
+          </RoughBox>
+        </Animated.View>
+
+        {wrongNotes.length > 0 ? (
+          <PaintButton
+            label="틀린 단어 다시 풀기"
+            color={Paint.coral}
+            icon={<PaintIcon name="play" size={22} />}
+            style={styles.retry}
+            onPress={(p) => void nav.go({ pathname: '/quiz', params: { mode: 'wrong', title: '오답 복습 퀴즈' } }, p)}
+          />
+        ) : null}
+
+        <StoryText size={Size.lead} style={styles.sub}>틀린 단어 목록</StoryText>
+
+        {isLoading ? <BodyText soft style={styles.helper}>불러오는 중이에요</BodyText> : null}
+        {!isLoading && errorMessage ? (
+          <BodyText style={[styles.helper, { color: Paint.ink }]} accessibilityRole="alert">
+            <Mark color={Paint.wrongSoft}>{errorMessage}</Mark>
+          </BodyText>
+        ) : null}
+        {isEmpty ? (
+          <RoughBox seed={44} dashed style={styles.emptyBox}>
+            <PaintIcon name="check" size={32} color={Paint.inkSoft} />
+            <BodyText soft style={{ textAlign: 'center' }}>저장된 오답이 없어요</BodyText>
+          </RoughBox>
+        ) : null}
+
+        <View style={styles.list}>
+          {wrongNotes.map((item, index) => {
+            const isSelected = (selectedItem?.quizId ?? null) === item.quizId;
+            const isDeleting = deletingQuizId === item.quizId;
+            return (
               <Animated.View
-                style={[
-                  styles.wordRow,
-                  {
-                    opacity: selectedWordOpacity,
-                    transform: [{ translateY: selectedWordTranslateY }],
-                  },
-                ]}>
-                <Text style={styles.wordText}>{selectedItem?.word || '-'}</Text>
-                <Ionicons name="volume-high" size={16} color={PRIMARY} />
-              </Animated.View>
-              <Animated.Text
-                style={[
-                  styles.questionText,
-                  {
-                    opacity: selectedWordOpacity,
-                    transform: [{ translateY: selectedWordTranslateY }],
-                  },
-                ]}>
-                {selectedItem?.questionText || '틀린 단어를 선택하세요.'}
-              </Animated.Text>
-            </View>
-          </Animated.View>
-
-          <View style={styles.listHeader}>
-            <Text style={styles.listTitle}>틀린 단어 목록</Text>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{wrongNotes.length}개 복습 필요</Text>
-            </View>
-          </View>
-
-          <View style={styles.listWrap}>
-            {isLoading ? <Text style={styles.helperText}>불러오는 중...</Text> : null}
-            {!isLoading && errorMessage ? <Text style={styles.helperText}>{errorMessage}</Text> : null}
-            {!isLoading && !errorMessage && wrongNotes.length === 0 ? (
-              <Animated.View style={[styles.emptyState, { transform: [{ scale: emptyPulse }] }]}>
-                <Ionicons name="bookmarks-outline" size={28} color="#94a3b8" />
-                <Text style={styles.helperText}>저장된 오답이 없습니다.</Text>
-              </Animated.View>
-            ) : null}
-
-            {wrongNotes.map((item, index) => {
-              const isSelected = (selectedItem?.quizId ?? null) === item.quizId;
-              return (
-                <Animated.View
-                  key={item.quizId}
-                  style={[
-                    listItemAppearStyle(index),
-                    deletingQuizId === item.quizId && styles.deletingItem,
-                  ]}>
+                key={item.quizId}
+                entering={FadeInDown.delay(Math.min(index, 12) * 55).duration(280)}
+                style={isDeleting && { opacity: 0.45 }}
+              >
+                <RoughBox
+                  seed={50 + index}
+                  wash={isSelected ? Paint.wrongSoft : undefined}
+                  stroke={isSelected ? Paint.ink : Paint.inkSoft}
+                  strokeWidth={isSelected ? 2.2 : 1.8}
+                  style={styles.card}
+                >
                   <Pressable
-                    style={[styles.wordItem, isSelected && styles.wordItemSelected]}
-                    onPress={() => setSelectedQuizId(item.quizId)}>
-                    <View>
-                      <Text style={styles.itemWord}>{item.word || '-'}</Text>
-                      <View style={styles.dateRow}>
-                        <Ionicons name="calendar-outline" size={12} color="#94a3b8" />
-                        <Text style={styles.itemDate}>{formatWrongDate(item.savedAt ?? item.wrongAt)}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.actionsRow}>
-                      <Animated.View style={{ transform: [{ scale: isSelected ? playButtonScale : 1 }] }}>
-                        <Pressable
-                          style={styles.playBtn}
-                          onPress={(e) => {
-                            (e as any)?.stopPropagation?.();
-                            handlePlay(item.quizId);
-                          }}>
-                          <Ionicons name="play" size={18} color={PRIMARY} />
-                        </Pressable>
-                      </Animated.View>
-                      <Pressable
-                        style={styles.deleteBtn}
-                        onPress={(e) => {
-                          (e as any)?.stopPropagation?.();
-                          void handleDelete(item.quizId);
-                        }}
-                        disabled={deletingQuizId === item.quizId}
-                        accessibilityLabel="오답노트 숨기기">
-                        <Ionicons
-                          name={deletingQuizId === item.quizId ? 'time-outline' : 'eye-off-outline'}
-                          size={18}
-                          color="#ef4444"
-                        />
-                      </Pressable>
-                    </View>
+                    style={styles.cardMain}
+                    onPress={() => setSelectedQuizId(item.quizId)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.word || '단어'} 고르기`}
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <StoryText size={Size.title}>{item.word || '-'}</StoryText>
+                    <BodyText soft size={Size.caption}>{formatWrongDate(item.savedAt ?? item.wrongAt)}에 틀림</BodyText>
                   </Pressable>
-                </Animated.View>
-              );
-            })}
-          </View>
-          <Animated.View pointerEvents="none" style={[styles.bottomStretch, { height: bottomStretchHeight }]}>
-            <View style={styles.bottomStretchHandle} />
-          </Animated.View>
-        </ScrollView>
 
-        <View style={styles.bottomNav}>
-          <Pressable style={styles.navItem} onPress={() => router.push('/home')}>
-            <Ionicons name="home-outline" size={20} color="#94a3b8" />
-            <Text style={styles.navText}>홈</Text>
-          </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/learn')}>
-            <Ionicons name="school-outline" size={20} color="#94a3b8" />
-            <Text style={styles.navText}>학습하기</Text>
-          </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/translator')}>
-            <Ionicons name="language-outline" size={20} color="#94a3b8" />
-            <Text style={styles.navText}>통역기</Text>
-          </Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push('/mypage')}>
-            <Ionicons name="person" size={20} color={PRIMARY} />
-            <Text style={[styles.navText, styles.navTextActive]}>마이페이지</Text>
-          </Pressable>
+                  <View style={styles.actions}>
+                    <Pressable
+                      style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                      onPress={() => handlePlay(item.quizId)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.word || '단어'} 영상 처음부터 보기`}
+                    >
+                      <PaintIcon name="play" size={24} fill={isSelected ? Paint.coral : 'none'} />
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                      onPress={() => void handleDelete(item.quizId)}
+                      disabled={isDeleting}
+                      accessibilityRole="button"
+                      accessibilityLabel="오답노트 숨기기"
+                      accessibilityState={{ disabled: isDeleting, busy: isDeleting }}
+                    >
+                      <PaintIcon name="close" size={22} color={isDeleting ? Paint.inkFaint : Paint.ink} />
+                    </Pressable>
+                  </View>
+                </RoughBox>
+              </Animated.View>
+            );
+          })}
         </View>
-      </View>
-    </SafeAreaView>
+      </ScrollView>
+
+      <PaintTabBar current="mypage" />
+    </PaperScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f3f5f7',
-  },
-  root: {
-    flex: 1,
-    backgroundColor: '#f3f5f7',
-  },
-  header: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  content: {
-    paddingHorizontal: 12,
-    paddingBottom: 108,
-  },
-  heroCard: {
-    marginTop: 4,
-    borderRadius: 16,
-    backgroundColor: '#dbeafe',
-    borderWidth: 1,
-    borderColor: '#c7ddfc',
-    overflow: 'hidden',
-  },
-  heroImagePlaceholder: {
-    width: '100%',
-    height: 260,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroVideo: {
-    width: '100%',
-    height: 260,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-  },
-  wordPanel: {
-    borderTopWidth: 1,
-    borderTopColor: '#cfe0f8',
-    backgroundColor: '#f8fbff',
-    paddingTop: 10,
-    paddingBottom: 12,
-    alignItems: 'center',
-    paddingHorizontal: 12,
-  },
-  wordLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  wordRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  wordText: {
-    fontSize: 30,
-    color: PRIMARY,
-    fontWeight: '800',
-  },
-  questionText: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#475569',
-    fontWeight: '500',
-  },
-  listHeader: {
-    marginTop: 20,
-    marginBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 2,
-  },
-  listTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  badge: {
-    backgroundColor: '#fee2e2',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  badgeText: {
-    fontSize: 11,
-    color: '#ef4444',
-    fontWeight: '700',
-  },
-  listWrap: {
-    gap: 10,
-  },
-  helperText: {
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: 13,
-    fontWeight: '600',
-    marginVertical: 8,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-  },
-  wordItem: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e9edf3',
-    borderRadius: 18,
-    minHeight: 90,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
-  },
-  wordItemSelected: {
-    borderColor: '#93c5fd',
-    backgroundColor: '#f8fbff',
-  },
-  deletingItem: {
-    opacity: 0.48,
-  },
-  itemWord: {
-    fontSize: 18,
-    color: '#111827',
-    fontWeight: '800',
-  },
-  dateRow: {
-    marginTop: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  itemDate: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  playBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#e8f1ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fee2e2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomStretch: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  topStretch: {
-    justifyContent: 'flex-start',
-  },
-  topStretchHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#cbd5e1',
-    opacity: 0.7,
-    marginTop: 10,
-  },
-  bottomStretchHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#cbd5e1',
-    opacity: 0.7,
-    marginBottom: 10,
-  },
-  bottomNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    height: 76,
-    paddingBottom: 4,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  navItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    minWidth: 58,
-  },
-  navText: {
-    fontSize: 11,
-    color: '#94a3b8',
-    fontWeight: '700',
-  },
-  navTextActive: {
-    color: PRIMARY,
-  },
+  content: { paddingHorizontal: 20, paddingBottom: 32 },
+  hero: { marginTop: 6, padding: 8 },
+  videoWrap: { borderRadius: 12, overflow: 'hidden' },
+  video: { width: '100%', height: 240, backgroundColor: Paint.ink },
+  placeholder: { width: '100%', height: 200, alignItems: 'center', justifyContent: 'center', backgroundColor: Paint.paperDeep },
+  wordPanel: { alignItems: 'center', paddingTop: 10, paddingBottom: 6, gap: 2 },
+  retry: { marginTop: 16 },
+  sub: { marginTop: 22, marginBottom: 10 },
+  helper: { textAlign: 'center', marginVertical: 8 },
+  emptyBox: { alignItems: 'center', gap: 6, paddingVertical: 22 },
+  list: { gap: 10 },
+  card: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 6, minHeight: 76 },
+  cardMain: { flex: 1, paddingVertical: 12, minHeight: 44, justifyContent: 'center' },
+  actions: { flexDirection: 'row', alignItems: 'center' },
+  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

@@ -1,25 +1,18 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+
+import { Bee } from '@/components/paint/bee';
+import { BodyText, Mark, PaintButton, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { usePaintNav } from '@/components/paint/transition';
+import { Font, Paint, Size } from '@/constants/paint';
 
 import { useAuth } from '@/context/auth-context';
 import { getBaseUrl } from '@/lib/api/base-url';
 
 export default function SignupScreen() {
   const apiBaseUrl = getBaseUrl();
-  const router = useRouter();
+  const nav = usePaintNav();
   const params = useLocalSearchParams();
   const googleId = params.googleId as string;
   const email = params.email as string;
@@ -76,7 +69,7 @@ export default function SignupScreen() {
         console.log('회원가입 완료! 홈으로 이동');
 
         // Alert 대신 바로 홈으로 이동
-        router.replace('/home');
+        void nav.go('/home', { replace: true });
       } else {
         setErrorMessage(data.message || '회원가입에 실패했습니다.');
       }
@@ -88,185 +81,62 @@ export default function SignupScreen() {
     }
   };
 
+  // 입력 칸 하나: 손그림 테두리 상자 안에 글자
+  const field = (label: string, value: string, onChange: ((v: string) => void) | null, opts: { placeholder?: string; phone?: boolean } = {}, seed = 1) => (
+    <View style={styles.field}>
+      <BodyText size={Size.small} style={styles.label}>{label}</BodyText>
+      <RoughBox seed={seed} fill={onChange ? Paint.card : Paint.paperDeep} style={styles.inputBox}>
+        <TextInput
+          style={styles.input}
+          placeholder={opts.placeholder}
+          placeholderTextColor={Paint.inkFaint}
+          value={value}
+          onChangeText={onChange ?? undefined}
+          keyboardType={opts.phone ? 'phone-pad' : 'default'}
+          editable={!!onChange && !isSubmitting}
+          accessibilityLabel={label}
+        />
+      </RoughBox>
+    </View>
+  );
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled">
+    <PaperScreen edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="person-add" size={40} color="#137fec" />
-            </View>
-            <Text style={styles.title}>추가 정보 입력</Text>
-            <Text style={styles.subtitle}>
-              서비스 이용을 위해 아래 정보를 입력해주세요
-            </Text>
+            <Bee size={64} />
+            <StoryText size={Size.heading} style={{ marginTop: 8 }}>
+              마을에 이름을 <Mark>적어 주세요</Mark>
+            </StoryText>
+            <BodyText soft>서비스를 이용하려면 아래 정보가 필요해요.</BodyText>
           </View>
 
           <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>이름 *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="홍길동"
-                placeholderTextColor="#9ca3af"
-                value={name}
-                onChangeText={setName}
-                editable={!isSubmitting}
-              />
-            </View>
+            {field('이름 *', name, setName, { placeholder: '홍길동' }, 31)}
+            {field('이메일', email, null, {}, 32)}
+            {field('전화번호 *', phoneNumber, setPhoneNumber, { placeholder: '010-1234-5678', phone: true }, 33)}
+            {field('학교/직장 *', organization, setOrganization, { placeholder: '아주대학교' }, 34)}
 
-            <View style={styles.field}>
-              <Text style={styles.label}>이메일</Text>
-              <TextInput
-                style={[styles.input, styles.inputDisabled]}
-                value={email}
-                editable={false}
-              />
-            </View>
+            {errorMessage ? (
+              <BodyText size={Size.small} style={styles.error} accessibilityRole="alert">{errorMessage}</BodyText>
+            ) : null}
 
-            <View style={styles.field}>
-              <Text style={styles.label}>전화번호 *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="010-1234-5678"
-                placeholderTextColor="#9ca3af"
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                keyboardType="phone-pad"
-                editable={!isSubmitting}
-              />
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>학교/직장 *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="아주대학교"
-                placeholderTextColor="#9ca3af"
-                value={organization}
-                onChangeText={setOrganization}
-                editable={!isSubmitting}
-              />
-            </View>
-
-            {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-            <Pressable
-              disabled={isSubmitting}
-              onPress={handleSubmit}
-              style={({ pressed }) => [
-                styles.submitButton,
-                isSubmitting && styles.buttonDisabled,
-                pressed && styles.buttonPressed,
-              ]}>
-              <Text style={styles.submitButtonText}>
-                {isSubmitting ? '처리 중...' : '회원가입 완료'}
-              </Text>
-            </Pressable>
+            <PaintButton label={isSubmitting ? '처리 중…' : '회원가입 완료'} disabled={isSubmitting} onPress={handleSubmit} seed={35} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </PaperScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f2f4f7',
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingTop: 30,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  iconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#e0f2fe',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-  form: {
-    gap: 18,
-  },
-  field: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#374151',
-  },
-  input: {
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    paddingHorizontal: 16,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  inputDisabled: {
-    backgroundColor: '#f3f4f6',
-    color: '#9ca3af',
-  },
-  errorText: {
-    marginTop: -6,
-    color: '#dc2626',
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  submitButton: {
-    marginTop: 12,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#137fec',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonPressed: {
-    opacity: 0.8,
-  },
-  submitButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  scrollContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 32 },
+  header: { gap: 4, marginBottom: 20 },
+  form: { gap: 14 },
+  field: { gap: 6 },
+  label: { fontFamily: Font.story },
+  inputBox: { height: 52, justifyContent: 'center', paddingHorizontal: 14 },
+  input: { fontFamily: Font.body, fontSize: Size.lead, color: Paint.ink, outlineStyle: 'none' } as never,
+  error: { color: '#B5462F', textAlign: 'center' },
 });
-

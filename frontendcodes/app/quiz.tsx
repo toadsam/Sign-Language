@@ -1,10 +1,38 @@
-﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+/**
+ * 퀴즈 화면 (색칠 마을).
+ * 만화 칸 속 수어 영상을 보고 보기 4개 중 뜻을 고른다.
+ * 맞으면 칸에 노란 물감이 번지고, 틀리면 카드가 흔들린다. 마지막 문제 뒤에는 결과를 보여 준다.
+ */
+import { useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
+import { Bee } from '@/components/paint/bee';
+import {
+  BodyText,
+  Mark,
+  PaintButton,
+  PaintIcon,
+  PaperScreen,
+  RoughBox,
+  StoryText,
+  Wash,
+} from '@/components/paint/paint-ui';
+import { QuizAnswer, QuizAnswerGrid, type QuizAnswerState } from '@/components/paint/quiz-answer';
+import { usePaintNav } from '@/components/paint/transition';
+import { Paint, Size } from '@/constants/paint';
+import { useAuth } from '@/context/auth-context';
 import {
   ChoiceId,
   QuizAnswerResponse,
@@ -13,12 +41,9 @@ import {
   fetchWrongQuizSession,
   submitQuizAnswer,
 } from '@/lib/api/quiz';
-import { saveWrongNote } from '@/lib/api/wrong-note-saved';
 import { recordQuizAttempt } from '@/lib/api/users';
-import { useAuth } from '@/context/auth-context';
-import { Mascot } from '@/components/mascot';
+import { saveWrongNote } from '@/lib/api/wrong-note-saved';
 
-const PRIMARY = '#1f80e3';
 const QUIZ_COUNT = 10;
 const CHOICE_IDS: ChoiceId[] = ['A', 'B', 'C', 'D'];
 
@@ -26,15 +51,6 @@ type Option = {
   id: ChoiceId;
   text: string;
 };
-
-type StreakTier = 'base' | 'bronze' | 'silver' | 'gold';
-
-function getStreakTier(streak: number): StreakTier {
-  if (streak >= 12) return 'gold';
-  if (streak >= 8) return 'silver';
-  if (streak >= 5) return 'bronze';
-  return 'base';
-}
 
 function toOptions(question: QuizSessionQuestion | null): Option[] {
   if (!question) return [];
@@ -44,11 +60,36 @@ function toOptions(question: QuizSessionQuestion | null): Option[] {
   }));
 }
 
+/* ── 진행 점: 푼 문제는 노랑, 지금 문제는 숨 쉬듯 커졌다 작아진다 ── */
+function ProgressDot({ status }: { status: 'done' | 'now' | 'todo' }) {
+  const reduce = useReducedMotion();
+  const s = useSharedValue(1);
+  useEffect(() => {
+    if (status !== 'now' || reduce) {
+      s.value = 1;
+      return;
+    }
+    s.value = withRepeat(withSequence(withTiming(1.25, { duration: 700 }), withTiming(1, { duration: 700 })), -1);
+  }, [status, reduce, s]);
+  const st = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        status === 'done' && { backgroundColor: Paint.yellow },
+        status === 'now' && { backgroundColor: Paint.yellowSoft },
+        st,
+      ]}
+    />
+  );
+}
+
 export default function QuizScreen() {
-  const router = useRouter();
+  const nav = usePaintNav();
+  const reduce = useReducedMotion();
   const params = useLocalSearchParams<{ mode?: string; title?: string; category?: string }>();
   const { user } = useAuth();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isWrongOnlyMode = params.mode === 'wrong';
   const sessionTitleParam = typeof params.title === 'string' ? params.title : '';
   const categoryParam = typeof params.category === 'string' ? params.category : undefined;
@@ -70,29 +111,19 @@ export default function QuizScreen() {
   const [isChecking, setIsChecking] = useState(false);
   const [isQuestionTransitioning, setIsQuestionTransitioning] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [progressTrackWidth, setProgressTrackWidth] = useState(0);
   const [displayedCorrectRate, setDisplayedCorrectRate] = useState(0);
-  const badgeScale = useRef(new Animated.Value(1)).current;
-  const comboScale = useRef(new Animated.Value(1)).current;
-  const comboTranslateY = useRef(new Animated.Value(0)).current;
-  const waveOpacity = useRef(new Animated.Value(0)).current;
-  const waveScale = useRef(new Animated.Value(0.6)).current;
-  const feedbackTranslateY = useRef(new Animated.Value(52)).current;
-  const feedbackScale = useRef(new Animated.Value(0.96)).current;
-  const feedbackOpacity = useRef(new Animated.Value(0)).current;
-  const saveButtonScale = useRef(new Animated.Value(1)).current;
-  const saveSuccessOpacity = useRef(new Animated.Value(0)).current;
-  const saveSuccessTranslateY = useRef(new Animated.Value(8)).current;
-  const savingSpin = useRef(new Animated.Value(0)).current;
-  const questionOpacity = useRef(new Animated.Value(1)).current;
-  const questionTranslateX = useRef(new Animated.Value(0)).current;
-  const difficultyPanelReveal = useRef(new Animated.Value(1)).current;
-  const difficultyChipPulse = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const optionRevealAnims = useRef(Array.from({ length: 4 }, () => new Animated.Value(1))).current;
   const prevStreakRef = useRef(0);
   const prevComboStreakRef = useRef(0);
   const sessionStartedAtRef = useRef(Date.now());
+
+  // 움직임 값 (reanimated)
+  const qOpacity = useSharedValue(1);
+  const qShift = useSharedValue(0);
+  const noteIn = useSharedValue(0);
+  const comboPop = useSharedValue(1);
+  const burst = useSharedValue(0);
+  const burstScale = useSharedValue(0.6);
+  const savedIn = useSharedValue(0);
 
   const currentQuestion = questions[currentIndex] ?? null;
   const options = useMemo(() => toOptions(currentQuestion), [currentQuestion]);
@@ -103,33 +134,9 @@ export default function QuizScreen() {
 
   const isAnswered = answerResult !== null;
   const isCorrect = answerResult?.isCorrect ?? false;
-  const waveDiameter = Math.max(width, height) * 2.3;
-  const streakTier = getStreakTier(currentStreak);
-  const streakBadgeTone =
-    streakTier === 'gold'
-      ? { bg: '#f59e0b', border: '#fcd34d', text: '#111827' }
-      : streakTier === 'silver'
-      ? { bg: '#94a3b8', border: '#e2e8f0', text: '#0f172a' }
-      : streakTier === 'bronze'
-      ? { bg: '#b45309', border: '#fdba74', text: '#fff7ed' }
-      : { bg: '#f59e0b', border: '#fbbf24', text: '#111827' };
-  const progressText = `${Math.min(currentIndex + 1, Math.max(questions.length, 1))} / ${Math.max(questions.length, 1)}`;
-  const progressPercent =
-    questions.length > 0 ? Math.min(((currentIndex + 1) / questions.length) * 100, 100) : 0;
-  const progressFillWidth = progressAnim.interpolate({
-    inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
-  });
-  const comboLabel = `콤보 x${currentStreak}`;
-  const comboLabelWidth = 86 + Math.max(0, String(currentStreak).length - 1) * 10;
-  const comboLabelLeft = useMemo(() => {
-    if (progressTrackWidth <= 0) {
-      return 0;
-    }
-    const centerX = (progressPercent / 100) * progressTrackWidth;
-    const rawLeft = centerX - comboLabelWidth / 2;
-    return Math.max(0, Math.min(rawLeft, progressTrackWidth - comboLabelWidth));
-  }, [comboLabelWidth, progressPercent, progressTrackWidth]);
+  const isLast = currentIndex + 1 >= questions.length;
+  const total = Math.max(questions.length, 1);
+  const progressText = `${Math.min(currentIndex + 1, total)} / ${total}`;
   const questionCorrectRate =
     typeof currentQuestion?.correctRate === 'number' ? currentQuestion.correctRate : null;
   const questionAttemptCount =
@@ -152,34 +159,13 @@ export default function QuizScreen() {
       : difficultyLabel === 'medium' || difficultyLabel === '보통'
       ? '보통'
       : '';
-  const difficultyTone =
-    difficultyText === '쉬움'
-      ? { chipBg: '#dcfce7', chipText: '#15803d', percent: '#16a34a' }
-      : difficultyText === '보통'
-      ? { chipBg: '#fef3c7', chipText: '#a16207', percent: '#ca8a04' }
-      : difficultyText === '어려움'
-      ? { chipBg: '#fecaca', chipText: '#991b1b', percent: '#b91c1c' }
-      : { chipBg: '#dbeafe', chipText: '#2563eb', percent: '#2563eb' };
+  // 난이도 색: 쉬움 초록 · 보통 노랑 · 어려움 산호
+  const difficultyColor =
+    difficultyText === '쉬움' ? Paint.rightSoft : difficultyText === '어려움' ? Paint.wrongSoft : Paint.yellowSoft;
 
   const accuracy = answeredCount <= 0 ? 0 : Math.round((correctCount / answeredCount) * 100);
   const summarySeconds = Math.max(elapsedSeconds, 1);
   const summaryMinutesText = `${Math.floor(summarySeconds / 60)}분 ${summarySeconds % 60}초`;
-  const savingRotation = savingSpin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-  const difficultyPanelTranslateY = difficultyPanelReveal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [14, 0],
-  });
-  const difficultyPanelScale = difficultyPanelReveal.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.98, 1],
-  });
-  const difficultyChipScale = difficultyChipPulse.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.94, 1.08, 1],
-  });
 
   useEffect(() => {
     let mounted = true;
@@ -242,29 +228,13 @@ export default function QuizScreen() {
         setMaxStreak((currentMax) => Math.max(currentMax, nextStreak));
         return nextStreak;
       });
-      feedbackTranslateY.setValue(52);
-      feedbackScale.setValue(0.96);
-      feedbackOpacity.setValue(0);
-      Animated.parallel([
-        Animated.timing(feedbackOpacity, {
-          toValue: 1,
-          duration: 180,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: false,
-        }),
-        Animated.spring(feedbackTranslateY, {
-          toValue: 0,
-          tension: 85,
-          friction: 7,
-          useNativeDriver: false,
-        }),
-        Animated.spring(feedbackScale, {
-          toValue: 1,
-          tension: 95,
-          friction: 8,
-          useNativeDriver: false,
-        }),
-      ]).start();
+      // 버튼 위 한 줄 글이 살짝 올라오며 나타난다
+      if (reduce) {
+        noteIn.value = 1;
+      } else {
+        noteIn.value = 0;
+        noteIn.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.quad) });
+      }
 
       if (user?.id) {
         await recordQuizAttempt(user.id, currentQuestion.quizId, result.isCorrect);
@@ -276,50 +246,49 @@ export default function QuizScreen() {
     }
   }
 
-  function handleNext() {
+  function finishSession(at: { x: number; y: number }) {
+    const elapsed = Math.round((Date.now() - sessionStartedAtRef.current) / 1000);
+    // 결과는 누른 자리에서 물감이 번지며 나온다
+    void nav.cover(
+      () => {
+        setElapsedSeconds(Math.max(elapsed, 1));
+        setShowSummary(true);
+      },
+      { kind: 'bloom', x: at.x, y: at.y },
+    );
+  }
+
+  function handleNext(at: { x: number; y: number }) {
     if (isQuestionTransitioning) return;
 
-    if (currentIndex + 1 >= questions.length) {
-      const elapsed = Math.round((Date.now() - sessionStartedAtRef.current) / 1000);
-      setElapsedSeconds(Math.max(elapsed, 1));
-      setShowSummary(true);
+    if (isLast) {
+      finishSession(at);
       return;
     }
 
-    setIsQuestionTransitioning(true);
-    Animated.parallel([
-      Animated.timing(questionOpacity, {
-        toValue: 0,
-        duration: 160,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: false,
-      }),
-      Animated.timing(questionTranslateX, {
-        toValue: -Math.min(width * 0.22, 92),
-        duration: 180,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
+    const goNext = () => {
       setCurrentIndex((prev) => prev + 1);
       setSelectedId(null);
       setAnswerResult(null);
       setIsSaved(false);
       setErrorMessage(null);
-    });
+      noteIn.value = 0;
+    };
+
+    setIsQuestionTransitioning(true);
+    if (reduce) {
+      goNext();
+      return;
+    }
+    qOpacity.value = withTiming(0, { duration: 160, easing: Easing.in(Easing.quad) });
+    qShift.value = withTiming(-Math.min(width * 0.22, 92), { duration: 180, easing: Easing.in(Easing.cubic) });
+    setTimeout(goNext, 190);
   }
 
   function handleSaveFeedback() {
     if (!isAnswered || !user?.id || !currentQuestion) return;
     if (isSaving || isSaved) return;
     setErrorMessage(null);
-    saveButtonScale.setValue(0.96);
-    Animated.spring(saveButtonScale, {
-      toValue: 1,
-      tension: 170,
-      friction: 9,
-      useNativeDriver: false,
-    }).start();
     setIsSaving(true);
     void saveWrongNote(user.id, currentQuestion.quizId)
       .then(() => setIsSaved(true))
@@ -338,15 +307,16 @@ export default function QuizScreen() {
     }
   }
 
-  function handleRestartSession() {
-    router.replace({
+  function handleRestartSession(at: { x: number; y: number }) {
+    const href: Href = {
       pathname: '/quiz',
       params: {
         ...(isWrongOnlyMode ? { mode: 'wrong' } : {}),
         ...(categoryParam ? { category: categoryParam } : {}),
         ...(sessionTitleParam ? { title: sessionTitleParam } : {}),
       },
-    });
+    };
+    void nav.go(href, { kind: 'bloom', replace: true, x: at.x, y: at.y });
   }
 
   useEffect(() => {
@@ -355,22 +325,18 @@ export default function QuizScreen() {
       player.replay();
       player.play();
     } catch {
-      // Ignore autoplay failures; user can still replay manually.
+      // 자동 재생이 막혀도 '다시' 버튼으로 볼 수 있다
     }
   }, [currentQuestion, player]);
 
-  useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: progressPercent,
-      duration: 360,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [progressAnim, progressPercent]);
-
+  // 전체 정답률 숫자가 0부터 올라간다 (움직임 줄이기면 바로 보여 준다)
   useEffect(() => {
     if (questionCorrectRate === null) {
       setDisplayedCorrectRate(0);
+      return;
+    }
+    if (reduce) {
+      setDisplayedCorrectRate(Math.round(questionCorrectRate));
       return;
     }
 
@@ -399,1153 +365,368 @@ export default function QuizScreen() {
         cancelAnimationFrame(frameId);
       }
     };
-  }, [currentIndex, questionCorrectRate]);
+  }, [currentIndex, questionCorrectRate, reduce]);
 
+  // 새 문제가 오른쪽에서 들어온다
   useEffect(() => {
     if (!currentQuestion) return;
+    if (reduce) {
+      qOpacity.value = 1;
+      qShift.value = 0;
+      setIsQuestionTransitioning(false);
+      return;
+    }
+    qOpacity.value = 0;
+    qShift.value = Math.min(width * 0.22, 92);
+    qOpacity.value = withTiming(1, { duration: 210, easing: Easing.out(Easing.quad) });
+    qShift.value = withSpring(0, { damping: 18, stiffness: 160 });
+    const id = setTimeout(() => setIsQuestionTransitioning(false), 330);
+    return () => clearTimeout(id);
+    // width는 처음 들어올 때 거리만 정한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestion, reduce]);
 
-    questionOpacity.setValue(0);
-    questionTranslateX.setValue(Math.min(width * 0.22, 92));
-    difficultyPanelReveal.setValue(0);
-    difficultyChipPulse.setValue(0);
-    optionRevealAnims.forEach((anim) => anim.setValue(0));
-
-    Animated.parallel([
-      Animated.timing(questionOpacity, {
-        toValue: 1,
-        duration: 210,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-      Animated.spring(questionTranslateX, {
-        toValue: 0,
-        tension: 125,
-        friction: 13,
-        useNativeDriver: false,
-      }),
-      Animated.sequence([
-        Animated.delay(80),
-        Animated.parallel([
-          Animated.timing(difficultyPanelReveal, {
-            toValue: 1,
-            duration: 260,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: false,
-          }),
-          Animated.timing(difficultyChipPulse, {
-            toValue: 1,
-            duration: 420,
-            easing: Easing.out(Easing.back(1.4)),
-            useNativeDriver: false,
-          }),
-        ]),
-      ]),
-      Animated.stagger(
-        55,
-        optionRevealAnims.map((anim) =>
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 260,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: false,
-          })
-        )
-      ),
-    ]).start(() => setIsQuestionTransitioning(false));
-  }, [
-    currentQuestion,
-    difficultyChipPulse,
-    difficultyPanelReveal,
-    optionRevealAnims,
-    questionOpacity,
-    questionTranslateX,
-    width,
-  ]);
-
+  // 3번 연속 맞힐 때마다 화면 가운데에 물감이 번지며 콤보가 뜬다
   useEffect(() => {
     const prev = prevStreakRef.current;
     prevStreakRef.current = currentStreak;
+    if (currentStreak <= prev || currentStreak <= 0 || currentStreak % 3 !== 0) return;
+    if (reduce) return;
+    burst.value = 0.9;
+    burstScale.value = 0.6;
+    burstScale.value = withTiming(1.6, { duration: 1800, easing: Easing.out(Easing.cubic) });
+    burst.value = withTiming(0, { duration: 2200, easing: Easing.in(Easing.quad) });
+  }, [currentStreak, reduce, burst, burstScale]);
 
-    if (currentStreak <= prev || currentStreak <= 0) {
-      return;
-    }
-    if (currentStreak % 3 !== 0) {
-      return;
-    }
-
-    badgeScale.setValue(1);
-    waveOpacity.setValue(0.62);
-    waveScale.setValue(0.6);
-
-    Animated.parallel([
-      Animated.sequence([
-        Animated.timing(badgeScale, {
-          toValue: 1.26,
-          duration: 380,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }),
-        Animated.timing(badgeScale, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.out(Easing.back(1.2)),
-          useNativeDriver: false,
-        }),
-      ]),
-      Animated.timing(waveScale, {
-        toValue: 2.2,
-        duration: 2100,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(waveOpacity, {
-        toValue: 0,
-        duration: 2500,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [badgeScale, currentStreak, waveOpacity, waveScale]);
-
+  // 2번 이상 연속이면 위쪽 콤보 글씨가 톡 튄다
   useEffect(() => {
     const prev = prevComboStreakRef.current;
     prevComboStreakRef.current = currentStreak;
-
-    if (currentStreak < 2 || currentStreak <= prev) {
-      return;
-    }
-
-    comboScale.setValue(0.84);
-    comboTranslateY.setValue(6);
-
-    Animated.parallel([
-      Animated.spring(comboScale, {
-        toValue: 1.16,
-        tension: 150,
-        friction: 7,
-        useNativeDriver: false,
-      }),
-      Animated.spring(comboTranslateY, {
-        toValue: -2,
-        tension: 130,
-        friction: 8,
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
-      Animated.parallel([
-        Animated.spring(comboScale, {
-          toValue: 1,
-          tension: 120,
-          friction: 9,
-          useNativeDriver: false,
-        }),
-        Animated.spring(comboTranslateY, {
-          toValue: 0,
-          tension: 120,
-          friction: 10,
-          useNativeDriver: false,
-        }),
-      ]).start();
-    });
-  }, [comboScale, comboTranslateY, currentStreak]);
+    if (currentStreak < 2 || currentStreak <= prev || reduce) return;
+    comboPop.value = 0.84;
+    comboPop.value = withSequence(withSpring(1.16, { damping: 7, stiffness: 220 }), withSpring(1, { damping: 10, stiffness: 180 }));
+  }, [currentStreak, reduce, comboPop]);
 
   useEffect(() => {
-    if (!isSaving) {
-      savingSpin.stopAnimation();
-      savingSpin.setValue(0);
+    if (!isSaved) {
+      savedIn.value = 0;
       return;
     }
+    savedIn.value = reduce ? 1 : withTiming(1, { duration: 180 });
+  }, [isSaved, reduce, savedIn]);
 
-    const loop = Animated.loop(
-      Animated.timing(savingSpin, {
-        toValue: 1,
-        duration: 850,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [isSaving, savingSpin]);
-
-  useEffect(() => {
-    if (!isSaved) return;
-
-    saveButtonScale.setValue(0.9);
-    saveSuccessOpacity.setValue(0);
-    saveSuccessTranslateY.setValue(8);
-    Animated.parallel([
-      Animated.spring(saveButtonScale, {
-        toValue: 1,
-        tension: 190,
-        friction: 7,
-        useNativeDriver: false,
-      }),
-      Animated.timing(saveSuccessOpacity, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-      Animated.spring(saveSuccessTranslateY, {
-        toValue: 0,
-        tension: 130,
-        friction: 10,
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [isSaved, saveButtonScale, saveSuccessOpacity, saveSuccessTranslateY]);
+  const questionStyle = useAnimatedStyle(() => ({
+    opacity: qOpacity.value,
+    transform: [{ translateX: qShift.value }],
+  }));
+  const noteStyle = useAnimatedStyle(() => ({
+    opacity: noteIn.value,
+    transform: [{ translateY: (1 - noteIn.value) * 6 }],
+  }));
+  const comboStyle = useAnimatedStyle(() => ({ transform: [{ scale: comboPop.value }] }));
+  const burstStyle = useAnimatedStyle(() => ({ opacity: burst.value, transform: [{ scale: burstScale.value }] }));
+  const savedStyle = useAnimatedStyle(() => ({
+    opacity: savedIn.value,
+    transform: [{ translateY: (1 - savedIn.value) * 8 }],
+  }));
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingWrap}>
-          <Text style={styles.loadingText}>퀴즈를 불러오는 중...</Text>
+      <PaperScreen edges={['top', 'bottom']}>
+        <View style={styles.center} accessibilityLiveRegion="polite">
+          <Bee size={72} />
+          <StoryText size={Size.lead}>퀴즈를 불러오는 중이에요</StoryText>
         </View>
-      </SafeAreaView>
+      </PaperScreen>
     );
   }
 
   if (showSummary) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.summaryRoot}>
-          <Text style={styles.summaryTitle}>퀴즈 결과</Text>
-          <Text style={styles.summarySubTitle}>{sessionTitle}</Text>
-
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>정답률</Text>
-              <Text style={styles.summaryValue}>{accuracy}%</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>최대 연속 정답</Text>
-              <Text style={styles.summaryValue}>{maxStreak}회</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>걸린 시간</Text>
-              <Text style={styles.summaryValue}>{summaryMinutesText}</Text>
-            </View>
+      <PaperScreen edges={['top', 'bottom']}>
+        <ScrollView contentContainerStyle={styles.summaryRoot}>
+          <View style={styles.summaryHead}>
+            <Bee size={84} />
+            <StoryText size={Size.display}>퀴즈 결과</StoryText>
+            <BodyText soft>{sessionTitle}</BodyText>
           </View>
 
-          <Pressable style={styles.summaryPrimaryButton} onPress={handleRestartSession}>
-            <Text style={styles.summaryPrimaryButtonText}>같은 퀴즈 다시 풀기</Text>
-          </Pressable>
-          <Pressable style={styles.summarySecondaryButton} onPress={() => router.replace('/learn')}>
-            <Text style={styles.summarySecondaryButtonText}>이전 화면으로</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+          <RoughBox seed={41} wash={Paint.yellowSoft} washOpacity={0.55} style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <BodyText size={Size.lead}>정답률</BodyText>
+              <StoryText size={Size.heading}>{accuracy}%</StoryText>
+            </View>
+            <View style={styles.summaryRow}>
+              <BodyText size={Size.lead}>최대 연속 정답</BodyText>
+              <StoryText size={Size.heading}>{maxStreak}회</StoryText>
+            </View>
+            <View style={styles.summaryRow}>
+              <BodyText size={Size.lead}>걸린 시간</BodyText>
+              <StoryText size={Size.heading}>{summaryMinutesText}</StoryText>
+            </View>
+          </RoughBox>
+
+          <View style={styles.summaryButtons}>
+            {/* 마을로 돌아가면 새로 다 배운 곳이 물감으로 칠해진다 */}
+            <PaintButton label="마을에 색칠하러 가기" onPress={(at) => void nav.go('/home', { kind: 'bloom', replace: true, x: at.x, y: at.y })} seed={42} />
+            <PaintButton label="같은 퀴즈 다시 풀기" variant="ghost" onPress={handleRestartSession} seed={43} />
+            <PaintButton
+              label="이전 화면으로"
+              variant="ghost"
+              seed={44}
+              onPress={(at) => void nav.go('/learn', { kind: 'bloom', replace: true, x: at.x, y: at.y })}
+            />
+          </View>
+        </ScrollView>
+      </PaperScreen>
     );
   }
 
   if (!currentQuestion) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingWrap}>
-          <Text style={styles.loadingText}>
+      <PaperScreen edges={['top', 'bottom']}>
+        <View style={styles.center}>
+          <Bee size={72} still />
+          <StoryText size={Size.lead} style={{ textAlign: 'center' }}>
             {isWrongOnlyMode ? '오답 복습 문제가 없습니다.' : '출제 가능한 문제가 없습니다.'}
-          </Text>
-          {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+          </StoryText>
+          {errorMessage && (
+            <BodyText style={styles.errorText}>
+              <Mark color={Paint.wrongSoft}>{errorMessage}</Mark>
+            </BodyText>
+          )}
+          <PaintButton label="돌아가기" variant="ghost" small onPress={(at) => void nav.back(at)} style={{ marginTop: 8 }} />
         </View>
-      </SafeAreaView>
+      </PaperScreen>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.root}>
-        <Animated.View pointerEvents="none" style={[styles.screenFlashOverlay, { opacity: waveOpacity }]} />
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.waveOverlay,
-            {
-              width: waveDiameter,
-              height: waveDiameter,
-              borderRadius: waveDiameter / 2,
-              left: (width - waveDiameter) / 2,
-              top: (height - waveDiameter) / 2,
-              opacity: waveOpacity,
-              transform: [{ scale: waveScale }],
-            },
-          ]}
-        />
-        <Animated.View pointerEvents="none" style={[styles.boltLayer, { opacity: waveOpacity }]}>
-          <View style={[styles.boltSegment, styles.boltSeg1]} />
-          <View style={[styles.boltSegment, styles.boltSeg2]} />
-          <View style={[styles.boltSegment, styles.boltSeg3]} />
-          <View style={[styles.boltSegment, styles.boltSeg4]} />
-        </Animated.View>
-        <Animated.View pointerEvents="none" style={[styles.starLayer, { opacity: waveOpacity }]}>
-          <Ionicons name="star" size={12} color="#fde68a" style={[styles.starItem, styles.star1]} />
-          <Ionicons name="star" size={10} color="#fef08a" style={[styles.starItem, styles.star2]} />
-          <Ionicons name="star" size={14} color="#fde68a" style={[styles.starItem, styles.star3]} />
-          <Ionicons name="star" size={9} color="#fef08a" style={[styles.starItem, styles.star4]} />
-          <Ionicons name="star" size={11} color="#fde68a" style={[styles.starItem, styles.star5]} />
-          <Ionicons name="star" size={13} color="#fef08a" style={[styles.starItem, styles.star6]} />
-        </Animated.View>
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.comboBurstWrap, { opacity: waveOpacity, transform: [{ scale: badgeScale }] }]}>
-          <Text style={styles.comboBurstText}>콤보 x{currentStreak}</Text>
-        </Animated.View>
-        <View style={styles.headerBlock}>
-          <View style={styles.header}>
-            <Pressable style={styles.closeButton} onPress={() => router.back()}>
-              <Ionicons name="close" size={22} color="#64748b" />
-            </Pressable>
-            <View style={styles.progressWrap}>
-              <View style={styles.progressTrack} onLayout={(event) => setProgressTrackWidth(event.nativeEvent.layout.width)}>
-                <Animated.View style={[styles.progressFill, { width: progressFillWidth }]} />
-              </View>
-              {currentStreak >= 2 && (
-                <Animated.Text
-                  style={[
-                    styles.streakProgressText,
-                    {
-                      left: comboLabelLeft,
-                      width: comboLabelWidth,
-                      color: streakBadgeTone.bg,
-                      transform: [{ translateY: comboTranslateY }, { scale: comboScale }],
-                    },
-                  ]}>
-                  {comboLabel}
-                </Animated.Text>
-              )}
-            </View>
-            <Text style={styles.progressText}>{progressText}</Text>
-          </View>
-        </View>
+  const answerStateOf = (id: ChoiceId): QuizAnswerState => {
+    const isPicked = selectedId === id;
+    if (!isAnswered) return isPicked ? 'picked' : 'idle';
+    if (answerResult?.correctChoiceId === id) return 'right';
+    if (isPicked) return 'wrong';
+    return 'faded';
+  };
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <Animated.View style={{ opacity: questionOpacity, transform: [{ translateX: questionTranslateX }] }}>
-          <View style={styles.imageWrap}>
-            {currentQuestion?.videoUrl ? (
-              <>
-                <VideoView style={styles.videoPlayer} player={player} nativeControls contentFit="cover" />
-                <Pressable style={styles.replayButton} onPress={handleReplayVideo}>
-                  <Ionicons name="play" size={14} color="#4b5563" />
-                  <Text style={styles.replayText}>다시 재생</Text>
-                </Pressable>
-              </>
-            ) : (
-              <View style={styles.noVideoWrap}>
-                <Ionicons name="videocam-off-outline" size={36} color="#94a3b8" />
-                <Text style={styles.noVideoText}>이 단어의 수어 영상이 아직 준비되지 않았습니다.</Text>
-              </View>
+  return (
+    <PaperScreen edges={['top', 'bottom']}>
+      {/* 콤보 물감 번짐 (누르기를 막지 않는다) */}
+      <Animated.View pointerEvents="none" style={[styles.burstLayer, burstStyle]}>
+        <View style={styles.burstBlob}>
+          <Wash color={Paint.yellowSoft} opacity={0.85} seed={currentStreak + 2} />
+        </View>
+        <RoughBox seed={currentStreak + 30} wash={Paint.yellow} style={styles.burstCard}>
+          <StoryText size={34}>콤보 x{currentStreak}</StoryText>
+        </RoughBox>
+      </Animated.View>
+
+      {/* 위: 돌아가기 · 진행 점 · 몇 번째 */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={(e) => void nav.back({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+          accessibilityRole="button"
+          accessibilityLabel="퀴즈 그만하고 돌아가기"
+          hitSlop={8}
+          style={styles.backBtn}
+        >
+          <PaintIcon name="back" size={30} />
+        </Pressable>
+        <View
+          style={styles.dots}
+          accessible
+          accessibilityLabel={`${total}문제 중 ${Math.min(currentIndex + 1, total)}번째`}
+        >
+          {questions.map((q, i) => (
+            <ProgressDot key={q.quizId ?? i} status={i < currentIndex ? 'done' : i === currentIndex ? 'now' : 'todo'} />
+          ))}
+        </View>
+        <BodyText soft size={Size.small}>{progressText}</BodyText>
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Animated.View style={questionStyle}>
+          <View style={styles.whereRow}>
+            <BodyText soft size={Size.small}>{sessionTitle}</BodyText>
+            {currentStreak >= 2 && (
+              <Animated.View style={comboStyle}>
+                <StoryText size={Size.body}>
+                  <Mark color={Paint.yellow}>{` 콤보 x${currentStreak} `}</Mark>
+                </StoryText>
+              </Animated.View>
             )}
           </View>
+          <StoryText size={23} style={styles.question}>{currentQuestion.questionText}</StoryText>
 
-          <View style={styles.questionWrap}>
-            <Animated.View
-              style={[
-                styles.difficultyPanel,
-                {
-                  opacity: difficultyPanelReveal,
-                  transform: [{ translateY: difficultyPanelTranslateY }, { scale: difficultyPanelScale }],
-                },
-              ]}>
-              <Animated.View
-                style={[
-                  styles.difficultyChip,
-                  { backgroundColor: difficultyTone.chipBg, transform: [{ scale: difficultyChipScale }] },
-                ]}>
-                <Ionicons name="pulse" size={12} color={difficultyTone.chipText} />
-                <Text style={[styles.difficultyChipText, { color: difficultyTone.chipText }]}>
-                  난이도 {difficultyText || '미정'}
-                </Text>
-              </Animated.View>
-              {questionCorrectRate !== null ? (
-                <Text style={styles.difficultyDescription}>
-                  이 문제는 전체 사용자의{' '}
-                  <Text style={[styles.correctRateValue, { color: difficultyTone.percent }]}>
-                    {displayedCorrectRate}%
-                  </Text>
-                  가 맞춘 퀴즈입니다.
-                </Text>
-              ) : (
-                <Text style={styles.difficultyDescriptionMuted}>이 문제 통계는 집계 중입니다.</Text>
-              )}
-              {questionAttemptCount !== null && questionAttemptCount < 20 ? (
-                <Text style={styles.difficultyHint}>표본이 적어 통계가 달라질 수 있습니다.</Text>
-              ) : null}
-            </Animated.View>
-            <Text style={styles.questionTitle}>{currentQuestion.questionText}</Text>
-            <Text style={styles.questionSub}>알맞은 답을 선택해주세요.</Text>
+          {/* 난이도 · 전체 정답률 */}
+          <View style={styles.statRow}>
+            <BodyText size={Size.small}>
+              <Mark color={difficultyColor}>{` 난이도 ${difficultyText || '미정'} `}</Mark>
+            </BodyText>
+            {questionCorrectRate !== null ? (
+              <BodyText soft size={Size.small}>
+                전체 사용자의 <StoryText size={Size.body}>{displayedCorrectRate}%</StoryText>가 맞춘 문제
+              </BodyText>
+            ) : (
+              <BodyText soft size={Size.small}>통계는 집계 중이에요</BodyText>
+            )}
           </View>
+          {questionAttemptCount !== null && questionAttemptCount < 20 ? (
+            <BodyText soft size={Size.caption}>표본이 적어 통계가 달라질 수 있습니다.</BodyText>
+          ) : null}
 
-          <View style={styles.optionsWrap}>
-            {options.map((option) => {
-              const optionIndex = CHOICE_IDS.indexOf(option.id);
-              const optionAnim = optionRevealAnims[optionIndex] ?? optionRevealAnims[0];
-              const isPicked = selectedId === option.id;
-              const isCorrectOption = isAnswered && answerResult?.correctChoiceId === option.id;
-              const isWrongPicked = isAnswered && isPicked && !isCorrect;
-              const shouldFade = isAnswered && !isPicked && !isCorrectOption;
-              const isWaitingPicked = !isAnswered && isPicked;
-
-              return (
-                <Animated.View
-                  key={option.id}
-                  style={{
-                    opacity: optionAnim,
-                    transform: [
-                      {
-                        translateY: optionAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [12, 0],
-                        }),
-                      },
-                    ],
-                  }}>
+          {/* 만화 칸: 수어 영상 */}
+          <RoughBox
+            seed={currentIndex + 3}
+            strokeWidth={2.4}
+            radius={18}
+            wash={isAnswered && isCorrect ? Paint.yellowSoft : undefined}
+            style={styles.panel}
+          >
+            {currentQuestion.videoUrl ? (
+              <View style={styles.videoClip}>
+                <VideoView style={styles.video} player={player} nativeControls contentFit="cover" />
                 <Pressable
-                  style={[
-                    styles.optionButton,
-                    shouldFade && styles.optionDisabled,
-                    isWaitingPicked && styles.optionPicked,
-                    isCorrectOption && styles.optionCorrect,
-                    isWrongPicked && styles.optionWrong,
-                  ]}
-                  onPress={() => handleSelect(option.id)}
-                  disabled={isQuestionTransitioning}>
-                  <View
-                    style={[
-                      styles.optionBadge,
-                      isWaitingPicked && styles.optionBadgePicked,
-                      isCorrectOption && styles.optionBadgeCorrect,
-                      isWrongPicked && styles.optionBadgeWrong,
-                    ]}>
-                    <Text
-                      style={[
-                        styles.optionBadgeText,
-                        isWaitingPicked && styles.optionBadgeTextPicked,
-                        isCorrectOption && styles.optionBadgeTextCorrect,
-                        isWrongPicked && styles.optionBadgeTextWrong,
-                      ]}>
-                      {option.id}
-                    </Text>
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.optionText,
-                      isWaitingPicked && styles.optionTextPicked,
-                      isCorrectOption && styles.optionTextCorrect,
-                      isWrongPicked && styles.optionTextWrong,
-                    ]}>
-                    {option.text}
-                  </Text>
-
-                  {isCorrectOption && <Ionicons name="checkmark" size={20} color="#22c55e" />}
-                  {isWrongPicked && <Ionicons name="close" size={20} color="#ef4444" />}
+                  onPress={handleReplayVideo}
+                  accessibilityRole="button"
+                  accessibilityLabel="수어 영상 다시 보기"
+                  style={styles.replayBtn}
+                >
+                  <RoughBox seed={9} radius={12} fill={Paint.paper} strokeWidth={1.6} style={styles.replayInner}>
+                    <PaintIcon name="play" size={16} />
+                    <BodyText size={Size.small}>다시</BodyText>
+                  </RoughBox>
                 </Pressable>
-                </Animated.View>
-              );
-            })}
-          </View>
-
-          {!isAnswered && (
-            <Pressable
-              style={[styles.submitButton, (!selectedId || isChecking) && styles.submitButtonDisabled]}
-              onPress={handleSubmitAnswer}
-              disabled={!selectedId || isChecking}>
-              <Text style={styles.submitButtonText}>{isChecking ? '제출 중...' : '제출하기'}</Text>
-            </Pressable>
-          )}
-
-          {isChecking && <Text style={styles.helperText}>정답을 확인하는 중...</Text>}
-          {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
-
-          {isAnswered && answerResult && (
-            <Animated.View
-              style={[
-                styles.feedbackWrap,
-                isCorrect ? styles.feedbackCorrect : styles.feedbackWrong,
-                {
-                  opacity: feedbackOpacity,
-                  transform: [{ translateY: feedbackTranslateY }, { scale: feedbackScale }],
-                },
-              ]}>
-              <View style={styles.feedbackTop}>
-                <View style={styles.feedbackMascot}>
-                  <Mascot mood={isCorrect ? 'correct' : 'wrong'} size={72} interactive />
-                </View>
-                <View style={styles.feedbackTextWrap}>
-                  <Text style={[styles.feedbackTitle, isCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
-                    {isCorrect ? '정답이에요!' : '아깝다! 다시 보면 돼요'}
-                  </Text>
-                  <Text style={[styles.feedbackDesc, isCorrect ? styles.feedbackDescCorrect : styles.feedbackDescWrong]}>
-                    정답: {answerResult.correctChoiceText}
-                  </Text>
-                  {isCorrect && currentStreak >= 2 && (
-                    <Text style={styles.streakInlineText}>콤보 x{currentStreak} 진행 중</Text>
-                  )}
-                </View>
               </View>
+            ) : (
+              <View style={styles.noVideo}>
+                <Bee size={60} still />
+                <BodyText soft style={{ textAlign: 'center' }}>이 단어의 수어 영상이 아직 준비되지 않았습니다.</BodyText>
+              </View>
+            )}
+          </RoughBox>
 
-              <Animated.View style={{ transform: [{ scale: saveButtonScale }] }}>
-                <Pressable
-                  style={[
-                    styles.saveButton,
-                    isCorrect ? styles.saveButtonCorrect : styles.saveButtonWrong,
-                    isSaved && styles.saveButtonSaved,
-                  ]}
-                  onPress={handleSaveFeedback}
-                  disabled={isSaving || isSaved}>
-                  <Animated.View style={isSaving ? { transform: [{ rotate: savingRotation }] } : undefined}>
-                    <MaterialCommunityIcons
-                      name={isSaved ? 'check-circle' : isSaving ? 'sync' : 'bookmark'}
-                      size={15}
-                      color={isSaved ? '#1d4ed8' : isCorrect ? '#16a34a' : '#ef4444'}
-                    />
-                  </Animated.View>
-                  <Text
-                    style={[
-                      styles.saveButtonText,
-                      isCorrect ? styles.saveTextCorrect : styles.saveTextWrong,
-                      isSaved && styles.saveTextSaved,
-                    ]}>
-                    {isSaved ? '저장됨' : isSaving ? '저장 중...' : '오답노트에 저장'}
-                  </Text>
-                </Pressable>
-              </Animated.View>
+          {/* 보기 4개 */}
+          <View style={{ marginTop: 16 }}>
+            <QuizAnswerGrid>
+              {options.map((option, i) => (
+                <QuizAnswer
+                  key={option.id}
+                  letter={option.id}
+                  text={option.text}
+                  index={i}
+                  revealKey={currentIndex}
+                  state={answerStateOf(option.id)}
+                  disabled={isQuestionTransitioning || isAnswered || isChecking}
+                  onPress={() => handleSelect(option.id)}
+                />
+              ))}
+            </QuizAnswerGrid>
+          </View>
 
-              {isSaved && (
-                <Animated.View
-                  style={[
-                    styles.savedToast,
-                    {
-                      opacity: saveSuccessOpacity,
-                      transform: [{ translateY: saveSuccessTranslateY }],
-                    },
-                  ]}>
-                  <Ionicons name="checkmark-circle" size={14} color="#1d4ed8" />
-                  <Text style={styles.savedFeedback}>오답노트에 저장되었습니다</Text>
-                </Animated.View>
-              )}
-
-              <Pressable
-                style={[styles.nextButton, isCorrect ? styles.nextButtonCorrect : styles.nextButtonWrong]}
-                onPress={handleNext}
-                disabled={isQuestionTransitioning}>
-                <Text style={styles.nextButtonText}>
-                  {currentIndex + 1 >= questions.length ? '퀴즈 종료' : '다음 문제로'}
-                </Text>
-              </Pressable>
-            </Animated.View>
+          {errorMessage && (
+            <BodyText size={Size.small} style={styles.errorText}>
+              <Mark color={Paint.wrongSoft}>{errorMessage}</Mark>
+            </BodyText>
           )}
+        </Animated.View>
+      </ScrollView>
+
+      {/* 아래: 한 줄 글 + 버튼 */}
+      <View style={styles.footer}>
+        {isAnswered && answerResult ? (
+          <Animated.View style={[styles.noteRow, noteStyle]} accessibilityLiveRegion="polite">
+            <Bee size={48} flip={!isCorrect} />
+            <View style={{ flex: 1 }}>
+              <StoryText size={Size.lead}>{isCorrect ? '맞아요!' : '아깝다! 손 모양을 한 번 더 볼까요?'}</StoryText>
+              <BodyText soft size={Size.small}>
+                정답: <Mark>{answerResult.correctChoiceText}</Mark>
+                {isCorrect && currentStreak >= 2 ? `  ·  콤보 x${currentStreak} 진행 중` : ''}
+              </BodyText>
+            </View>
           </Animated.View>
-        </ScrollView>
+        ) : isChecking ? (
+          <BodyText soft size={Size.small} style={styles.checking}>정답을 확인하는 중...</BodyText>
+        ) : null}
+
+        {isSaved && (
+          <Animated.View style={[styles.savedRow, savedStyle]} accessibilityLiveRegion="polite">
+            <PaintIcon name="check" size={16} />
+            <BodyText size={Size.small}>오답노트에 저장되었습니다</BodyText>
+          </Animated.View>
+        )}
+
+        {!isAnswered ? (
+          <PaintButton
+            label={isChecking ? '확인하는 중...' : '확인'}
+            disabled={!selectedId || isChecking}
+            onPress={() => void handleSubmitAnswer()}
+            seed={currentIndex + 50}
+          />
+        ) : (
+          <View style={styles.footRow}>
+            <PaintButton
+              small
+              variant="ghost"
+              style={{ flex: 1 }}
+              seed={61}
+              disabled={isSaving || isSaved || !user?.id}
+              label={!user?.id ? '로그인 후 저장' : isSaved ? '저장됨' : isSaving ? '저장 중...' : '오답노트'}
+              accessibilityLabel={!user?.id ? '로그인하면 오답노트에 저장할 수 있어요' : '오답노트에 저장'}
+              icon={<PaintIcon name="bookmark" size={18} color={isSaved || !user?.id ? Paint.inkFaint : Paint.ink} />}
+              onPress={handleSaveFeedback}
+            />
+            <PaintButton
+              small
+              style={{ flex: 1.4 }}
+              seed={62}
+              color={isCorrect ? Paint.mint : Paint.yellow}
+              disabled={isQuestionTransitioning}
+              label={isLast ? '결과 보러 가기' : '다음 문제로'}
+              onPress={handleNext}
+            />
+          </View>
+        )}
       </View>
-    </SafeAreaView>
+    </PaperScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
-  },
-  root: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
-    overflow: 'hidden',
-  },
-  summaryRoot: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 18,
-    paddingTop: 36,
-  },
-  summaryTitle: {
-    fontSize: 30,
-    fontWeight: '900',
-    color: '#111827',
-    textAlign: 'center',
-  },
-  summarySubTitle: {
-    marginTop: 8,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#64748b',
-    textAlign: 'center',
-  },
-  summaryCard: {
-    marginTop: 26,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  summaryLabel: {
-    fontSize: 17,
-    color: '#334155',
-    fontWeight: '700',
-  },
-  summaryValue: {
-    fontSize: 22,
-    color: '#0f172a',
-    fontWeight: '900',
-  },
-  summaryPrimaryButton: {
-    marginTop: 24,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#22c55e',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryPrimaryButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  summarySecondaryButton: {
-    marginTop: 10,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summarySecondaryButtonText: {
-    color: '#475569',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  screenFlashOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(253, 224, 71, 0.28)',
-    zIndex: 50,
-    elevation: 50,
-  },
-  waveOverlay: {
-    position: 'absolute',
-    backgroundColor: 'transparent',
-    borderWidth: 6,
-    borderColor: 'rgba(253, 224, 71, 0.9)',
-    zIndex: 51,
-    elevation: 51,
-  },
-  boltLayer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 55,
-    elevation: 55,
-  },
-  starLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 56,
-    elevation: 56,
-  },
-  starItem: {
-    position: 'absolute',
-  },
-  star1: {
-    top: '16%',
-    left: '12%',
-  },
-  star2: {
-    top: '24%',
-    left: '72%',
-  },
-  star3: {
-    top: '36%',
-    left: '18%',
-  },
-  star4: {
-    top: '46%',
-    left: '80%',
-  },
-  star5: {
-    top: '62%',
-    left: '28%',
-  },
-  star6: {
-    top: '72%',
-    left: '74%',
-  },
-  boltSegment: {
-    position: 'absolute',
-    width: 14,
-    borderRadius: 999,
-    backgroundColor: '#fef08a',
-    borderWidth: 1,
-    borderColor: '#fde047',
-  },
-  boltSeg1: {
-    height: 190,
-    top: 42,
-    left: '47%',
-    transform: [{ rotate: '28deg' }],
-  },
-  boltSeg2: {
-    height: 170,
-    top: 196,
-    left: '44%',
-    transform: [{ rotate: '-32deg' }],
-  },
-  boltSeg3: {
-    height: 200,
-    top: 330,
-    left: '50%',
-    transform: [{ rotate: '30deg' }],
-  },
-  boltSeg4: {
-    height: 230,
-    top: 510,
-    left: '46%',
-    transform: [{ rotate: '-14deg' }],
-  },
-  comboBurstWrap: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '50%',
-    marginTop: -8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(17, 24, 39, 0.68)',
-    borderWidth: 2,
-    borderColor: '#f59e0b',
-    zIndex: 60,
-    elevation: 60,
-  },
-  comboBurstText: {
-    color: '#f59e0b',
-    fontSize: 38,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  loadingWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    color: '#334155',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingTop: 4,
-  },
-  headerBlock: {
-    paddingBottom: 6,
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressWrap: {
-    flex: 1,
-    paddingHorizontal: 8,
-    position: 'relative',
-    paddingBottom: 24,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: '#d1d5db',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: PRIMARY,
-  },
-  progressText: {
-    color: PRIMARY,
-    fontSize: 12,
-    fontWeight: '700',
-    minWidth: 40,
-    textAlign: 'right',
-  },
-  streakProgressText: {
-    position: 'absolute',
-    top: 14,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.12)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
-  imageWrap: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#fff',
-    backgroundColor: '#d1d5db',
-    height: 350,
-    position: 'relative',
-  },
-  videoPlayer: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000',
-  },
-  noVideoWrap: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f1f5f9',
-    gap: 10,
-    paddingHorizontal: 24,
-  },
-  noVideoText: {
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  replayButton: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  replayText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  questionWrap: {
-    marginTop: 14,
-    alignItems: 'center',
-    width: '100%',
-  },
-  difficultyPanel: {
-    width: '100%',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#dde4ef',
-    backgroundColor: '#eef2f7',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    gap: 4,
-  },
-  difficultyChip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: '#dbeafe',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  difficultyChipText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  difficultyDescription: {
-    marginTop: 2,
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  correctRateValue: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  difficultyDescriptionMuted: {
-    marginTop: 2,
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  difficultyHint: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  questionTitle: {
-    marginTop: 14,
-    color: '#111827',
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-    textAlign: 'center',
-  },
-  questionSub: {
-    marginTop: 4,
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  optionsWrap: {
-    marginTop: 14,
-    gap: 8,
-  },
-  optionButton: {
-    minHeight: 58,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: '#d5dbe3',
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  optionDisabled: {
-    opacity: 0.6,
-  },
-  optionCorrect: {
-    borderColor: '#22c55e',
-    backgroundColor: '#e8f9ee',
-  },
-  optionPicked: {
-    borderColor: PRIMARY,
-    backgroundColor: '#eff6ff',
-  },
-  optionWrong: {
-    borderColor: '#ef4444',
-    backgroundColor: '#fef2f2',
-  },
-  optionBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f3f4f6',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  optionBadgeCorrect: {
-    backgroundColor: '#d1fae5',
-    borderColor: '#86efac',
-  },
-  optionBadgePicked: {
-    backgroundColor: '#dbeafe',
-    borderColor: '#93c5fd',
-  },
-  optionBadgeWrong: {
-    backgroundColor: '#fee2e2',
-    borderColor: '#fca5a5',
-  },
-  optionBadgeText: {
-    color: '#9ca3af',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  optionBadgeTextCorrect: {
-    color: '#16a34a',
-  },
-  optionBadgeTextPicked: {
-    color: PRIMARY,
-  },
-  optionBadgeTextWrong: {
-    color: '#dc2626',
-  },
-  optionText: {
-    flex: 1,
-    marginLeft: 12,
-    color: '#4b5563',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  optionTextCorrect: {
-    color: '#15803d',
-  },
-  optionTextPicked: {
-    color: '#1d4ed8',
-  },
-  optionTextWrong: {
-    color: '#b91c1c',
-  },
-  submitButton: {
-    marginTop: 12,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: PRIMARY,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#93c5fd',
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  helperText: {
-    marginTop: 10,
-    textAlign: 'center',
-    color: '#0f766e',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  errorText: {
-    marginTop: 10,
-    textAlign: 'center',
-    color: '#b91c1c',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  feedbackWrap: {
-    marginTop: 12,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    borderTopWidth: 2,
-  },
-  feedbackCorrect: {
-    backgroundColor: '#eaf9ef',
-    borderTopColor: '#bbf7d0',
-  },
-  feedbackWrong: {
-    backgroundColor: '#fef2f2',
-    borderTopColor: '#fecaca',
-  },
-  feedbackTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  feedbackMascot: {
-    marginRight: 6,
-    marginTop: -28,
-  },
-  feedbackTextWrap: {
-    flex: 1,
-  },
-  feedbackTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  feedbackTitleCorrect: {
-    color: '#16a34a',
-  },
-  feedbackTitleWrong: {
-    color: '#dc2626',
-  },
-  feedbackDesc: {
-    marginTop: 2,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  feedbackDescCorrect: {
-    color: '#166534',
-  },
-  feedbackDescWrong: {
-    color: '#7f1d1d',
-  },
-  streakInlineText: {
-    marginTop: 4,
-    color: '#92400e',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  saveButton: {
-    marginTop: 12,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#fff',
-  },
-  saveButtonCorrect: {
-    borderColor: '#86efac',
-  },
-  saveButtonWrong: {
-    borderColor: '#fca5a5',
-  },
-  saveButtonSaved: {
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-  },
-  saveButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  saveTextCorrect: {
-    color: '#16a34a',
-  },
-  saveTextWrong: {
-    color: '#dc2626',
-  },
-  saveTextSaved: {
-    color: '#1d4ed8',
-  },
-  savedToast: {
-    alignSelf: 'center',
-    marginTop: 8,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  savedFeedback: {
-    textAlign: 'center',
-    color: '#1d4ed8',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  nextButton: {
-    marginTop: 10,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nextButtonCorrect: {
-    backgroundColor: '#22c55e',
-  },
-  nextButtonWrong: {
-    backgroundColor: '#ef4444',
-  },
-  nextButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
+
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 10 },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  dots: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.8, borderColor: Paint.ink, backgroundColor: 'transparent' },
+
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  whereRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 24 },
+  question: { marginTop: 2 },
+  statRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, marginTop: 6 },
+
+  panel: { marginTop: 14, height: 300, padding: 8 },
+  videoClip: { flex: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: Paint.ink },
+  video: { width: '100%', height: '100%' },
+  replayBtn: { position: 'absolute', top: 8, right: 8, minWidth: 44, minHeight: 44 },
+  replayInner: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 44 },
+  noVideo: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
+
+  errorText: { marginTop: 12, textAlign: 'center' },
+
+  footer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 10, borderTopWidth: 1.5, borderTopColor: Paint.line },
+  noteRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  checking: { textAlign: 'center' },
+  savedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  footRow: { flexDirection: 'row', gap: 10 },
+
+  burstLayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 50, elevation: 50 },
+  burstBlob: { position: 'absolute', width: 320, height: 320 },
+  burstCard: { paddingHorizontal: 22, paddingVertical: 10 },
+
+  summaryRoot: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 28 },
+  summaryHead: { alignItems: 'center', gap: 4 },
+  summaryCard: { marginTop: 24, paddingVertical: 18, paddingHorizontal: 18, gap: 12 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  summaryButtons: { marginTop: 24, gap: 12 },
 });

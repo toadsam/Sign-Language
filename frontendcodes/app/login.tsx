@@ -1,8 +1,11 @@
-﻿﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+
+import { LoginArt } from '@/components/paint/login-art';
+import { BodyText, Mark, PaintButton, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { usePaintNav } from '@/components/paint/transition';
+import { Size } from '@/constants/paint';
 
 import { useAuth } from '@/context/auth-context';
 import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
@@ -11,6 +14,7 @@ import { getBaseUrl } from '@/lib/api/base-url';
 export default function LoginScreen() {
   const apiBaseUrl = getBaseUrl();
   const router = useRouter();
+  const nav = usePaintNav();
   const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
   const { request, response, promptAsync, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +58,7 @@ export default function LoginScreen() {
           console.log('백엔드 유저 정보:', loginData.user);
 
           await signInWithBackendUser(loginData.accessToken, loginData.user);
-          router.replace('/home');
+          void nav.go('/home', { replace: true });
         } else {
           console.log('회원가입 미완료 유저 -> 회원가입 화면으로 이동');
 
@@ -111,7 +115,7 @@ export default function LoginScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [apiBaseUrl, router, signInWithBackendUser]);
+  }, [apiBaseUrl, router, nav, signInWithBackendUser]);
 
   useEffect(() => {
     const login = async () => {
@@ -214,229 +218,69 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGuestStart = async () => {
+  const handleGuestStart = async (at: { x: number; y: number }) => {
     setErrorMessage(null);
     await continueAsGuest();
-    router.replace('/home');
+    // 노란 붓이 지나가며 마을로 들어간다
+    void nav.go('/home', { replace: true, ...at });
   };
 
   // "이미 로그인된 상태입니다" UI 제거
   // (회원가입 미완료 유저가 signup으로 이동해야 하는데 방해됨)
 
+  const { width } = useWindowDimensions();
+  const artWidth = Math.min(width - 44, 360);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <PaperScreen edges={['top', 'bottom']}>
       <View style={styles.root}>
-        <View style={styles.heroOuter}>
-          <ImageBackground
-            source={{
-              uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBXn24fQMDcoI3rUzrydUHazyrICj3jYUhTR7ZfzqwcDCPgl-ncgo3DUdv3Ee9q2aDTTEEG8FneqPQiO-pNYOmdjmpuetwsK0Gz2K5T2mXGEuzJU6O7kr6G81w7wUGGKAi_rcZ_q98Tpins_Nj13BbSzIkqaGm4jiDXV8HVQhYkeFioIFYP4Q-8GpH5Pk-Zjz32E-rJJp9QLMD7xVPdQfONgD_OBCvl3l11HlnMYDQOChcqysBFrz9Za3HxtuzlZqlS3doIl2xSYQ',
-            }}
-            imageStyle={styles.heroImage}
-            style={styles.heroCard}>
-            <View style={styles.heroOverlay} />
-            <View style={styles.heroContent}>
-              <View style={styles.heroBadge}>
-                <MaterialCommunityIcons name="sign-language" size={20} color="#137fec" />
-              </View>
-              <Text style={styles.heroTitle}>반가워요!{"\n"}수어지교입니다</Text>
-              <Text style={styles.heroSubtitle}>오늘도 수어로 세상을 이어보세요</Text>
-            </View>
-          </ImageBackground>
+        <View style={styles.art}>
+          <LoginArt width={artWidth} />
         </View>
 
-        <View style={styles.loginWrap}>
-          <Pressable
+        <View style={styles.copy}>
+          {/* 로고가 오면 이 칸에 넣는다 */}
+          <RoughBox dashed stroke="rgba(46,38,32,.4)" fill="transparent" seed={4} style={styles.logoSlot}>
+            <StoryText size={Size.lead + 2}>수어지교</StoryText>
+          </RoughBox>
+          <StoryText size={Size.display - 3} style={{ marginTop: 16 }}>
+            손으로 하는 말,{'\n'}
+            <Mark>마을</Mark>에서 같이 배워요
+          </StoryText>
+          <BodyText soft style={{ marginTop: 8 }}>
+            장소마다 쓰는 수어 표현을 하나 배울 때마다{'\n'}마을에 색이 하나씩 칠해져요.
+          </BodyText>
+        </View>
+
+        <View style={styles.buttons}>
+          <PaintButton
+            label={isSubmitting ? '로그인 중…' : '구글로 계속하기'}
             disabled={!request || isSubmitting}
             onPress={handleGooglePress}
-            style={({ pressed }) => [
-              styles.googleButton,
-              (!request || isSubmitting) && styles.buttonDisabled,
-              pressed && styles.buttonPressed,
-            ]}>
-            <Ionicons name="logo-google" size={20} color="#4285F4" />
-            <Text style={styles.googleText}>
-              {isSubmitting ? '로그인 중...' : '구글로 간편 로그인 / 회원가입'}
-            </Text>
-          </Pressable>
-
-          <Pressable onPress={handleGuestStart} style={styles.guestStartButton}>
-            <Text style={styles.guestStartText}>로그인 없이 시작</Text>
-          </Pressable>
-        </View>
-
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        <View style={styles.footer}>
-          <View style={styles.footerLinksRow}>
-            <Text style={styles.footerLink}>이용약관</Text>
-            <Text style={styles.footerDivider}>|</Text>
-            <Text style={styles.footerLink}>개인정보처리방침</Text>
+            seed={11}
+          />
+          <PaintButton variant="ghost" label="로그인 없이 둘러보기" onPress={handleGuestStart} seed={12} />
+          {errorMessage ? (
+            <BodyText size={Size.small} style={styles.error} accessibilityRole="alert">
+              {errorMessage}
+            </BodyText>
+          ) : null}
+          <View style={styles.footer}>
+            <BodyText size={Size.caption} soft>이용약관 · 개인정보처리방침</BodyText>
+            <BodyText size={Size.caption} soft>© 2026 수어지교</BodyText>
           </View>
-          <Text style={styles.footerCopy}>© 2026 수어지교. All rights reserved.</Text>
         </View>
       </View>
-    </SafeAreaView>
+    </PaperScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f2f4f7',
-  },
-  root: {
-    flex: 1,
-    backgroundColor: '#f2f4f7',
-  },
-  heroOuter: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-  },
-  heroCard: {
-    minHeight: 188,
-    borderRadius: 16,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  heroImage: {
-    borderRadius: 16,
-  },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.38)',
-  },
-  heroContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  heroBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  heroTitle: {
-    color: '#ffffff',
-    fontSize: 38,
-    lineHeight: 42,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    marginTop: 4,
-    color: '#d8dee8',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  loginWrap: {
-    paddingHorizontal: 14,
-    paddingTop: 46,
-    gap: 10,
-  },
-  googleButton: {
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#dfe3e9',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonPressed: {
-    opacity: 0.85,
-  },
-  googleText: {
-    color: '#4b5563',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  guestStartButton: {
-    alignSelf: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    marginTop: 2,
-  },
-  guestStartText: {
-    color: '#6b7280',
-    fontSize: 15,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  errorText: {
-    marginTop: 12,
-    color: '#dc2626',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  footer: {
-    marginTop: 'auto',
-    alignItems: 'center',
-    paddingBottom: 14,
-    gap: 4,
-  },
-  footerLinksRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  footerLink: {
-    color: '#c5ccd6',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  footerDivider: {
-    color: '#d8dde4',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  footerCopy: {
-    color: '#bcc5d1',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  loggedInWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    backgroundColor: '#f2f4f7',
-    gap: 10,
-  },
-  loggedInTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1f2937',
-  },
-  loggedInSubtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  goHomeButton: {
-    marginTop: 8,
-    height: 46,
-    paddingHorizontal: 20,
-    borderRadius: 23,
-    backgroundColor: '#137fec',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  goHomeButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+  root: { flex: 1, paddingHorizontal: 22 },
+  art: { alignItems: 'center', marginTop: 18 },
+  copy: { marginTop: 8 },
+  logoSlot: { alignSelf: 'flex-start', height: 40, paddingHorizontal: 16, justifyContent: 'center' },
+  buttons: { marginTop: 'auto', gap: 10, paddingBottom: 6 },
+  error: { color: '#B5462F', textAlign: 'center' },
+  footer: { alignItems: 'center', gap: 2, marginTop: 4 },
 });
