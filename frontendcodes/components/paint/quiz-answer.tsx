@@ -2,7 +2,7 @@
  * 퀴즈 답 카드 한 장. 손그림 테두리 상자 안에 보기 글자와 답이 있다.
  * 고르면 형광펜이 왼쪽부터 칠해지고, 맞으면 민트색, 틀리면 카드가 흔들린다.
  */
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -16,6 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Paint, Size } from '@/constants/paint';
+import { InkSplat, PaintSplash } from './effects';
 import { PaintIcon, RoughBox, StoryText, Wash } from './paint-ui';
 
 export type QuizAnswerState = 'idle' | 'picked' | 'right' | 'wrong' | 'faded';
@@ -28,11 +29,26 @@ type Props = {
   /** 문제가 바뀔 때마다 바뀌는 값. 바뀌면 카드가 차례로 나타난다 */
   revealKey: number | string;
   disabled?: boolean;
+  /** 내가 고른 답이 정답일 때: 카드에서 물감이 팡 튄다 */
+  celebrate?: boolean;
   onPress: () => void;
 };
 
-export function QuizAnswer({ letter, text, state, index, revealKey, disabled, onPress }: Props) {
+export function QuizAnswer({ letter, text, state, index, revealKey, disabled, celebrate, onPress }: Props) {
   const reduce = useReducedMotion();
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const [splash, setSplash] = useState(0);
+  const [ink, setInk] = useState(0);
+  const pop = useSharedValue(1);
+  useEffect(() => {
+    if (celebrate) {
+      setSplash((n) => n + 1);
+      if (!reduce) pop.value = withSequence(withSpring(1.08, { damping: 6, stiffness: 300 }), withSpring(1, { damping: 9, stiffness: 200 }));
+    }
+  }, [celebrate, reduce, pop]);
+  useEffect(() => {
+    if (state === 'wrong') setInk((n) => n + 1);
+  }, [state]);
   const hl = useSharedValue(0);
   const tilt = useSharedValue(0);
   const enter = useSharedValue(1);
@@ -70,7 +86,7 @@ export function QuizAnswer({ letter, text, state, index, revealKey, disabled, on
 
   const wrapStyle = useAnimatedStyle(() => ({
     opacity: enter.value,
-    transform: [{ translateY: (1 - enter.value) * 12 }, { rotate: `${tilt.value}deg` }],
+    transform: [{ translateY: (1 - enter.value) * 12 }, { rotate: `${tilt.value}deg` }, { scale: pop.value }],
   }));
   const hlStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: hl.value }] }));
 
@@ -79,7 +95,7 @@ export function QuizAnswer({ letter, text, state, index, revealKey, disabled, on
   const stateLabel = state === 'right' ? ', 정답' : state === 'wrong' ? ', 고른 답, 오답' : state === 'picked' ? ', 고름' : '';
 
   return (
-    <Animated.View style={[styles.cell, wrapStyle, state === 'faded' && styles.faded]}>
+    <Animated.View style={[styles.cell, wrapStyle, state === 'faded' && styles.faded, celebrate && { zIndex: 5 }]} onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
       <Pressable
         onPress={onPress}
         disabled={disabled}
@@ -100,8 +116,10 @@ export function QuizAnswer({ letter, text, state, index, revealKey, disabled, on
           </View>
           {state === 'right' && <PaintIcon name="check" size={22} />}
           {state === 'wrong' && <PaintIcon name="close" size={20} />}
+          <InkSplat trigger={ink} seed={index + 2} />
         </RoughBox>
       </Pressable>
+      <PaintSplash trigger={splash} x={box.w / 2} y={box.h / 2} spread={Math.max(80, box.w * 0.7)} />
     </Animated.View>
   );
 }

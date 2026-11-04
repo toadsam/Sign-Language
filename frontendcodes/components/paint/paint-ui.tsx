@@ -15,11 +15,12 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { Font, Paint, Size, TabColor } from '@/constants/paint';
+import { feel } from '@/lib/feel';
 import { blob, jitterPath, roughRect } from './rough';
 import { usePaintNav } from './transition';
 
@@ -163,17 +164,17 @@ export function PaintButton({ label, onPress, variant = 'primary', color = Paint
     );
   }
   return (
-    <Pressable
-      onPress={(e) => onPress?.({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+    <PressSquish
+      onPress={(e) => onPress?.(e)}
       disabled={disabled}
-      accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => [{ transform: pressed ? [{ translateY: 2 }, { rotate: '-0.6deg' }] : [] }, style]}
+      style={style}
     >
+      {(pressed) => (
       <RoughBox
         seed={seed}
-        strokeWidth={2.2}
+        boil={pressed}
+        strokeWidth={pressed ? 2.6 : 2.2}
         stroke={disabled ? '#BDB09E' : Paint.ink}
         fill={variant === 'ghost' ? Paint.card : 'transparent'}
         wash={variant === 'primary' && !disabled ? color : undefined}
@@ -182,6 +183,55 @@ export function PaintButton({ label, onPress, variant = 'primary', color = Paint
         {icon}
         <StoryText size={small ? Size.lead : 19} style={{ color: disabled ? '#A99B8A' : Paint.ink }}>{label}</StoryText>
       </RoughBox>
+      )}
+    </PressSquish>
+  );
+}
+
+/**
+ * 누르면 꾹 눌렸다가 통 튀어 오르는 껍데기. 누르는 동안 손그림 선이 빠르게 다시 그려지고, 폰이 톡 울린다.
+ * children에 함수를 주면 지금 눌려 있는지(pressed)를 받는다.
+ */
+export function PressSquish({
+  children,
+  onPress,
+  disabled,
+  style,
+  accessibilityLabel,
+  accessibilityRole = 'button',
+  haptic = true,
+}: {
+  children: ReactNode | ((pressed: boolean) => ReactNode);
+  onPress?: (at: { x: number; y: number }) => void;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+  accessibilityRole?: 'button' | 'tab' | 'link';
+  haptic?: boolean;
+}) {
+  const reduce = useReducedMotion();
+  const [pressed, setPressed] = useState(false);
+  const s = useSharedValue(1);
+  const st = useAnimatedStyle(() => ({ transform: [{ scale: s.value }, { rotate: `${(1 - s.value) * -12}deg` }] }));
+  return (
+    <Pressable
+      onPress={(e) => onPress?.({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+      onPressIn={() => {
+        setPressed(true);
+        if (haptic) feel.tap();
+        if (!reduce) s.value = withSpring(0.95, { damping: 15, stiffness: 420 });
+      }}
+      onPressOut={() => {
+        setPressed(false);
+        if (!reduce) s.value = withSpring(1, { damping: 7, stiffness: 260 });
+      }}
+      disabled={disabled}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      style={style}
+    >
+      <Animated.View style={st}>{typeof children === 'function' ? children(pressed) : children}</Animated.View>
     </Pressable>
   );
 }
@@ -216,10 +266,13 @@ export type PaintIconName = keyof typeof ICONS;
 export function PaintIcon({ name, size = 26, color = Paint.ink, fill = 'none', boil }: { name: PaintIconName; size?: number; color?: string; fill?: string; boil?: boolean }) {
   const t = useBoil(!!boil);
   const d = useMemo(() => jitterPath(ICONS[name], 3 + t, 0.5), [name, t]);
+  // View로 감싸야 웹에서 손그림 상자의 물감 층(절대 위치)에 가려지지 않는다
   return (
-    <Svg width={size} height={size} viewBox="0 0 30 30">
-      <Path d={d} fill={fill} stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
+    <View style={{ width: size, height: size }}>
+      <Svg width={size} height={size} viewBox="0 0 30 30">
+        <Path d={d} fill={fill} stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+    </View>
   );
 }
 
@@ -244,7 +297,7 @@ export function PaintTabBar({ current }: { current: TabKey }) {
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
               accessibilityLabel={t.label}
-              onPress={() => !on && nav.tab(current, t.key)}
+              onPress={() => { if (on) return; feel.tap(); void nav.tab(current, t.key); }}
               style={styles.tab}
             >
               <View style={{ width: 44, height: 34, alignItems: 'center', justifyContent: 'center' }}>

@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/wrong-note-saved';
 import { MeHeader } from '@/components/paint/me-parts';
 import { BodyText, Mark, PaintButton, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { PenLoader } from '@/components/paint/pen-loader';
 import { usePaintNav } from '@/components/paint/transition';
 
 export default function WrongNoteScreen() {
@@ -165,7 +166,7 @@ export default function WrongNoteScreen() {
 
         <StoryText size={Size.lead} style={styles.sub}>틀린 단어 목록</StoryText>
 
-        {isLoading ? <BodyText soft style={styles.helper}>불러오는 중이에요</BodyText> : null}
+        {isLoading ? <PenLoader label="오답 노트를 펼치는 중이에요" size={84} style={{ marginTop: 24 }} /> : null}
         {!isLoading && errorMessage ? (
           <BodyText style={[styles.helper, { color: Paint.ink }]} accessibilityRole="alert">
             <Mark color={Paint.wrongSoft}>{errorMessage}</Mark>

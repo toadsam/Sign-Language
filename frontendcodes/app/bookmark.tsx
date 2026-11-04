@@ -9,6 +9,7 @@ import Animated, { FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { Bee } from '@/components/paint/bee';
 import { LearnHeader, LearnIconButton } from '@/components/paint/learn-parts';
 import { BodyText, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { PenLoader } from '@/components/paint/pen-loader';
 import { usePaintNav } from '@/components/paint/transition';
 import { Font, Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
@@ -135,7 +136,7 @@ export default function BookmarkScreen() {
             </Animated.View>
           ) : null}
 
-          {isLoading ? <BodyText soft style={styles.center}>불러오는 중...</BodyText> : null}
+          {isLoading ? <PenLoader label="북마크를 꺼내는 중이에요" size={84} style={{ marginTop: 24 }} /> : null}
           {!isLoading && errorMessage ? (
             <RoughBox seed={93} wash={Paint.wrongSoft} style={styles.notice}>
               <BodyText style={styles.center} accessibilityRole="alert">{errorMessage}</BodyText>

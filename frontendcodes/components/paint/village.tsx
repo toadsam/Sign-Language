@@ -10,6 +10,7 @@ import Animated, { useAnimatedStyle, useFrameCallback, useReducedMotion, useShar
 import Svg, { ClipPath, Defs, G, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 import { Font, Paint } from '@/constants/paint';
+import { feel } from '@/lib/feel';
 import { Bee } from './bee';
 import { useBoil } from './paint-ui';
 import { blob, jitterPath } from './rough';
@@ -55,7 +56,7 @@ const BUILDINGS: Building[] = [
   },
   {
     name: '학교', orig: 870,
-    ink: 'M784 176 L784 302 M956 176 L956 302 M778 176 L962 176 M836 176 L870 138 L904 176 M860 160 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M870 154 v6 l4 3 M870 138 V112 L894 120 L870 128 M800 200 h30 v30 h-30 z M910 200 h30 v30 h-30 z M800 246 h30 v30 h-30 z M910 246 h30 v30 h-30 z M852 302 V244 H888 V302 M870 244 V302',
+    ink: 'M784 176 L784 302 M956 176 L956 302 M778 176 L962 176 M836 176 L870 138 L904 176 M860 160 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M870 154 v6 l4 3 M870 138 V110 M800 200 h30 v30 h-30 z M910 200 h30 v30 h-30 z M800 246 h30 v30 h-30 z M910 246 h30 v30 h-30 z M852 302 V244 H888 V302 M870 244 V302',
     paint: [{ d: rect(784, 176, 172, 126), c: Paint.yellowSoft }, { d: 'M836 176 L870 138 L904 176Z', c: Paint.coral }],
   },
   {
@@ -64,8 +65,59 @@ const BUILDINGS: Building[] = [
     paint: [{ d: rect(984, 160, 152, 142), c: '#FFFFFF' }, { d: rect(1046, 176, 28, 28), c: Paint.coral }],
   },
 ];
-// 카페 앞에서 수어로 이야기하는 두 사람
-const PAIR = 'M442 248 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M452 258 L446 296 M452 258 L458 296 M452 266 L466 258 L472 248 M452 266 L462 276 L470 270 M520 250 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M530 260 L524 296 M530 260 L536 296 M530 268 L520 278 L512 274 M530 268 L540 280 M478 240 q6 6 0 12 M484 236 q9 10 0 20';
+// 카페 앞에서 수어로 이야기하는 두 사람. ph가 바뀌면 팔이 움직이고, 말하는 사람 쪽에 물결 표시가 뜬다
+const PAIR_STILL = 'M442 248 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M452 258 L446 296 M452 258 L458 296 M452 266 L466 258 L472 248 M452 266 L462 276 L470 270 M520 250 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M530 260 L524 296 M530 260 L536 296 M530 268 L520 278 L512 274 M530 268 L540 280 M478 240 q6 6 0 12 M484 236 q9 10 0 20';
+function pairPath(ph: number) {
+  const left = Math.floor(ph / 18) % 2 === 0; // 18틱마다 말하는 사람이 바뀐다
+  const a = Math.sin(ph * 0.9), b = Math.cos(ph * 0.7);
+  const l = left
+    ? `M452 266 L466 ${258 + a * 3} L${472 + b * 4} ${246 + a * 5} M452 266 L464 ${268 - b * 4} L${474 + a * 3} ${262 - b * 4}`
+    : 'M452 266 L466 258 L472 252 M452 266 L462 276 L470 270';
+  const r = !left
+    ? `M530 268 L516 ${260 + a * 3} L${510 - b * 4} ${248 + a * 5} M530 268 L518 ${270 - b * 3} L${508 + a * 3} ${264 - b * 4}`
+    : 'M530 268 L520 278 L512 274 M530 268 L540 280';
+  const wave = left ? 'M480 240 q6 6 0 12 M487 236 q9 10 0 20' : 'M502 240 q-6 6 0 12 M495 236 q-9 10 0 20';
+  return `M442 248 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M452 258 L446 296 M452 258 L458 296 M520 250 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 M530 260 L524 296 M530 260 L536 296 ${l} ${r} ${wave}`;
+}
+
+/** 칠해진 건물이 살아날 때 쓰는 자리 (건물 원래 좌표) */
+const LIFE: { smoke?: [number, number]; windows?: [number, number, number, number][]; lamp?: [number, number] }[] = [
+  { smoke: [159, 136], windows: [[134, 226, 30, 28]] },
+  {},
+  { windows: [[430, 222, 70, 52]] },
+  { windows: [[-56, 222, 60, 48]] },
+  { windows: [[620, 210, 56, 64]] },
+  { lamp: [-50, 160] },
+  { windows: [[800, 200, 30, 30], [910, 200, 30, 30], [800, 246, 30, 30], [910, 246, 30, 30]] },
+  { windows: [[1000, 220, 28, 26], [1092, 220, 28, 26]] },
+];
+
+/* ── 하늘: 실제 시각에 따라 아침 · 낮 · 저녁 · 밤 ── */
+export type SkyPhase = 'morning' | 'day' | 'evening' | 'night';
+export function skyOf(hour: number): SkyPhase {
+  if (hour >= 5 && hour < 10) return 'morning';
+  if (hour >= 10 && hour < 17) return 'day';
+  if (hour >= 17 && hour < 20) return 'evening';
+  return 'night';
+}
+const SKY: Record<SkyPhase, { wash?: string; washO: number; band?: string; sun: string; sunY: number }> = {
+  morning: { wash: Paint.sky, washO: 0.32, band: Paint.yellowSoft, sun: Paint.yellowSoft, sunY: 90 },
+  day: { washO: 0, sun: Paint.yellow, sunY: 64 },
+  evening: { wash: Paint.coral, washO: 0.3, band: Paint.yellowSoft, sun: '#F6A65A', sunY: 118 },
+  night: { wash: '#5468B8', washO: 0.34, sun: Paint.yellowSoft, sunY: 64 },
+};
+const STARS: [number, number][] = [[210, 60], [330, 92], [460, 52], [610, 84], [760, 46], [900, 78], [1040, 58], [1180, 90], [1320, 50], [1460, 80], [260, 120], [700, 118], [1120, 122]];
+
+/** 살아 있는 장면용 시계: 0.11초마다 1씩 오른다. 펜 그림처럼 뚝뚝 끊겨 움직이는 게 오히려 어울린다 */
+function useLifeTick(enabled: boolean) {
+  const [tk, setTk] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setTk((v) => v + 1), 110);
+    return () => clearInterval(id);
+  }, [enabled]);
+  return tk;
+}
 
 type Props = {
   titles: string[];
@@ -73,12 +125,18 @@ type Props = {
   /** 지금 막 다 배운 단원 번호 (돌아왔을 때 칠해지는 애니메이션) */
   paintIndex?: number | null;
   height?: number;
+  /** 하늘 시각 (0~23). 비우면 지금 시각 */
+  hour?: number;
   onPressPlace: (index: number, at: { x: number; y: number }) => void;
 };
 
-export function Village({ titles, completed, paintIndex = null, height = 290, onPressPlace }: Props) {
+export function Village({ titles, completed, paintIndex = null, height = 290, hour, onPressPlace }: Props) {
   const reduce = useReducedMotion();
   const boil = useBoil();
+  const tk = useLifeTick(!reduce);
+  const phase = skyOf(hour ?? new Date().getHours());
+  const sky = SKY[phase];
+  const dark = phase === 'evening' || phase === 'night';
   const scale = height / H;
   const width = (X0 + (titles.length - 1) * GAP + 140) * scale;
   const current = Math.min(completed, titles.length - 1);
@@ -107,6 +165,7 @@ export function Village({ titles, completed, paintIndex = null, height = 290, on
       const t = Math.max(0, Math.min(1, (Date.now() - t0) / 1600));
       setReveal(t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
       if (t < 1) raf = requestAnimationFrame(step);
+      else feel.celebrate(); // 다 칠해지는 순간 톡-톡-쿵
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
@@ -147,7 +206,14 @@ export function Village({ titles, completed, paintIndex = null, height = 290, on
     () => BUILDINGS.slice(0, titles.length).map((b, i) => jitterPath(b.ink, i * 7 + boil, 1.1)),
     [titles.length, boil],
   );
-  const pair = useMemo(() => jitterPath(PAIR, 40 + boil, 0.9), [boil]);
+  const vbW = X0 + (titles.length - 1) * GAP + 140;
+  const alive = (i: number) => i < completed && (i !== paintIndex || reveal > 0.95);
+  const cafeAlive = alive(2);
+  const pair = useMemo(() => jitterPath(cafeAlive ? pairPath(tk) : PAIR_STILL, 40 + boil, 0.9), [boil, tk, cafeAlive]);
+  const skyEdge = useMemo(
+    () => `M0 ${TOP} H${vbW} V170 ` + Array.from({ length: 16 }, (_, k) => `Q${vbW - (k + 0.5) * (vbW / 16)} ${178 + (k % 2 ? 10 : -6)} ${vbW - (k + 1) * (vbW / 16)} 170`).join(' ') + ' Z',
+    [vbW],
+  );
   const ground = useMemo(() => jitterPath(`M0 302 L${X0 + titles.length * GAP} 302`, 50 + boil, 1), [titles.length, boil]);
 
   const press = (e: GestureResponderEvent) => {
@@ -192,9 +258,43 @@ export function Village({ titles, completed, paintIndex = null, height = 290, on
                 );
               })}
             </Defs>
-            {/* 해와 언덕 */}
-            <Path d={blob(96, 64, 30, 30, 2)} fill={Paint.yellow} opacity={0.9} />
-            <Path d={jitterPath('M70 64 a26 26 0 1 0 52 0 a26 26 0 1 0 -52 0 M96 24 v-10 M96 104 v10 M56 64 h-10 M136 64 h10 M68 36 l-7 -7 M124 92 l7 7 M124 36 l7 -7 M68 92 l-7 7', 3 + boil, 1)} fill="none" stroke={Paint.ink} strokeWidth={2.2} strokeLinecap="round" />
+            {/* 하늘 물감: 시각마다 색이 다르다 */}
+            {sky.wash && <Path d={skyEdge} fill={sky.wash} opacity={sky.washO} />}
+            {sky.band && <Path d={`M0 128 Q${vbW / 3} 112 ${vbW / 2} 132 T${vbW} 124 V170 H0 Z`} fill={sky.band} opacity={0.45} />}
+            {phase === 'night' &&
+              STARS.filter(([x]) => x < vbW).map(([x, y], k) => (
+                <Path key={'s' + k} d={`M${x - 4} ${y} h8 M${x} ${y - 4} v8`} stroke={Paint.yellow} strokeWidth={2.2} strokeLinecap="round" opacity={(tk + k * 3) % 9 < 5 ? 1 : 0.35} />
+              ))}
+
+            {/* 해 (밤에는 초승달) */}
+            {phase === 'night' ? (
+              <Path d={jitterPath('M108 40 a27 27 0 1 0 0 48 a21 21 0 1 1 0 -48 Z', 3 + boil, 0.6)} fill={Paint.yellowSoft} stroke={Paint.ink} strokeWidth={2.2} strokeLinejoin="round" />
+            ) : (
+              <G>
+                <Path d={blob(96, sky.sunY, 30, 30, 2)} fill={sky.sun} opacity={0.9} />
+                <G transform={`rotate(${reduce ? 0 : (tk * 1.5) % 360} 96 ${sky.sunY})`}>
+                  <Path d={jitterPath(`M70 ${sky.sunY} a26 26 0 1 0 52 0 a26 26 0 1 0 -52 0 M96 ${sky.sunY - 40} v-10 M96 ${sky.sunY + 40} v10 M56 ${sky.sunY} h-10 M136 ${sky.sunY} h10 M68 ${sky.sunY - 28} l-7 -7 M124 ${sky.sunY + 28} l7 7 M124 ${sky.sunY - 28} l7 -7 M68 ${sky.sunY + 28} l-7 7`, 3 + boil, 1)} fill="none" stroke={Paint.ink} strokeWidth={2.2} strokeLinecap="round" />
+                </G>
+              </G>
+            )}
+
+            {/* 흘러가는 구름 */}
+            {[0, 1, 2].map((k) => {
+              const span = vbW + 260;
+              const cx = (((k * span) / 3 + (reduce ? 0 : tk * (0.35 + k * 0.12))) % span) - 130;
+              const cy = 52 + k * 22;
+              return (
+                <Path
+                  key={'c' + k}
+                  d={jitterPath(`M${cx - 34} ${cy} q-2 -16 16 -16 q6 -16 24 -10 q16 -8 26 8 q16 0 14 18 Z`, 70 + k + boil, 0.8)}
+                  fill={phase === 'night' ? '#E4E2EC' : Paint.card}
+                  opacity={0.92}
+                  stroke={Paint.ink}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+              );
+            })}
             <Path d={`M0 150 Q160 100 330 140 T700 128 T1100 140 T1600 132`} fill="none" stroke={Paint.ink} strokeWidth={2} opacity={0.4} />
 
             {/* 물감 (배운 곳만) */}
@@ -216,6 +316,27 @@ export function Village({ titles, completed, paintIndex = null, height = 290, on
               return <Path key={d.id} d={blob(d.x, d.y, 8 + 26 * Math.min(k * 3, 1), 8 + 26 * Math.min(k * 3, 1), d.id % 97)} fill={d.c} opacity={k < 0.5 ? 0.85 : 0.85 * (1 - (k - 0.5) / 0.5)} />;
             })}
 
+            {/* 저녁 · 밤: 칠한 건물만 창문에 불이 켜진다 */}
+            {dark &&
+              titles.map((_, i) => {
+                if (!alive(i)) return null;
+                const L = LIFE[i];
+                const dx = placeX(i) - BUILDINGS[i].orig;
+                const flick = (tk + i * 5) % 23 === 0 ? 0.6 : 1;
+                return (
+                  <G key={'w' + i} transform={`translate(${dx} 0)`} opacity={flick}>
+                    {L.windows?.map(([x, y, w, h], k) => (
+                      <G key={k}>
+                        <Path d={blob(x + w / 2, y + h / 2, w * 0.95, h * 0.95, i + k, 0.1)} fill={Paint.yellowSoft} opacity={0.45} />
+                        <Path d={`M${x} ${y} h${w} v${h} h${-w} Z`} fill={Paint.yellow} opacity={0.95} />
+                      </G>
+                    ))}
+                    {L.lamp && <Path d={blob(L.lamp[0], L.lamp[1], 30, 30, 5, 0.1)} fill={Paint.yellowSoft} opacity={0.55} />}
+                    {L.lamp && <Path d={blob(L.lamp[0], L.lamp[1], 15, 15, 6, 0.06)} fill={Paint.yellow} />}
+                  </G>
+                );
+              })}
+
             {/* 펜 선 */}
             <G fill="none" stroke={Paint.ink} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
               <Path d={ground} />
@@ -226,6 +347,50 @@ export function Village({ titles, completed, paintIndex = null, height = 290, on
                 </G>
               ))}
             </G>
+
+            {/* 칠한 곳은 살아 움직인다: 굴뚝 연기, 새, 꽃잎, 깃발, 하트 */}
+            {titles.map((_, i) => {
+              const dx = placeX(i) - BUILDINGS[i].orig;
+              const on = alive(i) && !reduce;
+              const L = LIFE[i];
+              return (
+                <G key={'l' + i} transform={`translate(${dx} 0)`}>
+                  {/* 학교 깃발: 칠하기 전엔 빈 깃발, 칠하면 펄럭인다 */}
+                  {i === 6 && (() => {
+                    const w = on ? Math.sin(tk * 0.45) * 4 : 0;
+                    return <Path d={`M870 110 Q882 ${108 + w} 896 ${117 + w * 1.4} Q882 ${125 + w} 870 128 Z`} fill={i < completed ? Paint.coral : 'none'} stroke={Paint.ink} strokeWidth={2.2} strokeLinejoin="round" opacity={i <= completed ? 1 : 0.55} />;
+                  })()}
+                  {on && L.smoke && [0, 1, 2].map((k) => {
+                    const f = (tk * 0.018 + k / 3) % 1;
+                    const [sx, sy] = L.smoke!;
+                    return <Path key={'sm' + k} d={blob(sx + Math.sin(f * 6 + k) * 6 + f * 14, sy - 8 - f * 56, 5 + f * 9, 4 + f * 8, k + 3, 0.15, 8)} fill={Paint.card} stroke={Paint.ink} strokeWidth={1.8} opacity={1 - f} />;
+                  })}
+                  {on && i === 1 && [0, 1].map((k) => {
+                    const bx2 = 300 + Math.sin(tk * 0.03 + k * 2) * 60 + k * 24, by2 = 140 + Math.cos(tk * 0.05 + k) * 10 - k * 14;
+                    const f = (tk + k * 2) % 4 < 2 ? -6 : 2;
+                    return <Path key={'b' + k} d={`M${bx2 - 9} ${by2} q4.5 ${f} 9 0 q4.5 ${f} 9 0`} fill="none" stroke={Paint.ink} strokeWidth={2} strokeLinecap="round" />;
+                  })}
+                  {on && i === 3 && [0, 1, 2].map((k) => {
+                    const f = (tk * 0.014 + k / 3) % 1;
+                    const px = -30 + k * 12 + f * 30, py = 236 - f * 70;
+                    return <Path key={'pt' + k} d={blob(px, py, 4, 3, k + 8, 0.2, 6)} fill={k % 2 ? Paint.coral : Paint.yellow} stroke={Paint.ink} strokeWidth={1.2} opacity={1 - f} />;
+                  })}
+                  {on && i === 7 && (() => {
+                    const f = (tk * 0.012) % 1;
+                    const hx = 1076 + Math.sin(f * 8) * 4, hy = 170 - f * 50;
+                    return <Path d={`M${hx} ${hy + 5} l-6 -6 a3.5 3.5 0 0 1 6 -4 a3.5 3.5 0 0 1 6 4 z`} fill={Paint.coral} stroke={Paint.ink} strokeWidth={1.6} strokeLinejoin="round" opacity={1 - f} />;
+                  })()}
+                  {on && i === 4 && tk % 40 < 14 && <Path d="M716 210 v-8 M726 214 l6 -6 M706 214 l-6 -6" stroke={Paint.ink} strokeWidth={2} strokeLinecap="round" />}
+                  {on && i === 5 && (() => {
+                    // 정류장: 버스가 가끔 지나간다
+                    const f = (tk % 120) / 120;
+                    if (f > 0.4) return null;
+                    const bx3 = -160 + f * 2.5 * 320;
+                    return <Path d={jitterPath(`M${bx3} 296 v-34 q0 -6 6 -6 h56 q8 0 10 10 v30 Z M${bx3 + 8} 266 h14 v12 h-14 Z M${bx3 + 28} 266 h14 v12 h-14 Z M${bx3 + 12} 300 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0 M${bx3 + 46} 300 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0`, 90 + boil, 0.6)} fill={Paint.yellowSoft} stroke={Paint.ink} strokeWidth={2} strokeLinejoin="round" />;
+                  })()}
+                </G>
+              );
+            })}
 
             {/* 이름: 건물 위 간판, 땅 아래에 단원 이름 */}
             {titles.map((t, i) => (

@@ -19,6 +19,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Bee } from '@/components/paint/bee';
+import { PaintConfetti } from '@/components/paint/effects';
+import { PenLoader } from '@/components/paint/pen-loader';
 import {
   BodyText,
   Mark,
@@ -43,6 +45,7 @@ import {
 } from '@/lib/api/quiz';
 import { recordQuizAttempt } from '@/lib/api/users';
 import { saveWrongNote } from '@/lib/api/wrong-note-saved';
+import { feel } from '@/lib/feel';
 
 const QUIZ_COUNT = 10;
 const CHOICE_IDS: ChoiceId[] = ['A', 'B', 'C', 'D'];
@@ -58,6 +61,41 @@ function toOptions(question: QuizSessionQuestion | null): Option[] {
     id: CHOICE_IDS[index],
     text,
   }));
+}
+
+/* ── 꿀짓이 반응: 맞으면 폴짝 뛰며 한 바퀴, 틀리면 고개를 갸웃 ── */
+function BeeCheer({ right, k }: { right: boolean; k: number }) {
+  const reduce = useReducedMotion();
+  const hop = useSharedValue(0);
+  const spin = useSharedValue(0);
+  useEffect(() => {
+    if (reduce) return;
+    if (right) {
+      hop.value = withSequence(withTiming(-18, { duration: 180, easing: Easing.out(Easing.quad) }), withSpring(0, { damping: 6, stiffness: 220 }));
+      spin.value = 0;
+      spin.value = withTiming(360, { duration: 520, easing: Easing.out(Easing.cubic) });
+    } else {
+      spin.value = withSequence(withTiming(-14, { duration: 140 }), withTiming(10, { duration: 160 }), withTiming(-6, { duration: 140 }), withTiming(0, { duration: 140 }));
+    }
+  }, [right, k, reduce, hop, spin]);
+  const st = useAnimatedStyle(() => ({ transform: [{ translateY: hop.value }, { rotate: `${spin.value}deg` }] }));
+  return (
+    <Animated.View style={st}>
+      <Bee size={48} flip={!right} />
+    </Animated.View>
+  );
+}
+
+/* ── 연속 정답 물방울: 하나씩 차오르다가 3개가 되면 콤보로 터진다 ── */
+function StreakDrops({ streak }: { streak: number }) {
+  const filled = streak > 0 && streak % 3 === 0 ? 3 : streak % 3;
+  return (
+    <View style={{ flexDirection: 'row', gap: 4 }} accessible accessibilityLabel={`연속 정답 ${streak}개`}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={[styles.sdrop, i < filled && { backgroundColor: Paint.yellow }]} />
+      ))}
+    </View>
+  );
 }
 
 /* ── 진행 점: 푼 문제는 노랑, 지금 문제는 숨 쉬듯 커졌다 작아진다 ── */
@@ -219,6 +257,8 @@ export default function QuizScreen() {
       setIsChecking(true);
       const result = await submitQuizAnswer(currentQuestion.quizId, selectedId);
       setAnswerResult(result);
+      if (result.isCorrect) feel.right();
+      else feel.wrong();
       setAnsweredCount((prev) => prev + 1);
       if (result.isCorrect) {
         setCorrectCount((prev) => prev + 1);
@@ -434,8 +474,7 @@ export default function QuizScreen() {
     return (
       <PaperScreen edges={['top', 'bottom']}>
         <View style={styles.center} accessibilityLiveRegion="polite">
-          <Bee size={72} />
-          <StoryText size={Size.lead}>퀴즈를 불러오는 중이에요</StoryText>
+          <PenLoader label="퀴즈를 그리는 중이에요" size={110} />
         </View>
       </PaperScreen>
     );
@@ -444,6 +483,7 @@ export default function QuizScreen() {
   if (showSummary) {
     return (
       <PaperScreen edges={['top', 'bottom']}>
+        <PaintConfetti trigger={accuracy >= 70 ? 1 : 0} />
         <ScrollView contentContainerStyle={styles.summaryRoot}>
           <View style={styles.summaryHead}>
             <Bee size={84} />
@@ -548,6 +588,7 @@ export default function QuizScreen() {
         <Animated.View style={questionStyle}>
           <View style={styles.whereRow}>
             <BodyText soft size={Size.small}>{sessionTitle}</BodyText>
+            <StreakDrops streak={currentStreak} />
             {currentStreak >= 2 && (
               <Animated.View style={comboStyle}>
                 <StoryText size={Size.body}>
@@ -617,6 +658,7 @@ export default function QuizScreen() {
                   index={i}
                   revealKey={currentIndex}
                   state={answerStateOf(option.id)}
+                  celebrate={isAnswered && isCorrect && selectedId === option.id}
                   disabled={isQuestionTransitioning || isAnswered || isChecking}
                   onPress={() => handleSelect(option.id)}
                 />
@@ -636,7 +678,7 @@ export default function QuizScreen() {
       <View style={styles.footer}>
         {isAnswered && answerResult ? (
           <Animated.View style={[styles.noteRow, noteStyle]} accessibilityLiveRegion="polite">
-            <Bee size={48} flip={!isCorrect} />
+            <BeeCheer right={isCorrect} k={currentIndex} />
             <View style={{ flex: 1 }}>
               <StoryText size={Size.lead}>{isCorrect ? '맞아요!' : '아깝다! 손 모양을 한 번 더 볼까요?'}</StoryText>
               <BodyText soft size={Size.small}>
@@ -698,6 +740,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 10 },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   dots: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
+  sdrop: { width: 12, height: 12, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomRightRadius: 6, borderWidth: 1.5, borderColor: Paint.ink, transform: [{ rotate: '-45deg' }] },
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.8, borderColor: Paint.ink, backgroundColor: 'transparent' },
 
   scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },

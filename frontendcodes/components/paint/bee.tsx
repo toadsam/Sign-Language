@@ -3,6 +3,7 @@
  * 예전 꿀짓이 PNG 대신 이 그림을 쓴다 (손그림 화면과 한 몸처럼 보이게).
  */
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Circle, Ellipse, G, Path } from 'react-native-svg';
 
@@ -22,7 +23,9 @@ export function Bee({ size = 56, flip = false, still = false }: { size?: number;
   const flap = [-20, -6, 10, -6][w];
   const bob = [0, 1.5, 0, -1.5][t];
   const body = jitterPath('M-6 -14 q-4 14 0 28 M4 -14 q4 14 0 28', 2 + t, 0.6);
+  // View로 감싸야 웹에서 손그림 상자의 물감 층(절대 위치)에 가려지지 않는다
   return (
+    <View style={{ width: size, height: size }}>
     <Svg width={size} height={size} viewBox="-34 -36 68 68">
       <G transform={`translate(0 ${bob}) scale(${flip ? -1 : 1} 1)`}>
         <Ellipse cx={-4} cy={-18} rx={9} ry={13} fill="#FFFFFFCC" stroke={Paint.ink} strokeWidth={2.2} transform={`rotate(${flap} -4 -6)`} />
@@ -35,5 +38,6 @@ export function Bee({ size = 56, flip = false, still = false }: { size?: number;
         <Path d="M-14 -14 q-6 -10 -12 -8 M-10 -15 q-2 -12 -8 -14" fill="none" stroke={Paint.ink} strokeWidth={2} strokeLinecap="round" />
       </G>
     </Svg>
+    </View>
   );
 }
