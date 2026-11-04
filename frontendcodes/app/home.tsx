@@ -13,6 +13,7 @@ import { Bee } from '@/components/paint/bee';
 import { PaintConfetti } from '@/components/paint/effects';
 import { BodyText, PaintButton, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash } from '@/components/paint/paint-ui';
 import { FirstStory, hasSeenFirstStory } from '@/components/paint/first-story';
+import { VillageLogo } from '@/components/paint/logo';
 import { PaintToast } from '@/components/paint/toast';
 import { usePaintNav } from '@/components/paint/transition';
 import { skyOf, Village, type SkyPhase } from '@/components/paint/village';
@@ -295,10 +296,8 @@ export default function HomeScreen() {
         }
       >
         <View style={styles.head}>
-          {/* 로고가 오면 이 칸에 넣는다 */}
-          <RoughBox dashed stroke="rgba(46,38,32,.4)" fill="transparent" seed={4} style={styles.logo}>
-            <StoryText size={Size.lead + 1}>수어지교</StoryText>
-          </RoughBox>
+          {/* 정식 로고가 오면 VillageLogo 안을 바꾼다 */}
+          <VillageLogo />
           <View style={styles.drops} accessible accessibilityLabel={`오늘 목표 ${solvedToday}/${DAILY_GOAL_TARGET}, 연속 ${streakDays}일`}>
             {Array.from({ length: 5 }, (_, i) => (
               <View key={i} style={[styles.drop, i < drops && styles.dropFull]} />

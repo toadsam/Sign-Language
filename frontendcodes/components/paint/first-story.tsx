@@ -73,6 +73,7 @@ const HOUSE1: Spot = {
     { d: blob(100, 146, 8, 8, 13, 0.1, 8), color: Paint.sky },
   ],
 };
+const SUN: Spot = { c: [272, 48], parts: [{ d: blob(272, 48, 15, 15, 41, 0.1, 10), color: Paint.yellow, o: 0.9 }] };
 const TREE: Spot = { c: [160, 128], parts: [{ d: blob(160, 128, 24, 26, 21, 0.12, 11), color: Paint.leaf, o: 0.85 }] };
 const HOUSE2: Spot = {
   c: [245, 150],
@@ -217,6 +218,7 @@ function SceneArt({ scene, width, reduce }: { scene: number; width: number; redu
     blooms.push({ spot: HOUSE1, k: 1 });
     blooms.push({ spot: TREE, k: Math.max(0, Math.min(1, k * 2)) });
     blooms.push({ spot: HOUSE2, k: Math.max(0, Math.min(1, k * 2 - 0.6)) });
+    blooms.push({ spot: SUN, k: Math.max(0, Math.min(1, k * 2 - 1)) });
   }
 
   const tilt = wave ? [-14, 0, 14, 0][boil] : 0;

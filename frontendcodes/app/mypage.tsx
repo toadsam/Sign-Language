@@ -1,5 +1,6 @@
 ﻿import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -136,14 +137,16 @@ export default function MyPageScreen() {
   const paintedPlaces = getCompletedCells(total);
   const shownAccuracy = useCountUp(accuracy);
   // 스티커판: 이미 불러온 숫자로만 판단한다
+  // 확인용: /mypage?demo=stickers 는 스티커 몇 개를 받은 상태로 보여 준다
+  const { demo } = useLocalSearchParams<{ demo?: string }>();
   const stickerStats = useMemo<StickerStats>(
-    () => ({
+    () => demo === 'stickers' ? { total: 64, correct: 55, today: 12, bestGoalStreak: 3 } : ({
       total,
       correct,
       today: getTodaySolvedCount(dailySolvedCounts),
       bestGoalStreak: getBestGoalStreak(dailySolvedCounts, DAILY_GOAL_TARGET),
     }),
-    [total, correct, dailySolvedCounts]
+    [total, correct, dailySolvedCounts, demo]
   );
 
   const profileUri = (userInfo as any)?.profileImageUrl || user?.picture || null;
