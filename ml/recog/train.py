@@ -47,6 +47,16 @@ def accuracy(model, x, y, k=5):
     return hits1 / len(x), hits5 / len(x)
 
 
+def atomic_save(value, path):
+    """기록 중 중단돼도 마지막 완성 체크포인트는 보존한다."""
+    temporary = str(path) + ".tmp"
+    with open(temporary, "wb") as f:
+        torch.save(value, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temporary, path)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
@@ -64,7 +74,21 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cpu", help="cpu, cuda 또는 mps")
     ap.add_argument("--smoke", action="store_true", help="샘플 동작 확인 전용. 처음 보는 표현자 점수로 보고하지 않음")
+    ap.add_argument("--resume", action="store_true", help="같은 run/latest.pt에서 모델·optimizer·난수 상태를 이어서 학습")
+    ap.add_argument("--save-every", type=int, default=2000, help="재개용 체크포인트 저장 간격")
     args = ap.parse_args()
+    config = {k: v for k, v in vars(args).items() if k not in ("resume", "save_every")}
+    latest_path = os.path.join(args.run, "latest.pt")
+    model_path = os.path.join(args.run, "model.pt")
+    log_path = os.path.join(args.run, "log.jsonl")
+    summary_path = os.path.join(args.run, "summary.json")
+    if os.path.exists(summary_path):
+        raise ValueError("완료된 run은 덮어쓰거나 다시 평가하지 않습니다. 새 run을 지정하세요.")
+    if not args.resume and any(os.path.exists(p) for p in (latest_path, model_path, log_path)):
+        raise ValueError("기존 학습 결과가 있습니다. --resume 또는 새 run을 사용하세요.")
+    resumed = torch.load(latest_path, map_location="cpu", weights_only=True) if args.resume else None
+    if resumed and resumed["config"] != config:
+        raise ValueError("재개하려면 data/run/device/iters 등 학습 설정이 기존과 같아야 합니다.")
 
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -72,7 +96,7 @@ def main():
 
     metas = load_data(args.data, set(args.types.split(",")))
     train, val, test, sp = partition(metas, args.data, args.test_signers, args.seed, args.smoke)
-    if args.iters < 1 or args.batch < 1 or args.eval_every < 1 or args.length < 4 or args.max_classes < 0:
+    if args.iters < 1 or args.batch < 1 or args.eval_every < 1 or args.length < 4 or args.max_classes < 0 or args.save_every < 1:
         raise ValueError("iters/batch/eval-every는 양수, length는 4 이상, max-classes는 0 이상이어야 합니다.")
 
     # 단어별 학습 수행자 수로 거르고, 수행자가 많은 단어부터 max-classes개
@@ -105,9 +129,34 @@ def main():
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=args.iters)
     print(f"입력 {x_clean.shape[-1]}차원 × {args.length}프레임, 파라미터 {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
 
-    log = open(os.path.join(args.run, "log.jsonl"), "w", encoding="utf-8")
-    t0, best = time.time(), None
-    for it in range(1, args.iters + 1):
+    t0, best, start, elapsed = time.time(), None, 0, 0.0
+    if resumed:
+        if resumed["classes"] != classes or resumed["split"] != sp:
+            raise ValueError("재개 체크포인트의 어휘나 공용 분할표가 다릅니다.")
+        model.load_state_dict(resumed["model"])
+        opt.load_state_dict(resumed["optimizer"])
+        sched.load_state_dict(resumed["scheduler"])
+        rng.bit_generator.state = resumed["numpy_rng"]
+        torch.set_rng_state(resumed["torch_rng"])
+        if args.device.startswith("cuda"):
+            torch.cuda.set_rng_state_all(resumed["cuda_rng"])
+        elif args.device == "mps":
+            torch.mps.set_rng_state(resumed["mps_rng"])
+        best, start, elapsed = resumed["best"], resumed["iter"], resumed["elapsed"]
+        if best is not None:
+            atomic_save(resumed["best_checkpoint"], model_path)
+        if os.path.exists(log_path):
+            with open(log_path, encoding="utf-8") as f:
+                records = [json.loads(line) for line in f if line.strip()]
+            if any(r["iter"] > start for r in records):
+                os.replace(log_path, log_path + f".before-resume-{time.time_ns()}")
+                with open(log_path, "w", encoding="utf-8") as f:
+                    for r in records:
+                        if r["iter"] <= start:
+                            f.write(json.dumps(r) + "\n")
+        print(f"재개: iteration {start} -> {args.iters}", flush=True)
+    log = open(log_path, "a" if args.resume else "w", encoding="utf-8")
+    for it in range(start + 1, args.iters + 1):
         pick = rng.integers(len(train), size=args.batch)
         xb, yb = build([train[i] for i in pick], joints, args.length, classes, rng)
         loss = F.cross_entropy(model(xb.to(args.device)), yb.to(args.device), label_smoothing=0.1)
@@ -128,20 +177,31 @@ def main():
             key = r.get("val_top1", r["train_aug_top1"])
             if best is None or key >= best[0]:
                 best = (key, r)
-                torch.save({"model": model.state_dict(), "classes": classes, "in_dim": x_clean.shape[-1],
-                            "with_face": args.with_face, "length": args.length, "config": vars(args), "split": sp},
-                           os.path.join(args.run, "model.pt"))
+                atomic_save({"model": model.state_dict(), "classes": classes, "in_dim": x_clean.shape[-1],
+                             "with_face": args.with_face, "length": args.length, "config": config, "split": sp}, model_path)
+
+        if it % args.save_every == 0 or it % args.eval_every == 0 or it == args.iters:
+            atomic_save({"model": model.state_dict(), "optimizer": opt.state_dict(),
+                         "scheduler": sched.state_dict(), "iter": it, "config": config,
+                         "classes": classes, "split": sp, "best": best,
+                         "best_checkpoint": torch.load(model_path, map_location="cpu", weights_only=True) if best is not None else None,
+                         "numpy_rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
+                         "cuda_rng": torch.cuda.get_rng_state_all() if args.device.startswith("cuda") else [],
+                         "mps_rng": torch.mps.get_rng_state() if args.device == "mps" else None,
+                         "elapsed": elapsed + time.time() - t0}, latest_path)
 
     log.close()
-    ck = torch.load(os.path.join(args.run, "model.pt"), map_location="cpu", weights_only=True)
+    ck = torch.load(model_path, map_location="cpu", weights_only=True)
     model.load_state_dict(ck["model"])
-    summary = {"best": best[1], "classes": len(classes), "minutes": round((time.time() - t0) / 60, 1),
-               "split": sp, "config": vars(args), "excluded_test_clips": excluded_test, "test_clips": len(test),
+    summary = {"best": best[1], "classes": len(classes), "minutes": round((elapsed + time.time() - t0) / 60, 1),
+               "split": sp, "config": config, "excluded_test_clips": excluded_test, "test_clips": len(test),
                "selection": "val_top1" if val else "train_aug_top1",
                "evaluated_on_unseen_signers": x_test is not None}
     if x_test is not None:
         summary["test_top1"], summary["test_top5"] = accuracy(model, x_test, y_test)
-    json.dump(summary, open(os.path.join(args.run, "summary.json"), "w"), indent=2)
+    with open(summary_path + ".tmp", "w") as f:
+        json.dump(summary, f, indent=2)
+    os.replace(summary_path + ".tmp", summary_path)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 
