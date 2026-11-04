@@ -6,7 +6,7 @@ const screens=[
   {route:'/sign-compare',title:'네 동작 함께 비교',state:'조건별 JSON 필요',description:'원본·B1·B2·우리 방법을 같은 시간과 시점으로 재생합니다. 기본 자료는 합성 샘플입니다.'},
   {route:'/sign-reconstruct',title:'원본·복원 비교',state:'AI HTML 또는 JSON 불러오기',description:'팀 viewer.html의 클립을 선택하거나 두 JSON을 불러옵니다. 좌표 차이와 비교 보고서를 확인합니다.'},
   {route:'/sign-codebook',title:'코드북 살펴보기',state:'E5 atlas HTML · 코드북 JSON 가져오기',description:'E5 2D 토큰 격자와 3D 코드북을 불러와 검색하고 재생합니다. 기본 목록은 모의 코드북입니다.'},
-  {route:'/sign-generate',title:'문장 입력 흐름 점검',state:'로컬 API 검증 · 실제 서버 연결 대기',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
+  {route:'/sign-generate',title:'단어 입력과 동작 생성',state:'단어 모델 · Spring 기본 연결 확인',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
   {route:'/sign-camera',title:'손 좌표 수집',state:'PC 웹 · 단어 모델 연결 대기',description:'카메라, 내 영상 또는 공개 시험 영상에서 손 관절을 추출하고 5초 좌표를 수집합니다.'},
   {route:'/sign-hand-review',title:'손 좌표 재생·품질 점검',state:'PC 웹 · 수집 JSON 불러오기',description:'수집 결과를 재생하고 미감지·추출 간격을 점검합니다. 품질 보고서도 저장할 수 있습니다.'},
 ];
@@ -14,7 +14,7 @@ export default function SignLab(){return <ScrollView style={styles.root} content
   <Stack.Screen options={{title:'승혁 개발 작업실'}}/>
   <Text style={styles.title}>승혁 개발 작업실</Text>
   <Text style={styles.description}>현재 만든 화면을 한곳에서 열고 점검하세요. 아래 상태는 구현 범위 안내이며 서버나 모델의 실시간 상태가 아닙니다.</Text>
-  <View style={styles.notice}><Text style={styles.noticeText}>E5 자모표와 원본·복원 파일을 불러올 수 있습니다. 실제 생성 API·인식 모델 연결과 최종 팀 통합은 남아 있습니다. 합성 자료를 실제 수어 결과로 판단하지 마세요.</Text></View>
+  <View style={styles.notice}><Text style={styles.noticeText}>E5 자모표와 원본·복원 파일을 불러올 수 있습니다. 단어 생성 API의 기본 연결은 확인했습니다. 문장 모델·인식 모델 연결과 최종 팀 통합은 남아 있습니다. 합성 자료를 실제 수어 결과로 판단하지 마세요.</Text></View>
   {Platform.OS!=='web'&&<Text style={styles.description}>동작 재생 화면은 WebView 서버 주소가 필요합니다. 손 좌표 수집·점검은 PC 웹에서 사용하세요.</Text>}
   <View style={styles.grid}>{screens.map(screen=><Link key={screen.route} href={screen.route as Href} asChild>
     <Pressable accessibilityRole="link" style={styles.card}>
