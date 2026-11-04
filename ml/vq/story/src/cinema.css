@@ -1,0 +1,125 @@
+/* The scene, rather than an explanatory column, is now the primary reading surface. */
+.stage{height:calc(100svh - 215px);min-height:610px;max-height:850px}
+.stage #scene{inset:var(--cinema-top,115px) 0 var(--cinema-bottom,155px)}
+.stage-shade{display:none}
+.chapter-copy{position:absolute;left:5%;right:15%;top:26px;width:auto;margin:0;padding:0;pointer-events:none}
+.chapter-copy .eyebrow{font-size:10px;margin-bottom:10px}
+.chapter-copy h1{font-family:'Gowun Batang',serif;font-size:30px;line-height:1.4;white-space:normal;margin-bottom:9px;font-weight:700}
+.chapter-copy #beat-title{font-size:12px;color:var(--gold);margin:0}
+.chapter-copy #caption,.chapter-copy .metric{display:none}
+.film-caption{position:absolute;bottom:35px;left:50%;transform:translateX(-50%);width:min(850px,84%);text-align:center;z-index:2}
+#spoken-line{font-size:18px;line-height:1.75;color:#eef4ef;min-height:64px;margin:0 0 13px;text-wrap:pretty;word-break:keep-all;overflow-wrap:anywhere}
+.shot-controls{display:flex;align-items:center;justify-content:center;gap:15px;font-size:11px;color:var(--muted)}
+.shot-controls .icon-btn{width:30px;height:30px;border:0;background:none}
+.shot-controls #shot-code{display:flex;align-items:center;gap:7px;border-left:1px solid var(--line);padding-left:20px;color:var(--mint);font-size:11px}
+.scene-top{top:auto;bottom:10px;right:4%;font-size:8px}
+.scene-footer{left:5%;right:auto;bottom:10px;font-size:9px}
+#scene-label{display:none}
+.scene-tools{top:25px;bottom:auto;right:4%}
+.chapter-takeaway{border-left:3px solid var(--mint);padding-left:22px;margin-bottom:40px}
+.chapter-takeaway span{font-size:11px;color:var(--mint)}
+.chapter-takeaway p{font-size:23px;line-height:1.5;margin:10px 0 0;word-break:keep-all}
+.file-story-intro{padding:0 0 25px}
+.file-story-intro h3{font-size:23px;font-family:'Gowun Batang',serif;line-height:1.65;margin:12px 0}
+.file-story-intro p{font-size:15px;color:#bbcfc1;margin:0}
+.file-story-intro b{color:var(--mint);font-size:11px;margin-right:12px;font-weight:500}
+.example-theater{border:1px solid #42564a;border-radius:6px;background:#16221b;margin-bottom:18px;overflow:hidden}
+.example-heading{display:flex;justify-content:space-between;gap:12px;padding:20px 23px;font-size:13px;border-bottom:1px solid var(--line)}
+.example-heading button{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--mint)}
+.example-timeline{display:grid;grid-template-columns:repeat(3,1fr);padding:0 23px;gap:20px}
+.example-timeline button{border-bottom:2px solid var(--line);padding:16px 0;font-size:13px;text-align:left}
+.example-timeline button span{font:10px Consolas;color:var(--muted);margin-right:14px}
+.example-timeline button.active{border-color:var(--mint);color:var(--mint)}
+#example-stage{padding:25px 24px;min-height:224px}
+.example-phase{font-size:11px;color:var(--gold);margin-bottom:17px}
+.example-payload{font-family:Consolas,'Noto Sans KR',sans-serif;font-size:23px;line-height:1.65;overflow-wrap:anywhere;word-break:keep-all;color:#ebf1e8}
+#example-stage p{font-size:14px;color:#b5c9bb;margin-top:18px;margin-bottom:0}
+.fixture-note{font-size:10px;color:#91a797;border-top:1px solid var(--line);padding:10px 24px;margin:0}
+.example-links{display:flex;flex-wrap:wrap;gap:15px;justify-content:space-between;margin-bottom:35px}
+.example-links button{display:flex;gap:7px;align-items:center;font-size:11px;text-align:left;flex-wrap:wrap}
+.example-links code{color:var(--mint);overflow-wrap:anywhere}
+.source-examples{margin-top:25px;font-size:12px;color:var(--muted)}
+.source-examples summary{cursor:pointer;padding:12px 0}
+@media(max-width:1000px){.chapter-copy h1{font-size:26px}.scene-tools .icon-btn{width:31px;height:31px}#spoken-line{font-size:16px}.film-caption{width:86%}.example-payload{font-size:20px}}
+@media(max-width:700px){
+ .stage{height:685px;min-height:685px;max-height:none}
+ .stage #scene{inset:var(--cinema-top,135px) 0 var(--cinema-bottom,210px)}
+ .chapter-copy{top:24px;left:6%;right:6%;padding:0;margin:0}
+ .chapter-copy h1{font-size:24px;line-height:1.45;max-width:none;margin-top:18px;margin-bottom:8px}
+ .chapter-copy .eyebrow{font-size:9px;max-width:60%}
+ .chapter-copy #beat-title{font-size:10px;max-width:100%;line-height:1.6}
+ .scene-tools{top:16px;right:5%;gap:4px}.scene-tools .icon-btn{width:28px;height:28px}
+ .scene-tools svg{width:15px;height:15px}
+ .film-caption{bottom:44px;width:88%}
+ #spoken-line{font-size:15px;line-height:1.85;min-height:110px;margin-bottom:12px;word-break:normal}
+ .shot-controls{gap:10px}.shot-controls #shot-code{font-size:10px;padding-left:10px}
+ .scene-top{font-size:8px;bottom:13px;left:6%;right:auto;gap:4px}
+ .scene-footer{display:none}
+ .chapter-takeaway{padding-left:17px;margin-bottom:30px}.chapter-takeaway p{font-size:20px}
+ .file-story-intro h3{font-size:21px}.file-story-intro p{font-size:13px}.file-story-intro b{display:block;margin-bottom:5px}
+ .example-heading{padding:16px;font-size:12px}.example-heading button{font-size:10px}
+ .example-timeline{padding:0 16px;gap:12px}.example-timeline button{font-size:12px}
+ #example-stage{padding:20px 16px;min-height:260px}.example-payload{font-size:20px}
+ #example-stage p{font-size:13px}.fixture-note{padding:10px 16px;font-size:9px}
+ .example-links{display:grid;gap:16px}
+}
+
+/* Documentary screen above; plain, paper-like research notes below. */
+:root{font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif;background:#17191b;color:#e8e9e9;--mint:#bacdd7;--pink:#d7b9be;--gold:#d5c39c;--muted:#a6adb2;--line:#383c40}
+.header{height:80px;border-color:#33373a;padding:0 5%}
+.brand{font-size:17px;font-weight:600}.brand small{font-size:11px;margin-top:6px;color:#a6adb2}
+.header nav{gap:28px}.header nav button{font-size:13px}.header nav button.active{color:#e9ecee;border-color:#b9c9d1}
+.version{font-family:inherit;font-size:11px;color:#929ba2}.version b{font-family:inherit;color:#b7bec3}
+.eyebrow{font-family:inherit;color:var(--muted);font-size:12px}
+.chapter-copy .eyebrow{font-size:12px;color:#a6adb2}
+.chapter-copy h1{font-family:inherit;font-size:28px;font-weight:500;line-height:1.55}
+.chapter-copy #beat-title{color:#b5bdc2;font-size:12px}
+#spoken-line{font-weight:400;color:#f0f1f1}
+.icon-btn{border-color:#41464a;background:transparent;border-radius:3px}
+.scene-tools .icon-btn{border-color:transparent;color:#b1bac0}
+.scene-top{font-size:10px;color:#9da5ab}
+.transport{background:#202326;border-color:#373c40}
+.transport #play{background:#dde4e8;color:#20262a}
+.transport #time,.voice-status,.progress-text{color:#b5bfc5}
+.transport #chapters button{color:#acb6bd}.transport #chapters button.active{color:#e6edf0;border-color:#b7cbd7}
+.transport #chapters button span{color:#96a2aa}
+.speed select{background:transparent;color:#d7e0e5}
+.shot-controls #shot-code{color:#c1d3df}
+.lesson,#code-view,#terms-view{background:#f3f4f4;color:#272d32;--mint:#2a625f;--pink:#875466;--gold:#786035;--muted:#5e6a73;--line:#d0d6d9}
+.lesson{max-width:none;margin:0;padding:52px max(6%,calc((100% - 1120px)/2)) 45px}
+.chapter-takeaway{border-left:0;border-bottom:1px solid var(--line);padding:0 0 26px;margin-bottom:35px}
+.chapter-takeaway span{color:#5e6a73;font-size:12px}.chapter-takeaway p{font-size:21px;font-weight:500;margin-top:9px}
+.lesson h2,.code-heading h1,.file-story-intro h3{font-family:inherit;font-weight:600}
+.lesson h2{font-size:25px}.learning-grid{gap:48px}
+.learning-grid article h3{font-weight:600;font-size:16px}.learning-grid article p{color:#44515a;font-size:14px}
+.lab{background:#e9edee;border-color:#c5cfd2;border-radius:4px;color:#28373e}
+.lab label,.lab p:last-child{color:#45575f}.lab select{background:#f7f8f8;color:#26383d;border-color:#bac8cc}
+.lab output{color:#73582d}.lab h3,.quiz h3{font-size:16px;font-weight:600}
+.lab .eyebrow,.quiz .eyebrow{color:#5f6e76;font-size:11px}
+.quiz button{color:#34454d}.quiz button:hover{color:#1b5a57}#quiz-result{color:#655227}
+.code-vector{border-color:#b9c6c9;background:transparent}.code-vector.selected{border-color:#8e5269;color:#713c52}
+.bar-row div{background:#b67b90}.bar-row:nth-child(2) div{background:#508c81}
+.source-links button{color:#315b67}.text-button{color:#315b67;border-color:#9eafb5}
+footer{background:#e7ebed;color:#53646e;border-color:#c9d1d5;font-size:10px}
+.code-heading{padding-top:38px}.code-heading h1{font-size:28px}.code-heading>p:last-child{color:#5e6a73;font-size:13px}
+.file-sidebar button span,.file-sidebar button small{color:#66747c}.file-sidebar button.active{background:#e0e7e9;color:#214e59;border-color:#456d78}
+.search{border-color:#aab9c0}.search input{color:#263940}
+.code-detail h2{font-size:25px;font-weight:600}.flow{color:#5f6d74}.depth-tabs button.active{color:#245c5a;border-color:#4a7975}
+.file-story-intro h3{font-size:20px;font-weight:500;line-height:1.75}.file-story-intro p,.reading>p,.domain-note{color:#42535c}
+.file-story-intro b{color:#586c75}.file-story-intro .eyebrow{color:#62757e}
+.example-theater{background:#e9edef;border-color:#bdc9cf;border-radius:4px}
+.example-heading{border-color:#c5d0d5}.example-heading button{color:#315f6c}
+.example-timeline button.active{border-color:#457875;color:#275e59}.example-phase{color:#6d5a37}
+.example-payload{font-size:22px;color:#24363e}.example-heading>span{font-weight:500}
+#example-stage p{color:#475e68}.fixture-note{color:#5d707b;border-color:#c5d0d5}
+.example-links code{color:#315f6c}.docstring{background:#e7edee;color:#3c525e;border-color:#a0b5bd}
+.muted{color:#5d6d75!important}.steps li{border-color:#d0dadd}.steps button{color:#316c72}
+.source-code{border-color:#aebec6}.source-line>span{color:#94a79d}
+.source-examples,.calls{color:#566e7b}.glossary dt{color:#315b67}.glossary dd{color:#465761}
+@media(max-width:700px){
+ .header{height:74px;padding:0 6%}.brand{font-size:15px}.brand small{font-size:10px}.header nav{gap:18px}
+ .chapter-copy h1{font-size:22px;font-weight:500}.chapter-copy .eyebrow{font-size:11px}.chapter-copy #beat-title{font-size:10px}
+ .scene-top{font-size:9px}.lesson{padding:35px 6%}.lesson h2{font-size:23px}.learning-grid{gap:15px}
+ .chapter-takeaway p{font-size:19px}.file-story-intro h3{font-size:19px}.example-payload{font-size:19px}
+ .code-heading h1{font-size:25px}.code-detail h2{font-size:22px}
+}

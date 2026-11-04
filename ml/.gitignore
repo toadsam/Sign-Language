@@ -1,0 +1,7 @@
+# AI Hub 데이터와 여기서 만든 파생물은 약관상 공개 저장소에 올리지 않는다
+data/
+runs/
+*.npy
+*.pt
+__pycache__/
+.venv/
