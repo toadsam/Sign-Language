@@ -6,7 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { useAuth } from '@/context/auth-context';
 import { Paint, Size } from '@/constants/paint';
-import { DAILY_GOAL_TARGET, getConsecutiveGoalDays, normalizeDailySolvedCounts } from '@/lib/daily-goal';
+import { DAILY_GOAL_TARGET, getConsecutiveGoalDays, getTodaySolvedCount, normalizeDailySolvedCounts } from '@/lib/daily-goal';
 import { getCompletedCells, LEARNING_UNITS } from '@/lib/learning-units';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 import { fetchTopWrongWords, TopWrongWordItem } from '@/lib/api/top-wrong-words';
@@ -14,6 +14,7 @@ import { getBaseUrl } from '@/lib/api/base-url';
 import { EmptyState, errorKind } from '@/components/paint/empty-state';
 import { MeAvatar, MeHeader, MeRow, StatBlob, useCountUp } from '@/components/paint/me-parts';
 import { StampCalendar } from '@/components/paint/stamp-calendar';
+import { getBestGoalStreak, StickerBoard, type StickerStats } from '@/components/paint/stickers';
 import { BodyText, Mark, PaintButton, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
 import { usePaintNav } from '@/components/paint/transition';
 
@@ -134,6 +135,16 @@ export default function MyPageScreen() {
   const goalStreakDays = getConsecutiveGoalDays(dailySolvedCounts, DAILY_GOAL_TARGET);
   const paintedPlaces = getCompletedCells(total);
   const shownAccuracy = useCountUp(accuracy);
+  // 스티커판: 이미 불러온 숫자로만 판단한다
+  const stickerStats = useMemo<StickerStats>(
+    () => ({
+      total,
+      correct,
+      today: getTodaySolvedCount(dailySolvedCounts),
+      bestGoalStreak: getBestGoalStreak(dailySolvedCounts, DAILY_GOAL_TARGET),
+    }),
+    [total, correct, dailySolvedCounts]
+  );
 
   const profileUri = (userInfo as any)?.profileImageUrl || user?.picture || null;
   const displayName = user?.name ?? (isGuest ? '게스트' : '사용자');
@@ -201,8 +212,16 @@ export default function MyPageScreen() {
           )}
         </Animated.View>
 
+        {/* 스티커판 (불러오기에 실패하면 숨긴다) */}
+        {!loadError ? (
+          <Animated.View entering={appear(4)}>
+            <StoryText size={Size.lead} style={styles.sub}>스티커판</StoryText>
+            <StickerBoard stats={stickerStats} playKey={stampPlay} />
+          </Animated.View>
+        ) : null}
+
         {/* 자주 틀린 단어 */}
-        <Animated.View entering={appear(4)}>
+        <Animated.View entering={appear(5)}>
           <StoryText size={Size.lead} style={styles.sub}>자주 틀린 단어</StoryText>
           <RoughBox seed={31} style={styles.box}>
             {topWrongWords.length === 0 ? (
@@ -225,7 +244,7 @@ export default function MyPageScreen() {
         </Animated.View>
 
         {/* 학습 관리 */}
-        <Animated.View entering={appear(5)}>
+        <Animated.View entering={appear(6)}>
           <StoryText size={Size.lead} style={styles.sub}>모아 둔 것</StoryText>
           <RoughBox seed={37} style={styles.box}>
             <MeRow first icon="note" label="오답 노트" onPress={(p) => void nav.go('/wrongnote', p)} />
@@ -233,7 +252,7 @@ export default function MyPageScreen() {
           </RoughBox>
         </Animated.View>
 
-        <Animated.View entering={appear(6)} style={styles.logout}>
+        <Animated.View entering={appear(7)} style={styles.logout}>
           <PaintButton
             variant="ghost"
             label="로그아웃"

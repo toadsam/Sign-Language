@@ -16,12 +16,13 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { Font, Paint, Size, TabColor } from '@/constants/paint';
 import { feel } from '@/lib/feel';
+import { useSkyPhase, type SkyPhase } from '@/lib/sky';
 import { blob, jitterPath, pathLength, roughRect } from './rough';
 import { usePaintNav } from './transition';
 
@@ -73,7 +74,33 @@ const paperUri: string | undefined =
 const webPaper = paperUri
   ? ({ backgroundImage: `url(${paperUri})`, backgroundRepeat: 'repeat', backgroundSize: '256px 256px', opacity: 0.5 } as unknown as ViewStyle)
   : null;
+/* 종이도 마을 하늘을 따라 물든다: 아침은 살짝 노랗게, 저녁은 노을빛, 밤은 푸르스름하게.
+   글씨 대비(4.5:1 이상)가 유지되는 만큼만 옅게 칠하고, 카드는 그대로 하얗게 둔다 (등불 아래 종이처럼) */
+const SKY_TINT: Record<SkyPhase, { c: string; o: number } | null> = {
+  morning: { c: '#FFE08A', o: 0.1 },
+  day: null,
+  evening: { c: '#F2A36A', o: 0.14 },
+  night: { c: '#3E4F9A', o: 0.16 },
+};
+export function SkyTint() {
+  const t = SKY_TINT[useSkyPhase()];
+  if (!t) return null;
+  return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: t.c, opacity: t.o }]} />;
+}
+const NIGHT_STARS: [number, number, number][] = [[28, 18, 1], [92, 46, 0.7], [150, 14, 0.8], [236, 38, 1], [300, 12, 0.7], [352, 52, 0.9], [196, 70, 0.6]];
+function NightSpecks() {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 90 }}>
+      <Svg width="100%" height={90} viewBox="0 0 375 90" preserveAspectRatio="xMidYMin slice">
+        {NIGHT_STARS.map(([x, y, s], i) => (
+          <Path key={i} d={`M${x - 3 * s} ${y} h${6 * s} M${x} ${y - 3 * s} v${6 * s}`} stroke={Paint.inkSoft} strokeWidth={1.2} strokeLinecap="round" opacity={0.35} />
+        ))}
+      </Svg>
+    </View>
+  );
+}
 export function PaperScreen({ children, edges = ['top'], style }: { children: ReactNode; edges?: Edge[]; style?: StyleProp<ViewStyle> }) {
+  const phase = useSkyPhase();
   return (
     <View style={[styles.paper, style]}>
       {webPaper ? (
@@ -81,6 +108,8 @@ export function PaperScreen({ children, edges = ['top'], style }: { children: Re
       ) : (
         <ImageBackground source={paperTile} resizeMode="repeat" style={StyleSheet.absoluteFill} imageStyle={{ opacity: 0.5 }} />
       )}
+      <SkyTint />
+      {phase === 'night' && <NightSpecks />}
       <SafeAreaView edges={edges} style={{ flex: 1 }}>
         {children}
       </SafeAreaView>
@@ -371,11 +400,44 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'translator', label: '통역' },
   { key: 'mypage', label: '기록' },
 ];
+// 화면마다 메뉴를 새로 그리므로, 직전에 있던 메뉴를 기억했다가 거기서부터 물감 방울을 굴린다
+let lastTab: TabKey | null = null;
+const DROP_W = 52;
 export function PaintTabBar({ current }: { current: TabKey }) {
   const nav = usePaintNav();
+  const reduce = useReducedMotion();
+  const idx = TABS.findIndex((t) => t.key === current);
+  const [from] = useState(() => (lastTab ? TABS.findIndex((t) => t.key === lastTab) : idx));
+  const [w, setW] = useState(0);
+  const pos = useSharedValue(from);
+  const stretch = useSharedValue(1);
+  useEffect(() => {
+    lastTab = current;
+  }, [current]);
+  useEffect(() => {
+    if (!w) return;
+    if (reduce || from === idx) {
+      pos.value = idx;
+      return;
+    }
+    // 물감이 화면을 쓸고 지나간 뒤(약 0.4초) 방울이 옆으로 늘어나며 굴러가 자리를 잡는다
+    const d = Math.abs(idx - from);
+    pos.value = withDelay(380, withSpring(idx, { damping: 14, stiffness: 130 }));
+    stretch.value = withDelay(380, withSequence(withTiming(1 + 0.3 * d, { duration: 160 }), withSpring(1, { damping: 6, stiffness: 170 })));
+  }, [w, reduce, from, idx, pos, stretch]);
+  const cell = w / TABS.length;
+  const dropStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pos.value * cell + cell / 2 - DROP_W / 2 }, { scaleX: stretch.value }, { scaleY: 1 / Math.sqrt(stretch.value) }],
+  }));
   return (
     <SafeAreaView edges={['bottom']} style={styles.tabWrap}>
-      <View style={styles.tabs} accessibilityRole="tablist">
+      <SkyTint />
+      <View style={styles.tabs} accessibilityRole="tablist" onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+        {w > 0 && (
+          <Animated.View pointerEvents="none" style={[styles.drop, dropStyle]}>
+            <Wash color={TabColor[current]} opacity={0.75} seed={current.length} />
+          </Animated.View>
+        )}
         {TABS.map((t) => {
           const on = t.key === current;
           return (
@@ -388,7 +450,6 @@ export function PaintTabBar({ current }: { current: TabKey }) {
               style={styles.tab}
             >
               <View style={{ width: 44, height: 34, alignItems: 'center', justifyContent: 'center' }}>
-                {on && <Wash color={TabColor[t.key]} opacity={0.75} seed={t.key.length} />}
                 <PaintIcon name={t.key} color={on ? Paint.ink : Paint.inkSoft} boil={on} />
               </View>
               <BodyText size={Size.caption} style={{ color: on ? Paint.ink : Paint.inkSoft, fontFamily: on ? Font.story : Font.body }}>{t.label}</BodyText>
@@ -421,7 +482,8 @@ export function PaintHeader({ title, sub, onBack, right }: { title: string; sub?
 const styles = StyleSheet.create({
   paper: { flex: 1, backgroundColor: Paint.paper },
   tabWrap: { backgroundColor: Paint.paper, borderTopWidth: 1.5, borderTopColor: Paint.line },
-  tabs: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 8, paddingBottom: 6 },
-  tab: { alignItems: 'center', gap: 2, minWidth: 64, paddingVertical: 2 },
+  tabs: { flexDirection: 'row', paddingTop: 8, paddingBottom: 6 },
+  tab: { flex: 1, alignItems: 'center', gap: 2, minWidth: 64, paddingVertical: 2 },
+  drop: { position: 'absolute', left: 0, top: 10, width: DROP_W, height: 34 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 },
 });

@@ -11,6 +11,7 @@ import Svg, { ClipPath, Defs, G, Path, Rect, Text as SvgText } from 'react-nativ
 
 import { Font, Paint } from '@/constants/paint';
 import { feel } from '@/lib/feel';
+import { skyOf, type SkyPhase } from '@/lib/sky';
 import { Bee } from './bee';
 import { useBoil } from './paint-ui';
 import { blob, jitterPath } from './rough';
@@ -93,13 +94,8 @@ const LIFE: { smoke?: [number, number]; windows?: [number, number, number, numbe
 ];
 
 /* ── 하늘: 실제 시각에 따라 아침 · 낮 · 저녁 · 밤 ── */
-export type SkyPhase = 'morning' | 'day' | 'evening' | 'night';
-export function skyOf(hour: number): SkyPhase {
-  if (hour >= 5 && hour < 10) return 'morning';
-  if (hour >= 10 && hour < 17) return 'day';
-  if (hour >= 17 && hour < 20) return 'evening';
-  return 'night';
-}
+// 시간대 계산은 앱 전체가 같이 쓰도록 lib/sky 에 있다
+export { skyOf, type SkyPhase };
 const SKY: Record<SkyPhase, { wash?: string; washO: number; band?: string; sun: string; sunY: number }> = {
   morning: { wash: Paint.sky, washO: 0.32, band: Paint.yellowSoft, sun: Paint.yellowSoft, sunY: 90 },
   day: { washO: 0, sun: Paint.yellow, sunY: 64 },
@@ -117,6 +113,34 @@ export function seasonOf(month: number): Season {
   return 'winter';
 }
 const FALL_N = 16;
+
+/* ── 주민 ── */
+const SHIRTS = [Paint.coral, Paint.sky, Paint.leaf, Paint.yellow, Paint.mint, Paint.blossom];
+function Resident({ k, tk, boil }: { k: number; tk: number; boil: number }) {
+  // 자기 건물 앞을 오가다가, 돌아서는 순간(속도가 거의 0)에는 멈춰서 손을 흔든다
+  const a = tk * 0.018 + k * 1.7;
+  const x = placeX(k) + 34 + Math.sin(a) * 56;
+  const v = Math.cos(a);
+  const walking = Math.abs(v) > 0.25;
+  const f = v >= 0 ? 1 : -1;
+  const step = [3, 0, -3, 0][tk % 4];
+  const s = walking ? step : 0;
+  const wave = (tk >> 1) % 2 ? 3 : -2;
+  const shirt = SHIRTS[k % SHIRTS.length];
+  const arms = walking
+    ? `M${x - 5} 279 L${x - 7 - s * 0.6} 288 M${x + 5} 279 L${x + 7 + s * 0.6} 288`
+    : `M${x - 5 * f} 279 L${x - 9 * f} 287 M${x + 5 * f} 279 L${x + 11 * f} 272 L${x + (10 + wave) * f} 264`;
+  const ink = jitterPath(`M${x - 3} 291 L${x - 3 - s} 302 M${x + 3} 291 L${x + 3 + s} 302 ${arms}`, 90 + k * 3 + boil, 0.4);
+  return (
+    <G>
+      <Path d={jitterPath(`M${x - 6} 277 L${x + 6} 277 L${x + 7.5} 292 L${x - 7.5} 292 Z`, 60 + k + boil, 0.5)} fill={shirt} stroke={Paint.ink} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d={ink} fill="none" stroke={Paint.ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={blob(x, 269, 5.6, 5.8, k + 2 + boil, 0.08, 8)} fill={Paint.skin} stroke={Paint.ink} strokeWidth={1.6} />
+      <Path d={`M${x + 1.5 * f} 268.5 h0.1`} stroke={Paint.ink} strokeWidth={1.8} strokeLinecap="round" />
+      {!walking && <Path d={blob(x + (10 + wave) * f, 263, 2.4, 2.4, k, 0.1, 6)} fill={Paint.skin} stroke={Paint.ink} strokeWidth={1.3} />}
+    </G>
+  );
+}
 
 /** 살아 있는 장면용 시계: 0.11초마다 1씩 오른다. 펜 그림처럼 뚝뚝 끊겨 움직이는 게 오히려 어울린다 */
 function useLifeTick(enabled: boolean) {
@@ -404,6 +428,11 @@ export function Village({ titles, completed, paintIndex = null, height = 290, ho
                 </G>
               );
             })}
+
+            {/* 주민: 칠한 곳마다 한 명씩 이사 와서 길을 걷다가 멈춰 수어로 인사한다 */}
+            {Array.from({ length: Math.min(completed, titles.length) }, (_, k) => k)
+              .filter((k) => alive(k))
+              .map((k) => <Resident key={'r' + k} k={k} tk={tk} boil={boil} />)}
 
             {/* 계절 */}
             {season === 'winter' && (

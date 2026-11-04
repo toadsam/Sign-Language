@@ -4,7 +4,7 @@
  * 맞으면 칸에 노란 물감이 번지고, 틀리면 카드가 흔들린다. 마지막 문제 뒤에는 결과를 보여 준다.
  */
 import { useLocalSearchParams, type Href } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoPlayer } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
@@ -34,6 +34,7 @@ import {
 import { EmptyState, errorKind } from '@/components/paint/empty-state';
 import { QuizAnswer, QuizAnswerGrid, type QuizAnswerState } from '@/components/paint/quiz-answer';
 import { usePaintNav } from '@/components/paint/transition';
+import { VideoFrame } from '@/components/paint/video-frame';
 import { Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
 import {
@@ -614,36 +615,20 @@ export default function QuizScreen() {
             <BodyText soft size={Size.caption}>표본이 적어 통계가 달라질 수 있습니다.</BodyText>
           ) : null}
 
-          {/* 만화 칸: 수어 영상 */}
-          <RoughBox
+          {/* 액자 속 수어 영상 */}
+          <VideoFrame
+            player={currentQuestion.videoUrl ? player : null}
+            onReplay={handleReplayVideo}
             seed={currentIndex + 3}
-            strokeWidth={2.4}
-            radius={18}
-            wash={isAnswered && isCorrect ? Paint.yellowSoft : undefined}
+            glow={isAnswered && isCorrect}
             style={styles.panel}
-          >
-            {currentQuestion.videoUrl ? (
-              <View style={styles.videoClip}>
-                <VideoView style={styles.video} player={player} nativeControls contentFit="cover" />
-                <Pressable
-                  onPress={handleReplayVideo}
-                  accessibilityRole="button"
-                  accessibilityLabel="수어 영상 다시 보기"
-                  style={styles.replayBtn}
-                >
-                  <RoughBox seed={9} radius={12} fill={Paint.paper} strokeWidth={1.6} style={styles.replayInner}>
-                    <PaintIcon name="play" size={16} />
-                    <BodyText size={Size.small}>다시</BodyText>
-                  </RoughBox>
-                </Pressable>
-              </View>
-            ) : (
-              <View style={styles.noVideo}>
+            fallback={
+              <>
                 <Bee size={60} still />
                 <BodyText soft style={{ textAlign: 'center' }}>이 단어의 수어 영상이 아직 준비되지 않았습니다.</BodyText>
-              </View>
-            )}
-          </RoughBox>
+              </>
+            }
+          />
 
           {/* 보기 4개 */}
           <View style={{ marginTop: 16 }}>
@@ -746,12 +731,7 @@ const styles = StyleSheet.create({
   question: { marginTop: 2 },
   statRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, marginTop: 6 },
 
-  panel: { marginTop: 14, height: 300, padding: 8 },
-  videoClip: { flex: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: Paint.ink },
-  video: { width: '100%', height: '100%' },
-  replayBtn: { position: 'absolute', top: 8, right: 8, minWidth: 44, minHeight: 44 },
-  replayInner: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 44 },
-  noVideo: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
+  panel: { marginTop: 14 },
 
   errorText: { marginTop: 12, textAlign: 'center' },
 

@@ -12,6 +12,7 @@ import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, w
 import { Bee } from '@/components/paint/bee';
 import { PaintConfetti } from '@/components/paint/effects';
 import { BodyText, PaintButton, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash } from '@/components/paint/paint-ui';
+import { FirstStory, hasSeenFirstStory } from '@/components/paint/first-story';
 import { PaintToast } from '@/components/paint/toast';
 import { usePaintNav } from '@/components/paint/transition';
 import { skyOf, Village, type SkyPhase } from '@/components/paint/village';
@@ -27,6 +28,7 @@ import {
 import { getCompletedCells, LEARNING_UNITS, QUIZZES_PER_CELL } from '@/lib/learning-units';
 import { fetchUserInfo, UserInfo } from '@/lib/api/users';
 import { feel } from '@/lib/feel';
+import { setSkyHour } from '@/lib/sky';
 
 // 꿀짓이를 누를 때마다 차례로 나오는 말
 const BEE_LINES = ['히히, 간지러워요!', '오늘은 어떤 표현을 배워 볼까요?', '손가락 다섯 개, 다 보이죠?', '같이 하면 금방이에요!'];
@@ -126,11 +128,26 @@ export default function HomeScreen() {
   const nav = usePaintNav();
   const { user } = useAuth();
   const nickname = user?.name?.trim() || '';
-  // 발표·확인용: /home?hour=21 은 밤 마을, ?month=1 은 겨울 마을, ?cells=5 는 칠한 곳 5개, ?demo=goal 은 목표 달성 축하, ?demo=paint 는 칠하는 장면
+  // 발표·확인용: /home?hour=21 은 밤 마을, ?month=1 은 겨울 마을, ?cells=5 는 칠한 곳 5개, ?demo=goal 은 목표 달성 축하, ?demo=paint 는 칠하는 장면, ?demo=intro 는 첫 실행 이야기
   const params = useLocalSearchParams<{ hour?: string; demo?: string; cells?: string; month?: string }>();
   const monthParam = params.month && !Number.isNaN(Number(params.month)) ? Number(params.month) : undefined;
   const hourParam = params.hour !== undefined && params.hour !== '' && !Number.isNaN(Number(params.hour)) ? Number(params.hour) : undefined;
   const phase = skyOf(hourParam ?? new Date().getHours());
+  // 확인용 시각을 앱 전체 종이에도 적용한다 (다른 화면으로 가도 같은 하늘)
+  useEffect(() => {
+    if (hourParam !== undefined) setSkyHour(hourParam);
+  }, [hourParam]);
+  // 처음 한 번만: 꿀짓이가 빈 종이에 마을 밑그림을 그려 주는 이야기 (?demo=intro 로 다시 보기)
+  const [showStory, setShowStory] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void hasSeenFirstStory().then((seen) => {
+      if (alive && !seen) setShowStory(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const loadUserInfoRef = useRef<() => Promise<void>>(async () => {});
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
@@ -228,6 +245,7 @@ export default function HomeScreen() {
   // 발표·확인용 장면
   useEffect(() => {
     if (params.demo === 'goal') setCelebrate(true);
+    if (params.demo === 'intro') setShowStory(true);
     if (params.demo === 'paint') {
       const idx = Math.min(Math.max(completedCells, 1), titles.length) - 1;
       setPaintIndex(idx);
@@ -346,6 +364,7 @@ export default function HomeScreen() {
 
       <PaintToast visible={!!toast} title={toast?.title ?? ''} sub={toast?.sub} />
       <PaintTabBar current="home" />
+      <FirstStory visible={showStory} onDone={() => setShowStory(false)} nickname={nickname} />
       <GoalCelebration visible={celebrate} streak={Math.max(streakDays, 1)} onClose={() => setCelebrate(false)} />
     </PaperScreen>
   );
