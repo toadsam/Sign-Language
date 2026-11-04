@@ -9,9 +9,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import Svg, { G, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { G, Path, Text as SvgText } from 'react-native-svg';
 
 import { Font, Paint } from '@/constants/paint';
+import { LOGO_LETTERS, LOGO_NAME } from './paint/logo';
 import { blob, jitterPath, pathLength } from './paint/rough';
 import { useBoil } from './paint/paint-ui';
 
@@ -79,7 +80,7 @@ export function SplashOverlay({ onDone, ready = true }: { onDone: () => void; re
   const sign = t > 0.34 && t < 0.62 ? Math.sin((t - 0.34) * 60) * 7 : 0;
   const blobR = seg(0.36, 0.56);
   const wins = WINDOWS.map((_, i) => seg(0.44 + i * 0.03, 0.54 + i * 0.03));
-  const logo = seg(0.55, 0.65), tag = seg(0.62, 0.72);
+  const tag = seg(0.62, 0.72);
   const fly = seg(0.66, 0.92);
   const [bx, by] = ROUTE(fly);
   // 마지막: 노란 물감이 번져 덮었다가 전체가 옅어진다
@@ -88,7 +89,7 @@ export function SplashOverlay({ onDone, ready = true }: { onDone: () => void; re
   const boilD = (d: string, s: number) => (boil ? jitterPath(d, s + boil, 0.7) : d);
 
   return (
-    <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: Paint.paper, opacity: 1 - fade }]} onPress={finish} accessibilityRole="button" accessibilityLabel="수어지교 시작 화면. 누르면 건너뜁니다">
+    <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: Paint.paper, opacity: 1 - fade }]} onPress={finish} accessibilityRole="button" accessibilityLabel={`${LOGO_NAME} 시작 화면. 누르면 건너뜁니다`}>
       <Svg width={width} height={height} viewBox="0 0 360 700" preserveAspectRatio="xMidYMid meet">
         {/* 손 사이에서 번지는 노란 물감 */}
         <Path d={blob(180, 262, 120 * blobR + 0.1, 120 * blobR + 0.1, 3, 0.12)} fill={Paint.yellowSoft} />
@@ -108,11 +109,19 @@ export function SplashOverlay({ onDone, ready = true }: { onDone: () => void; re
           </G>
           <Path d="M164 198 q16 -14 32 0 M156 186 q24 -22 48 0" opacity={seg(0.36, 0.42) * 0.8} />
         </G>
-        {/* 로고 자리: 로고 이미지가 오면 이 G 안의 글자를 바꾼다 */}
-        <G opacity={logo} transform={`translate(0 ${10 * (1 - logo)})`}>
-          <Rect x={100} y={368} width={160} height={58} rx={18} fill="none" stroke="rgba(46,38,32,.35)" strokeWidth={1.5} strokeDasharray="5 5" />
-          <SvgText x={180} y={408} fontSize={31} fontFamily={Font.story} fill={Paint.ink} textAnchor="middle">수어지교</SvgText>
-        </G>
+        {/* 글씨 로고: 글자마다 메뉴 물감 한 방울이 톡 번지고 그 위에 글자가 앉는다 (logo.tsx 와 같은 글자·색) */}
+        {LOGO_LETTERS.map((l, i) => {
+          const p = seg(0.54 + i * 0.03, 0.62 + i * 0.03);
+          const x = 117 + i * 42, y = 396 + l.dy;
+          const r = 24 * p + 0.1;
+          return (
+            <G key={l.ch} opacity={Math.min(1, p * 1.6)} transform={`rotate(${l.tilt} ${x} ${y})`}>
+              <Path d={blob(x, y, r, r, 30 + i * 5, 0.12, 10)} fill={l.color} opacity={0.85} />
+              <Path d={blob(x + 2, y + 1, r * 0.7, r * 0.7, 40 + i * 5, 0.14, 9)} fill={l.color} opacity={0.4} />
+              <SvgText x={x} y={y + 11 - 6 * (1 - p)} fontSize={31} fontFamily={Font.story} fill={Paint.ink} textAnchor="middle">{l.ch}</SvgText>
+            </G>
+          );
+        })}
         <SvgText x={180} y={462} fontSize={15} fontFamily={Font.body} fill={Paint.inkSoft} textAnchor="middle" opacity={tag}>{SPLASH_LINE}</SvgText>
         {/* 꿀짓이 */}
         {fly > 0 && (

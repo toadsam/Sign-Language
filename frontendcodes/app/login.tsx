@@ -3,7 +3,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { LoginArt } from '@/components/paint/login-art';
-import { BodyText, Mark, PaintButton, PaperScreen, RoughBox, StoryText } from '@/components/paint/paint-ui';
+import { LOGO_NAME, VillageLogo } from '@/components/paint/logo';
+import { BodyText, Mark, PaintButton, PaperScreen, StoryText } from '@/components/paint/paint-ui';
 import { usePaintNav } from '@/components/paint/transition';
 import { Size } from '@/constants/paint';
 
@@ -239,10 +240,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.copy}>
-          {/* 로고가 오면 이 칸에 넣는다 */}
-          <RoughBox dashed stroke="rgba(46,38,32,.4)" fill="transparent" seed={4} style={styles.logoSlot}>
-            <StoryText size={Size.lead + 2}>수어지교</StoryText>
-          </RoughBox>
+          <VillageLogo size={Size.title} style={{ alignSelf: 'flex-start' }} />
           <StoryText size={Size.display - 3} style={{ marginTop: 16 }}>
             손으로 하는 말,{'\n'}
             <Mark>마을</Mark>에서 같이 배워요
@@ -267,7 +265,7 @@ export default function LoginScreen() {
           ) : null}
           <View style={styles.footer}>
             <BodyText size={Size.caption} soft>이용약관 · 개인정보처리방침</BodyText>
-            <BodyText size={Size.caption} soft>© 2026 수어지교</BodyText>
+            <BodyText size={Size.caption} soft>© 2026 {LOGO_NAME}</BodyText>
           </View>
         </View>
       </View>
@@ -279,7 +277,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: 22 },
   art: { alignItems: 'center', marginTop: 18 },
   copy: { marginTop: 8 },
-  logoSlot: { alignSelf: 'flex-start', height: 40, paddingHorizontal: 16, justifyContent: 'center' },
   buttons: { marginTop: 'auto', gap: 10, paddingBottom: 6 },
   error: { color: '#B5462F', textAlign: 'center' },
   footer: { alignItems: 'center', gap: 2, marginTop: 4 },
