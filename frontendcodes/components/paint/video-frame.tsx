@@ -2,11 +2,12 @@
  * 수어 영상 액자 (색칠 마을).
  * 영상이 나무 · 종이 액자 안에 걸려 있다. 펜 테두리 두 줄, 액자에 번진 물감, 모서리 테이프와 압정.
  * 아래 액자 틀에는 펜으로 그린 재생 · 멈춤 · 다시 보기 · 느리게 단추가 있다 (기본 재생 단추 대신).
+ * 단추 위에는 펜으로 그은 진행 선이 있다. 지나간 만큼 노란 물감이 칠해지고, 누르거나 끌면 그 자리로 넘어간다.
  */
 import { useEvent } from 'expo';
 import { VideoView, type VideoPlayer } from 'expo-video';
-import { memo, useMemo, useState, type ReactNode } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 
 import { Paint, Size } from '@/constants/paint';
@@ -17,6 +18,8 @@ import { blob, jitterPath, rng, roughLine, roughRect } from './rough';
 const PAD = 16;
 const CTRL_H = 46;
 const GAP = 8;
+// 진행 선 줄 높이
+const BAR_H = 22;
 
 type Props = {
   /** 영상이 없으면 null. 그때는 fallback을 같은 액자에 넣는다 */
@@ -37,7 +40,7 @@ export function VideoFrame({ player, onReplay, fallback, seed = 1, glow, style }
     if (Math.abs(width - size.w) > 0.5 || Math.abs(height - size.h) > 0.5) setSize({ w: width, h: height });
   };
   const hasControls = !!player;
-  const matBottom = size.h - PAD - (hasControls ? CTRL_H + GAP : 0);
+  const matBottom = size.h - PAD - (hasControls ? CTRL_H + GAP + BAR_H : 0);
   return (
     <View style={[styles.frame, style]} onLayout={onLayout}>
       {size.w > 0 && <FrameBack w={size.w} h={size.h} seed={seed} glow={!!glow} />}
@@ -45,6 +48,7 @@ export function VideoFrame({ player, onReplay, fallback, seed = 1, glow, style }
         <>
           {/* 영상 칸은 따로 둬서 선이 떨릴 때마다 영상이 다시 그려지지 않게 */}
           <VideoMat player={player} />
+          <ProgressLine player={player} />
           <VideoControls player={player} onReplay={onReplay} />
         </>
       ) : (
@@ -156,6 +160,84 @@ function CtrlIcon({ name, boil, fill = 'none' }: { name: keyof typeof CTRL_ICONS
   );
 }
 
+/* ── 진행 선: 펜으로 그은 줄 위에 지나간 만큼 노란 물감, 끝에 코랄 물감 한 방울 ── */
+const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function ProgressLine({ player }: { player: VideoPlayer }) {
+  const t = useBoil();
+  const [w, setW] = useState(0);
+  const [drag, setDrag] = useState<number | null>(null);
+  useEffect(() => {
+    try {
+      player.timeUpdateEventInterval = 0.2;
+    } catch {
+      // 지원하지 않으면 시간 갱신이 드물 뿐이다
+    }
+  }, [player]);
+  const { currentTime } = useEvent(player, 'timeUpdate', {
+    currentTime: player.currentTime,
+    currentLiveTimestamp: null,
+    currentOffsetFromLive: null,
+    bufferedPosition: 0,
+  });
+  const dur = player.duration || 0;
+  const p = drag ?? (dur > 0 ? Math.min(1, Math.max(0, currentTime / dur)) : 0);
+  const L = 8, R = Math.max(L + 1, w - 8);
+  const px = L + (R - L) * p;
+  const art = useMemo(() => {
+    if (!w) return null;
+    const mid = BAR_H / 2;
+    return {
+      track: jitterPath(`M${L} ${mid} Q${(L + R) / 2} ${mid - 1.5} ${R} ${mid}`, 21 + t, 0.6),
+      done: p > 0.005 ? jitterPath(`M${L} ${mid} L${px} ${mid}`, 23 + t, 0.5) : '',
+      drop: blob(px, mid, 6, 6, 9 + t, 0.14, 8),
+    };
+  }, [w, t, p, px, L, R]);
+
+  const ratioAt = (e: GestureResponderEvent) => Math.min(1, Math.max(0, (e.nativeEvent.locationX - L) / (R - L)));
+  const seekTo = (r: number) => {
+    if (dur <= 0) return;
+    try {
+      player.currentTime = r * dur;
+    } catch {
+      // 아직 준비 안 된 영상
+    }
+  };
+  const step = (sec: number) => seekTo(Math.min(1, Math.max(0, (currentTime + sec) / Math.max(dur, 0.001))));
+
+  return (
+    <View
+      style={styles.bar}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      onStartShouldSetResponder={() => dur > 0}
+      onMoveShouldSetResponder={() => dur > 0}
+      onResponderGrant={(e) => setDrag(ratioAt(e))}
+      onResponderMove={(e) => setDrag(ratioAt(e))}
+      onResponderRelease={(e) => {
+        seekTo(ratioAt(e));
+        setDrag(null);
+      }}
+      onResponderTerminate={() => setDrag(null)}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel="영상 위치"
+      accessibilityValue={{ text: `${fmt(p * dur)} / ${fmt(dur)}` }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(e) => step(e.nativeEvent.actionName === 'increment' ? 1 : -1)}
+    >
+      {art && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg width={w} height={BAR_H}>
+            <Path d={art.track} fill="none" stroke={Paint.ink} strokeWidth={1.4} strokeLinecap="round" strokeDasharray="5 4" opacity={0.55} />
+            {art.done ? <Path d={art.done} fill="none" stroke={Paint.yellow} strokeWidth={7} strokeLinecap="round" opacity={0.9} /> : null}
+            {art.done ? <Path d={art.done} fill="none" stroke={Paint.ink} strokeWidth={1.8} strokeLinecap="round" /> : null}
+            <Path d={art.drop} fill={Paint.coral} stroke={Paint.ink} strokeWidth={1.5} />
+          </Svg>
+        </View>
+      )}
+    </View>
+  );
+}
+
 /* ── 아래 틀의 단추 줄: 다시 보기 · 재생/멈춤 · 느리게 ── */
 function VideoControls({ player, onReplay }: { player: VideoPlayer; onReplay: () => void }) {
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
@@ -208,11 +290,12 @@ function VideoControls({ player, onReplay }: { player: VideoPlayer; onReplay: ()
 }
 
 const styles = StyleSheet.create({
-  frame: { height: 340, padding: PAD },
+  frame: { height: 340 + BAR_H, padding: PAD },
   mat: { flex: 1, borderRadius: 6, overflow: 'hidden', backgroundColor: Paint.ink },
   emptyMat: { backgroundColor: Paint.card, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
   video: { width: '100%', height: '100%' },
-  controls: { height: CTRL_H, marginTop: GAP, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 },
+  bar: { height: BAR_H, marginTop: GAP, marginHorizontal: 2 },
+  controls: { height: CTRL_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 },
   btn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   btnMain: { width: 52 },
   btnWide: { width: 58 },

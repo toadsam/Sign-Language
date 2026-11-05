@@ -16,7 +16,7 @@ import { FirstStory, hasSeenFirstStory } from '@/components/paint/first-story';
 import { VillageLogo } from '@/components/paint/logo';
 import { PaintToast } from '@/components/paint/toast';
 import { usePaintNav } from '@/components/paint/transition';
-import { skyOf, Village, type SkyPhase } from '@/components/paint/village';
+import { CheerCrowd, skyOf, Village, type SkyPhase } from '@/components/paint/village';
 import { Font, Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
 import {
@@ -113,6 +113,7 @@ function GoalCelebration({ visible, streak, onClose }: { visible: boolean; strea
         <RoughBox seed={77} wash={Paint.yellowSoft} style={styles.celebrateCard}>
           <Bee size={86} />
           <StoryText size={Size.display}>오늘 목표 완료!</StoryText>
+          <CheerCrowd width={210} />
           <BodyText soft style={{ textAlign: 'center' }}>물방울 다섯 개가 가득 찼어요</BodyText>
           <View style={styles.streakBig}>
             <StoryText size={52} style={{ lineHeight: 60 }}>{shown}</StoryText>
@@ -233,6 +234,17 @@ export default function HomeScreen() {
 
   // 오늘 목표를 막 채웠으면 축하 (마을이 칠해지는 중이면 그게 끝난 뒤에)
   const [celebrate, setCelebrate] = useState(false);
+  // 축하 창을 닫으면 마을 주민들이 몇 초 동안 제자리에서 박수를 친다
+  const [cheer, setCheer] = useState(false);
+  const closeCelebrate = () => {
+    setCelebrate(false);
+    setCheer(true);
+  };
+  useEffect(() => {
+    if (!cheer) return;
+    const t = setTimeout(() => setCheer(false), 6000);
+    return () => clearTimeout(t);
+  }, [cheer]);
   useEffect(() => {
     if (!loaded) return;
     const prev = lastSeenSolved;
@@ -330,6 +342,7 @@ export default function HomeScreen() {
             hour={hourParam}
             month={monthParam}
             onPressPlace={onPlace}
+            cheer={cheer || celebrate}
           />
         </View>
 
@@ -364,7 +377,7 @@ export default function HomeScreen() {
       <PaintToast visible={!!toast} title={toast?.title ?? ''} sub={toast?.sub} />
       <PaintTabBar current="home" />
       <FirstStory visible={showStory} onDone={() => setShowStory(false)} nickname={nickname} />
-      <GoalCelebration visible={celebrate} streak={Math.max(streakDays, 1)} onClose={() => setCelebrate(false)} />
+      <GoalCelebration visible={celebrate} streak={Math.max(streakDays, 1)} onClose={closeCelebrate} />
     </PaperScreen>
   );
 }

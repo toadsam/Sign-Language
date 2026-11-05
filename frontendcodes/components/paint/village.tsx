@@ -116,7 +116,60 @@ const FALL_N = 16;
 
 /* ── 주민 ── */
 const SHIRTS = [Paint.coral, Paint.sky, Paint.leaf, Paint.yellow, Paint.mint, Paint.blossom];
-function Resident({ k, tk, boil }: { k: number; tk: number; boil: number }) {
+/** 수어 박수: 두 손을 머리 위로 들고 손목을 돌리며 흔든다. 마을 주민과 축하 카드가 같이 쓴다 */
+function Cheerer({ x, k, tk, boil }: { x: number; k: number; tk: number; boil: number }) {
+  const ph = (tk + k) % 4;
+  const hop = ph === 1 ? -2.5 : 0;
+  // 손목을 돌리면 손바닥이 보였다(넓게) 손날이 보였다(좁게) 한다. 두 손이 엇갈리게
+  const wL = ph < 2 ? 3.4 : 1.6;
+  const wR = ph < 2 ? 1.6 : 3.4;
+  const sway = ph % 2 ? 1.5 : -1.5;
+  const shirt = SHIRTS[k % SHIRTS.length];
+  const hxL = x - 12 + sway, hxR = x + 12 + sway;
+  const ink = jitterPath(
+    `M${x - 3} 291 L${x - 4} 302 M${x + 3} 291 L${x + 4} 302 M${x - 5} 279 L${x - 10} 268 L${hxL} 259 M${x + 5} 279 L${x + 10} 268 L${hxR} 259`,
+    90 + k * 3 + boil,
+    0.4,
+  );
+  const shake = `M${hxL - 7} 252 q-2 4 0 8 M${hxR + 7} 252 q2 4 0 8`;
+  return (
+    <G transform={`translate(0 ${hop})`}>
+      <Path d={jitterPath(`M${x - 6} 277 L${x + 6} 277 L${x + 7.5} 292 L${x - 7.5} 292 Z`, 60 + k + boil, 0.5)} fill={shirt} stroke={Paint.ink} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d={ink} fill="none" stroke={Paint.ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={blob(x, 269, 5.6, 5.8, k + 2 + boil, 0.08, 8)} fill={Paint.skin} stroke={Paint.ink} strokeWidth={1.6} />
+      {/* 웃는 얼굴 */}
+      <Path d={`M${x - 2.5} 268 h0.1 M${x + 2.5} 268 h0.1`} stroke={Paint.ink} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d={`M${x - 2.2} 271 q2.2 2 4.4 0`} fill="none" stroke={Paint.ink} strokeWidth={1.2} strokeLinecap="round" />
+      <Path d={blob(hxL, 256, wL, 3.6, k, 0.1, 6)} fill={Paint.skin} stroke={Paint.ink} strokeWidth={1.3} />
+      <Path d={blob(hxR, 256, wR, 3.6, k + 1, 0.1, 6)} fill={Paint.skin} stroke={Paint.ink} strokeWidth={1.3} />
+      <Path d={shake} fill="none" stroke={Paint.inkSoft} strokeWidth={1.2} strokeLinecap="round" opacity={0.7} />
+    </G>
+  );
+}
+
+/** 축하 카드용: 주민 몇 명이 나란히 서서 수어 박수를 친다 */
+export function CheerCrowd({ count = 5, width = 220 }: { count?: number; width?: number }) {
+  const reduce = useReducedMotion();
+  const boil = useBoil();
+  const tk = useLifeTick(!reduce);
+  const gap = 34;
+  const vbW = gap * count + 10;
+  const height = (width / vbW) * 64;
+  return (
+    <View style={{ width, height }} accessible accessibilityLabel="마을 사람들이 수어로 박수를 쳐요">
+      <Svg width={width} height={height} viewBox={`0 244 ${vbW} 64`}>
+        <Path d={jitterPath(`M4 303 Q${vbW / 2} 299 ${vbW - 4} 303`, 5 + boil, 0.6)} fill="none" stroke={Paint.inkSoft} strokeWidth={1.6} strokeLinecap="round" />
+        {Array.from({ length: count }, (_, i) => (
+          <Cheerer key={i} x={22 + i * gap} k={i} tk={reduce ? 0 : tk} boil={boil} />
+        ))}
+      </Svg>
+    </View>
+  );
+}
+
+function Resident({ k, tk, boil, cheer }: { k: number; tk: number; boil: number; cheer?: boolean }) {
+  // 오늘 목표를 채운 직후에는 자기 건물 앞에 멈춰서 다 같이 수어 박수를 친다
+  if (cheer) return <Cheerer x={placeX(k) + 34} k={k} tk={tk} boil={boil} />;
   // 자기 건물 앞을 오가다가, 돌아서는 순간(속도가 거의 0)에는 멈춰서 손을 흔든다
   const a = tk * 0.018 + k * 1.7;
   const x = placeX(k) + 34 + Math.sin(a) * 56;
@@ -164,9 +217,11 @@ type Props = {
   /** 계절을 정하는 달 (1~12). 비우면 이번 달 */
   month?: number;
   onPressPlace: (index: number, at: { x: number; y: number }) => void;
+  /** 오늘 목표를 막 채웠을 때: 주민들이 제자리에서 수어 박수를 친다 */
+  cheer?: boolean;
 };
 
-export function Village({ titles, completed, paintIndex = null, height = 290, hour, month, onPressPlace }: Props) {
+export function Village({ titles, completed, paintIndex = null, height = 290, hour, month, onPressPlace, cheer = false }: Props) {
   const reduce = useReducedMotion();
   const boil = useBoil();
   const tk = useLifeTick(!reduce);
@@ -432,7 +487,7 @@ export function Village({ titles, completed, paintIndex = null, height = 290, ho
             {/* 주민: 칠한 곳마다 한 명씩 이사 와서 길을 걷다가 멈춰 수어로 인사한다 */}
             {Array.from({ length: Math.min(completed, titles.length) }, (_, k) => k)
               .filter((k) => alive(k))
-              .map((k) => <Resident key={'r' + k} k={k} tk={tk} boil={boil} />)}
+              .map((k) => <Resident key={'r' + k} k={k} tk={tk} boil={boil} cheer={cheer} />)}
 
             {/* 계절 */}
             {season === 'winter' && (
