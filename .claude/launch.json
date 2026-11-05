@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ml-runs",
+      "runtimeExecutable": "C:/Users/jk636/.venvs/sign-language/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "ml/runs"],
+      "port": 8765
+    }
+  ]
+}

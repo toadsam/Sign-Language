@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>수어 동작 뷰어</title>
+<style>
+  :root { --bg:#111318; --panel:#181b22; --line:#2a2e38; --ink:#e7e8ec; --dim:#8b92a3;
+          --body:#e7e8ec; --lh:#6fd0ae; --rh:#e08a55; --face:#7b8394; --accent:#9a92f0; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; padding:16px }
+  h1 { font-size:16px; font-weight:600; margin:0 0 12px }
+  .bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-bottom:12px }
+  select, button { font:inherit; background:var(--panel); color:var(--ink); border:1px solid var(--line);
+                   border-radius:6px; padding:4px 10px; cursor:pointer }
+  button[aria-pressed="true"] { background:var(--accent); color:#111; border-color:var(--accent) }
+  label { color:var(--dim); display:inline-flex; gap:6px; align-items:center }
+  input[type=range] { width:220px }
+  .views { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px }
+  .view { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden }
+  .view h2 { font-size:13px; font-weight:500; margin:0; padding:8px 12px; border-bottom:1px solid var(--line);
+             display:flex; justify-content:space-between; color:var(--dim) }
+  canvas { display:block; width:100%; height:440px; cursor:grab }
+  .tokens { margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px }
+  .tokens .t { display:inline-block; font:12px ui-monospace,Consolas,monospace; padding:1px 5px; margin:2px;
+               border-radius:4px; background:#232935; color:#b7b1f5 }
+  .tokens .t.now { background:var(--accent); color:#111 }
+  .tokens .t.rest { opacity:.45 }
+  .legend { display:flex; gap:14px; color:var(--dim); font-size:12px }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:-1px }
+  .hint { color:var(--dim); font-size:12px; margin-top:8px }
+</style>
+</head>
+<body>
+<h1 id="title">수어 동작 뷰어 — 원본과 자모표 복원 비교</h1>
+<div class="bar">
+  <label>클립 <select id="clip"></select></label>
+  <button id="play" aria-pressed="true">일시정지</button>
+  <label>프레임 <input id="frame" type="range" min="0" value="0"> <span id="fnum">0</span></label>
+  <label>속도 <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option></select></label>
+  <label>시점 <select id="cam"><option value="front">정면</option><option value="side">측면</option><option value="top">위</option></select></label>
+  <button id="t-body" aria-pressed="true">몸</button>
+  <button id="t-hand" aria-pressed="true">손</button>
+  <button id="t-face" aria-pressed="true">얼굴</button>
+  <button id="t-style" aria-pressed="true">꾸민 모습</button>
+</div>
+<div class="legend">
+  <span><span class="sw" style="background:var(--body)"></span>몸</span>
+  <span><span class="sw" style="background:var(--lh)"></span>왼손 데이터</span>
+  <span><span class="sw" style="background:var(--rh)"></span>오른손 데이터</span>
+  <span><span class="sw" style="background:var(--face)"></span>얼굴</span>
+</div>
+<div class="views" style="margin-top:10px">
+  <div class="view"><h2><span id="label-a">원본</span><span id="info-o"></span></h2><canvas id="c-orig"></canvas></div>
+  <div class="view"><h2><span id="label-b">자모표로 바꿨다 되돌린 것</span><span id="info-r"></span></h2><canvas id="c-recon"></canvas></div>
+</div>
+<div class="tokens"><div style="color:var(--dim);font-size:12px;margin-bottom:4px">토큰 열 (토큰 1개 = 4프레임, 흐린 것은 손 내린 대기 구간)</div><div id="tokens"></div></div>
+<p class="hint">그림을 끌어서 돌려볼 수 있습니다. 좌표는 목을 원점으로, 어깨너비를 1로 맞춘 값입니다.</p>
+
+<script>
+const DATA = /*__DATA__*/null;
+(function () {
+  if (!DATA) { document.body.insertAdjacentHTML("beforeend", "<p>데이터가 없습니다. vq.train 이 만든 viewer.html 을 여세요.</p>"); return; }
+  const $ = id => document.getElementById(id);
+  if (DATA.labels) { $("label-a").textContent = DATA.labels[0]; $("label-b").textContent = DATA.labels[1]; }
+  if (DATA.title) $("title").textContent = DATA.title;
+  const clipSel = $("clip"), frameIn = $("frame");
+  const tag = s => ({ test: "평가", train: "학습" })[s] ?? s;
+  DATA.clips.forEach((c, i) => clipSel.add(new Option(c.split ? `${c.name} (${tag(c.split)})` : c.name, i)));
+  const P = DATA.parts, J = 125;
+  const partOf = j => j < P.body[1] ? "body" : j < P.lhand[1] ? "lh" : j < P.rhand[1] ? "rh" : "face";
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const color = { body: css("--body"), lh: css("--lh"), rh: css("--rh"), face: css("--face") };
+  const show = { body: true, hand: true, face: true };
+  const visible = p => p === "body" ? show.body : p === "face" ? show.face : show.hand;
+
+  let clip = DATA.clips[0], f = 0, playing = true, speed = 1, acc = 0;
+  let yaw = 0, pitch = 0;
+  const cams = { front: [0, 0], side: [Math.PI / 2, 0], top: [0, -Math.PI / 2 + 0.01] };
+
+  function setClip(i) {
+    clip = DATA.clips[i]; f = 0;
+    frameIn.max = clip.frames - 1;
+    $("tokens").innerHTML = clip.tokens.map((t, k) => {
+      const rest = (k + 1) * DATA.down <= clip.active[0] || k * DATA.down >= clip.active[1];
+      return `<span class="t${rest ? " rest" : ""}" data-k="${k}">${t}</span>`;
+    }).join("");
+  }
+
+  // 좌표 [x, y, z] → 화면 [px, py, 깊이, 배율]. 깊이가 클수록 멀다.
+  function project(arr, w, h) {
+    const s = h / 3.6, cx = w / 2, cy = h * (pretty ? 0.36 : 0.28);  // 꾸민 모습은 머리가 커서 조금 내린다
+    const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const n = arr.length / (J * 3), ff = Math.min(f, n - 1);  // 두 동작 길이가 다를 수 있다
+    const o = ff * J * 3, pts = new Array(J);
+    for (let j = 0; j < J; j++) {
+      const x = arr[o + 3 * j], y = arr[o + 3 * j + 1], z = arr[o + 3 * j + 2];
+      const x1 = cyw * x + syw * z, z1 = -syw * x + cyw * z;
+      const y2 = cp * y - sp * z1, z2 = sp * y + cp * z1;
+      const k = pretty ? 4 / (4 + z2) : 1;  // 꾸민 모습에서만 약한 원근
+      pts[j] = [cx + x1 * s * k, cy + y2 * s * k, z2, s * k];
+    }
+    return { pts, s };
+  }
+
+  function drawOne(cv, arr) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    (pretty ? drawPretty : drawLines)(g, project(arr, w, h), w, h);
+  }
+
+  // ---------------- 꾸민 모습: 파스텔 스티커 캐릭터
+  // 머리 모양은 크게 키우지만 눈·입·손 위치는 실제 좌표 그대로 둔다 (손이 얼굴 어디에 닿는지가 수어의 뜻이다).
+  const B = { nose: 0, neck: 1, rsh: 2, rel: 3, rwr: 4, lsh: 5, lel: 6, lwr: 7, hip: 8, rear: 11, lear: 12 };
+  const LH = P.lhand[0], RH = P.rhand[0], F0 = P.face[0];
+  const FINGERS = [[0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [0, 9, 10, 11, 12], [0, 13, 14, 15, 16], [0, 17, 18, 19, 20]];
+  const PALM = [0, 1, 5, 9, 13, 17];
+  const PAL = {
+    bg: "#fff5f6", grid: "#fbe1e6", shadow: "rgba(122,74,86,0.18)",
+    line: "#4a3a32", skin: "#ffe1cd", shirt: "#8ecbea", shirtDark: "#72b3d6", collar: "#ffffff",
+    hair: "#5b3e32", eye: "#3a2b25", cheek: "#ff9fae", mouth: "#c9485f",
+    lh: "#8fd9b6", rh: "#ffab7a",
+  };
+  let pretty = true;
+
+  // 외곽선을 먼저 모두 그리고 색을 채워서 여러 조각이 한 덩어리처럼 붙어 보이게 한다
+  function blob(g, segs, ol) {
+    g.lineCap = "round"; g.lineJoin = "round";
+    for (const pass of [0, 1]) {
+      for (const [a, b, wd, color] of segs) {
+        g.strokeStyle = pass ? color : PAL.line;
+        g.lineWidth = pass ? wd : wd + ol * 2;
+        g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+      }
+    }
+  }
+
+  function circle(g, p, r, fill, ol) {
+    g.beginPath(); g.arc(p[0], p[1], r, 0, Math.PI * 2);
+    g.fillStyle = fill; g.fill();
+    if (ol) { g.lineWidth = ol; g.strokeStyle = PAL.line; g.stroke(); }
+  }
+
+  const mean = ps => [ps.reduce((t, p) => t + p[0], 0) / ps.length, ps.reduce((t, p) => t + p[1], 0) / ps.length];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const avgZ = ps => ps.reduce((t, p) => t + p[2], 0) / ps.length;
+
+  function drawFace(g, pts, R, ol) {
+    const fp = i => pts[F0 + i];
+    const range = (a, b) => Array.from({ length: b - a + 1 }, (_, k) => fp(a + k));
+    g.lineCap = "round"; g.lineJoin = "round";
+    // 볼터치
+    for (const [eyeA, jaw] of [[36, 3], [42, 13]]) {
+      const c = lerp(mean(range(eyeA, eyeA + 5)), fp(jaw), 0.6);
+      g.globalAlpha = 0.55; g.fillStyle = PAL.cheek;
+      g.beginPath(); g.ellipse(c[0], c[1], R * 0.13, R * 0.085, 0, 0, Math.PI * 2); g.fill();
+      g.globalAlpha = 1;
+    }
+    // 눈썹: 데이터 그대로 움직여서 의문·놀람 표정이 보인다
+    g.strokeStyle = PAL.hair; g.lineWidth = Math.max(2, R * 0.06);
+    for (const [a, m, b] of [[17, 19, 21], [22, 24, 26]]) {
+      const [A, M, Bp] = [fp(a), fp(m), fp(b)];  // 점에는 깊이·배율도 들어 있어서 x, y만 꺼낸다
+      g.beginPath(); g.moveTo(A[0], A[1]); g.quadraticCurveTo(M[0], M[1], Bp[0], Bp[1]); g.stroke();
+    }
+    // 눈: 위아래 눈꺼풀 간격으로 크기를 정한다 (깜박임도 데이터에서 나온다)
+    for (const [a, up1, up2, lo1, lo2, b] of [[36, 37, 38, 41, 40, 39], [42, 43, 44, 47, 46, 45]]) {
+      const c = mean(range(a, a + 5)), wEye = dist(fp(a), fp(b));
+      const open = (dist(fp(up1), fp(lo1)) + dist(fp(up2), fp(lo2))) / 2 / Math.max(wEye, 1e-6);
+      const rx = R * 0.1, ry = rx * 1.25 * Math.min(1.2, Math.max(0.12, open / 0.3));
+      g.fillStyle = PAL.eye; g.beginPath(); g.ellipse(c[0], c[1], rx, ry, 0, 0, Math.PI * 2); g.fill();
+      if (ry > rx * 0.5) {
+        g.fillStyle = "#fff";
+        g.beginPath(); g.arc(c[0] - rx * 0.3, c[1] - ry * 0.35, rx * 0.35, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(c[0] + rx * 0.3, c[1] + ry * 0.3, rx * 0.15, 0, Math.PI * 2); g.fill();
+      }
+    }
+    // 코: 작은 점
+    circle(g, fp(30), R * 0.025, PAL.line);
+    // 입: 입꼬리와 아랫입술로 웃는 곡선, 벌리면 안쪽 입술 모양대로 채운다
+    const open = dist(fp(62), fp(66));
+    if (open > R * 0.05) {
+      g.fillStyle = PAL.mouth; g.strokeStyle = PAL.line; g.lineWidth = ol * 0.8;
+      g.beginPath(); range(60, 67).forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath();
+      g.fill(); g.stroke();
+    } else {
+      const l = fp(48), r = fp(54), low = fp(57), mid = lerp(l, r, 0.5);
+      g.strokeStyle = PAL.line; g.lineWidth = ol * 0.9;
+      g.beginPath(); g.moveTo(l[0], l[1]);
+      g.quadraticCurveTo(mid[0], mid[1] + Math.max(R * 0.06, (low[1] - mid[1]) * 1.2), r[0], r[1]); g.stroke();
+    }
+  }
+
+  function drawPretty(g, pr, w, h) {
+    const { pts, s } = pr;
+    const W = r => r * s;  // 어깨너비 1 기준 크기 → 픽셀
+    const ol = Math.max(1.6, W(0.022));
+
+    g.fillStyle = PAL.bg; g.fillRect(0, 0, w, h);
+    g.strokeStyle = PAL.grid; g.lineWidth = 1; g.beginPath();
+    for (let x = 12; x < w; x += 24) { g.moveTo(x, 0); g.lineTo(x, h); }
+    for (let y = 12; y < h; y += 24) { g.moveTo(0, y); g.lineTo(w, y); }
+    g.stroke();
+
+    // 몸통은 골반까지 다 내리지 않고 60%에서 끊어 짧고 통통하게 만든다
+    const mid = lerp(pts[B.rsh], pts[B.lsh], 0.5), belly = lerp(mid, pts[B.hip], 0.6);
+    g.fillStyle = PAL.shadow; g.beginPath(); g.ellipse(belly[0], belly[1] + W(0.55), W(0.7), W(0.11), 0, 0, Math.PI * 2); g.fill();
+
+    const items = [];  // {z, draw} 를 먼 것부터 그린다
+
+    if (show.body) {
+      items.push({ z: avgZ([pts[B.rsh], pts[B.lsh], pts[B.hip]]) + 0.35, draw: () => {
+        // 동그란 몸통: 어깨 가로 막대 + 짧고 굵은 기둥
+        // 목을 먼저 그려 아래쪽이 몸통에 묻히게 한다
+        blob(g, [[pts[B.neck], lerp(pts[B.neck], pts[B.nose], 0.6), W(0.2), PAL.skin]], ol);
+        blob(g, [[pts[B.rsh], pts[B.lsh], W(0.46), PAL.shirt], [mid, belly, W(0.95), PAL.shirt]], ol);
+        // 흰 옷깃: 몸통 윗선에 붙인다
+        g.fillStyle = PAL.collar; g.strokeStyle = PAL.line; g.lineWidth = ol;
+        const n = [pts[B.neck][0], pts[B.neck][1] - W(0.2)];
+        g.beginPath(); g.moveTo(n[0] - W(0.2), n[1] - W(0.02)); g.lineTo(n[0], n[1] + W(0.14)); g.lineTo(n[0] + W(0.2), n[1] - W(0.02));
+        g.lineTo(n[0] + W(0.1), n[1] + W(0.02)); g.lineTo(n[0], n[1] + W(0.07)); g.lineTo(n[0] - W(0.1), n[1] + W(0.02));
+        g.closePath(); g.fill(); g.stroke();
+      } });
+      // 팔: 소매(위팔) + 맨살(아래팔) + 손목 밴드(왼손 민트 · 오른손 주황)
+      for (const [shJ, elJ, root, band] of [[B.rsh, B.rel, RH, PAL.rh], [B.lsh, B.lel, LH, PAL.lh]]) {
+        const a = pts[shJ], b = pts[elJ], c = pts[root];
+        items.push({ z: avgZ([a, b, c]), draw: () => {
+          blob(g, [[a, b, W(0.24), PAL.shirt], [b, lerp(b, c, 0.8), W(0.17), PAL.skin]], ol);
+          blob(g, [[lerp(b, c, 0.72), lerp(b, c, 0.88), W(0.19), band]], ol);
+        } });
+      }
+    }
+
+    if (show.body || show.face) {
+      // 머리: 턱 끝은 실제 턱 위치에 맞추고 위로 크게 키운다 (큰 머리 = 귀여운 비율)
+      const face = Array.from({ length: 70 }, (_, k) => pts[F0 + k]);
+      const fm = mean(face), mz = avgZ(face);
+      let rj = 0;
+      for (let k = 0; k < 17; k++) rj += dist(face[k], fm);
+      rj = Math.max(rj / 17, W(0.15));
+      const R = rj * 1.6, chin = face[8];
+      const hc = [fm[0], chin[1] - R * 0.9];
+      items.push({ z: mz + 0.08, draw: () => {
+        // 뒷머리(부풀린 머리카락) → 귀 → 얼굴 → 앞머리
+        circle(g, [hc[0], hc[1] - R * 0.08], R * 1.08, PAL.hair, ol);
+        for (const e of [pts[B.rear], pts[B.lear]]) {
+          const ex = lerp(hc, e, 0.9);
+          circle(g, [ex[0], Math.max(ex[1], hc[1])], R * 0.18, PAL.skin, ol);
+        }
+        circle(g, hc, R, PAL.skin, ol);
+        const browY = Math.min(face[19][1], face[24][1]);
+        g.save(); g.beginPath(); g.arc(hc[0], hc[1], R, 0, Math.PI * 2); g.clip();
+        g.fillStyle = PAL.hair; g.beginPath();
+        const edge = Math.min(browY - R * 0.12, hc[1] - R * 0.2);
+        g.moveTo(hc[0] - R * 1.2, hc[1] - R * 1.2); g.lineTo(hc[0] + R * 1.2, hc[1] - R * 1.2); g.lineTo(hc[0] + R * 1.2, edge);
+        for (let k = 4; k >= 1; k--) {  // 앞머리 물결 4개
+          const x0 = hc[0] - R + (2 * R) * k / 4, x1 = hc[0] - R + (2 * R) * (k - 1) / 4;
+          g.quadraticCurveTo((x0 + x1) / 2, edge + R * 0.22, x1, edge);
+        }
+        g.closePath(); g.fill();
+        g.restore();
+        circle(g, hc, R, "rgba(0,0,0,0)", ol);
+        if (show.face) drawFace(g, pts, R, ol);
+      } });
+    }
+
+    if (show.hand) {
+      for (const root of [LH, RH]) {
+        const palm = PALM.map(i => pts[root + i]);
+        items.push({ z: avgZ(palm) + 0.01, draw: () => {
+          g.lineJoin = "round";
+          for (const pass of [0, 1]) {  // 둥근 손바닥: 굵은 테두리를 두른 다각형
+            g.beginPath(); palm.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath();
+            g.strokeStyle = pass ? PAL.skin : PAL.line; g.lineWidth = pass ? W(0.06) : W(0.06) + ol * 2;
+            g.stroke(); if (pass) { g.fillStyle = PAL.skin; g.fill(); }
+          }
+        } });
+        for (const fg of FINGERS) {
+          const ps = fg.map(i => pts[root + i]);
+          items.push({ z: avgZ(ps.slice(1)), draw: () => {
+            blob(g, ps.slice(0, -1).map((p, i) => [p, ps[i + 1], W(i ? 0.058 : 0.066), PAL.skin]), ol * 0.8);
+          } });
+        }
+      }
+    }
+
+    items.sort((a, b) => b.z - a.z);
+    for (const it of items) it.draw();
+  }
+
+  // ---------------- 선 모습: 원래의 확인용 막대인간
+  function drawLines(g, pr, w, h) {
+    const { pts } = pr;
+    g.fillStyle = css("--panel"); g.fillRect(0, 0, w, h);
+    g.lineCap = "round";
+    for (const [a, b] of DATA.edges) {
+      const p = partOf(b); if (!visible(p)) continue;
+      g.strokeStyle = color[p]; g.lineWidth = p === "body" ? 3 : p === "face" ? 1 : 1.6;
+      g.beginPath(); g.moveTo(...pts[a]); g.lineTo(...pts[b]); g.stroke();
+    }
+    for (let j = P.lhand[0]; j < P.rhand[1]; j++) {
+      if (!show.hand) break;
+      g.fillStyle = color[partOf(j)];
+      g.beginPath(); g.arc(pts[j][0], pts[j][1], 2, 0, 7); g.fill();
+    }
+  }
+
+  function render() {
+    drawOne($("c-orig"), clip.orig);
+    drawOne($("c-recon"), clip.recon);
+    frameIn.value = f; $("fnum").textContent = `${f} / ${clip.frames - 1}`;
+    const k = Math.floor(f / DATA.down);
+    document.querySelectorAll("#tokens .t").forEach(el => el.classList.toggle("now", +el.dataset.k === k));
+    const inAct = f >= clip.active[0] && f <= clip.active[1];
+    $("info-o").textContent = inAct ? "움직임 구간" : "대기 자세";
+    $("info-r").textContent = `토큰 ${clip.tokens[k] ?? "-"}`;
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = (now - last) / 1000; last = now;
+    if (playing) { acc += dt * DATA.fps * speed; while (acc >= 1) { f = (f + 1) % clip.frames; acc -= 1; } }
+    render(); requestAnimationFrame(loop);
+  }
+
+  clipSel.onchange = e => setClip(+e.target.value);
+  frameIn.oninput = e => { f = +e.target.value; playing = false; $("play").setAttribute("aria-pressed", "false"); $("play").textContent = "재생"; };
+  $("play").onclick = e => { playing = !playing; e.target.setAttribute("aria-pressed", String(playing)); e.target.textContent = playing ? "일시정지" : "재생"; };
+  $("speed").onchange = e => speed = +e.target.value;
+  $("cam").onchange = e => [yaw, pitch] = cams[e.target.value];
+  $("t-style").onclick = e => { pretty = !pretty; e.target.setAttribute("aria-pressed", String(pretty)); };
+  for (const k of ["body", "hand", "face"]) $("t-" + k).onclick = e => { show[k] = !show[k]; e.target.setAttribute("aria-pressed", String(show[k])); };
+  for (const cv of [$("c-orig"), $("c-recon")]) {
+    let drag = null;
+    cv.onpointerdown = e => { drag = [e.clientX, e.clientY, yaw, pitch]; cv.setPointerCapture(e.pointerId); };
+    cv.onpointermove = e => { if (!drag) return; yaw = drag[2] + (e.clientX - drag[0]) * 0.01; pitch = Math.max(-1.5, Math.min(1.5, drag[3] - (e.clientY - drag[1]) * 0.01)); };
+    cv.onpointerup = () => drag = null;
+  }
+  setClip(0); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
