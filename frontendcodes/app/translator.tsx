@@ -7,12 +7,14 @@
  */
 import { useEventListener } from 'expo';
 import * as SecureStore from 'expo-secure-store';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
+import { Avatar3D } from '@/components/paint/avatar-3d';
+import { avatar3dWebPath } from '@/components/paint/avatar-3d-shared';
 import { EmptyState, errorKind } from '@/components/paint/empty-state';
 import { Handwrite } from '@/components/paint/handwrite';
 import { BodyText, PaintButton, PaintHeader, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash, type PaintIconName } from '@/components/paint/paint-ui';
@@ -67,6 +69,9 @@ export default function TranslatorScreen() {
   const [motionPlayKey, setMotionPlayKey] = useState(0);
   const motionRunRef = useRef(0);
   const motionSegRef = useRef(-1);
+  // 3D 캐릭터(발표 영상과 같은 캐릭터)로 보여 준다. 3D를 못 띄우면 2D 펜 아바타로 돌아간다. ?avatar=2d 로 2D 고정
+  const params = useLocalSearchParams<{ demo?: string; clip?: string; avatar?: string }>();
+  const [use3d, setUse3d] = useState(params.avatar !== '2d');
   // 낱말 줄을 처음부터 다시 보여 줄 때 바꾸는 값
   const [chainRunKey, setChainRunKey] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -900,7 +905,37 @@ export default function TranslatorScreen() {
     setMotionPlayKey((k) => k + 1);
   }
 
-  const signer = motion ? (
+  // 확인용: ?demo=avatar3d(&clip=sentence) 면 서버 대신 저장해 둔 동작으로 3D 캐릭터를 띄운다 (웹 · 개발용 데이터, git 에 없음)
+  useEffect(() => {
+    if (params.demo !== 'avatar3d' || !isWeb) return;
+    let alive = true;
+    const name = params.clip === 'sentence' ? 'SEN1384_REAL03' : 'WORD0773_REAL03';
+    fetch(avatar3dWebPath().replace(/index\.html$/, 'demo/clips.json'))
+      .then((r) => r.json())
+      .then((d) => {
+        const c = d[name] as { orig: number[][][]; segments: { name: string; f0: number; f1: number }[] };
+        const data = new Float32Array(c.orig.length * 125 * 3);
+        c.orig.forEach((fr, t) => fr.forEach((p, j) => data.set(p, (t * 125 + j) * 3)));
+        if (alive) setMotion({ fps: 30, frames: c.orig.length, data, segments: c.segments.map((s) => ({ gloss: s.name, start: s.f0, end: s.f1 })), source: 'model' });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [params.demo, params.clip, isWeb]);
+
+  const signer = motion && use3d ? (
+    <Avatar3D
+      key={motionPlayKey}
+      motion={motion}
+      playing
+      loop={false}
+      onFrame={handleMotionFrame}
+      onEnd={handleMotionEnd}
+      onError={() => setUse3d(false)}
+      style={styles.penAvatar}
+    />
+  ) : motion ? (
     <PenAvatar
       key={motionPlayKey}
       motion={motion}
