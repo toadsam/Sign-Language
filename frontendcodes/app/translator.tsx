@@ -14,7 +14,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
 import { Avatar3D } from '@/components/paint/avatar-3d';
-import { avatar3dWebPath } from '@/components/paint/avatar-3d-shared';
+import { avatar3dNativeUrl, avatar3dWebPath } from '@/components/paint/avatar-3d-shared';
 import { EmptyState, errorKind } from '@/components/paint/empty-state';
 import { Handwrite } from '@/components/paint/handwrite';
 import { BodyText, PaintButton, PaintHeader, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash, type PaintIconName } from '@/components/paint/paint-ui';
@@ -905,12 +905,14 @@ export default function TranslatorScreen() {
     setMotionPlayKey((k) => k + 1);
   }
 
-  // 확인용: ?demo=avatar3d(&clip=sentence) 면 서버 대신 저장해 둔 동작으로 3D 캐릭터를 띄운다 (웹 · 개발용 데이터, git 에 없음)
+  // 확인용: ?demo=avatar3d(&clip=sentence) 면 서버 대신 저장해 둔 동작으로 3D 캐릭터를 띄운다 (개발용 데이터, git 에 없음)
+  // 폰은 Expo 개발 서버에서 같은 파일을 받는다
   useEffect(() => {
-    if (params.demo !== 'avatar3d' || !isWeb) return;
+    const page = isWeb ? avatar3dWebPath() : avatar3dNativeUrl();
+    if (params.demo !== 'avatar3d' || !page) return;
     let alive = true;
     const name = params.clip === 'sentence' ? 'SEN1384_REAL03' : 'WORD0773_REAL03';
-    fetch(avatar3dWebPath().replace(/index\.html$/, 'demo/clips.json'))
+    fetch(page.replace(/index\.html$/, 'demo/clips.json'))
       .then((r) => r.json())
       .then((d) => {
         const c = d[name] as { orig: number[][][]; segments: { name: string; f0: number; f1: number }[] };
