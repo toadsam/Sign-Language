@@ -142,11 +142,28 @@ POST /generate   {"gloss": ["화장실", "있다"], "nonmanual": ["의문"]}
 → {"fps": 30, "joints": 125, "frames": 96, "units": "shoulder",
    "data": "base64(float32 little-endian [96×125×3])",
    "tokens": [47, 203], "segments": [{"gloss": "화장실", "start": 0, "end": 44}],
-   "unknown": [], "source": "model"}            // "model" | "baseline" | "video"
+   "unknown": [], "source": "model"}            // "model" | "baseline"
 ```
 
 - `units: "shoulder"`: 어깨너비 = 1, 원점 목, y 아래. 미터로 줄지는 회의에서 정한다
-- 추론 서버가 죽으면 Spring이 `source: "video"`와 1학기 영상 재생 목록을 돌려준다
+- 생성 오류 처리: 오류 안내와 사용자 재시도를 제공한다. 추론 서버 장애·시간 초과·비정상 응답을 영상 목록이나 `source: "video"` 성공 응답으로 자동 대체하지 않는다.
+- 2026-10-25 지헌의 설계 준수 지시에 따라 기존 자동 영상 대체 제안을 정정했다. 성공 좌표 형식은 유지한다. 구체적인 오류 코드·화면 연동은 구현·소비자 확인이 필요하며, 이 문서 수정만으로 기존 코드와 화면까지 반영됐음을 뜻하지 않는다. 기존 `/translate` 영상 기능은 별개다.
+
+Spring `/api/sign/generate`의 오류 구현(2026-10-25): 비성공 HTTP 상태와 아래 envelope를 반환한다. 영상 목록·성공 좌표를 오류 응답에 넣지 않으며 서버가 자동 재시도하지 않는다. 화면의 오류 안내·재시도 버튼 연결은 프론트 인계 대상이다.
+
+```json
+{"error":{"code":"GENERATION_UNAVAILABLE","message":"동작을 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.","retryable":true}}
+```
+
+| HTTP | code | retryable |
+|---|---|---|
+| 400 | INVALID_REQUEST | false |
+| 422 | NO_GENERATABLE_INPUT | false |
+| 502 | TRANSLATION_UNAVAILABLE / GENERATION_FAILED | true |
+| 503 | GENERATION_UNAVAILABLE | true |
+| 504 | GENERATION_TIMEOUT | true |
+
+재시도는 같은 입력으로 보내는 새 POST다. retryable은 재요청 가능 안내이며 성공 보장이 아니다. 일부/전부 unknown의 정상 생성 응답은 시스템 오류와 구분한다.
 
 ---
 
