@@ -7,9 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wow.signlanguage.service.TranslationService;
-import com.wow.signlanguage.translate.SimplificationMetadata;
-import com.wow.signlanguage.translate.TranslateResponse;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -29,10 +26,8 @@ class GenerationHttpFlowTests {
     URI url = URI.create(System.getenv("SIGN_TEST_FASTAPI_URL"));
     assertThat(url.getHost()).isIn("127.0.0.1", "localhost", "::1");
     ObjectMapper json = new ObjectMapper();
-    TranslationService translation = mock(TranslationService.class);
-    when(translation.translate("화장실 있어요?")).thenReturn(new TranslateResponse(
-        "화장실 있어요?", "화장실 있다", List.of("화장실", "있다"), List.of(),
-        new SimplificationMetadata(true, false, "present"), List.of(), List.of(), List.of(), List.of()));
+    GlossTranslator translation = mock(GlossTranslator.class);
+    when(translation.translate("화장실 있어요?")).thenReturn(new GlossTranslator.Gloss(List.of("화장실", "있다"), true));
     GenerationSettings settings = new GenerationSettings(url, Duration.ofSeconds(1), Duration.ofSeconds(3), 4096, 1800);
     MockMvc mvc = MockMvcBuilders.standaloneSetup(new GenerationController(
         new GenerationService(translation, new InferenceClient(settings, json), settings)))

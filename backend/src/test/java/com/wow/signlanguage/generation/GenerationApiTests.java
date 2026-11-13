@@ -58,6 +58,7 @@ class GenerationApiTests {
   @Autowired MockMvc mvc;
   @Autowired InferenceClient inference;
   @MockBean TranslationService translation;
+  @MockBean GlossTranslator glossTranslator;
   @MockBean ClientRegistrationRepository registrations;
 
   record Stub(int status, String body, long delayMillis, boolean delayBody) {}
@@ -112,6 +113,11 @@ class GenerationApiTests {
     RECEIVED.set(null);
     REQUESTS.set(0);
     when(translation.translate(anyString())).thenReturn(translated());
+    when(glossTranslator.translate(anyString())).thenReturn(gloss(true));
+  }
+
+  static GlossTranslator.Gloss gloss(boolean question) {
+    return new GlossTranslator.Gloss(List.of("화장실", "있다"), question);
   }
 
   static TranslateResponse translated() {
@@ -141,7 +147,7 @@ class GenerationApiTests {
         .andExpect(jsonPath("$.error.retryable").value(retryable))
         .andExpect(jsonPath("$.source").doesNotExist()).andExpect(jsonPath("$.items").doesNotExist())
         .andExpect(jsonPath("$.data").doesNotExist());
-    verify(translation, times(1)).translate("화장실 있어요?");
+    verify(glossTranslator, times(1)).translate("화장실 있어요?");
   }
 
   @Test void publicEndpointForwardsGlossAndQuestionAndPreservesBytes() throws Exception {
@@ -153,14 +159,11 @@ class GenerationApiTests {
     assertThat(RECEIVED.get().get("gloss")).isEqualTo(JSON.valueToTree(List.of("화장실", "있다")));
     assertThat(RECEIVED.get().get("nonmanual")).isEqualTo(JSON.valueToTree(List.of("의문")));
     assertThat(REQUESTS.get()).isEqualTo(1);
-    verify(translation, times(1)).translate("화장실 있어요?");
+    verify(glossTranslator, times(1)).translate("화장실 있어요?");
   }
 
   @Test void nonQuestionAndPartialUnknownPassThrough() throws Exception {
-    TranslateResponse old = translated();
-    when(translation.translate(anyString())).thenReturn(new TranslateResponse(old.input(), old.simplifiedSentence(),
-        old.normalizedTokens(), old.appliedRules(), new SimplificationMetadata(false, true, "past"),
-        old.clips(), old.items(), old.unknown(), old.noVideoWords()));
+    when(glossTranslator.translate(anyString())).thenReturn(gloss(false));
     ObjectNode node = motion();
     node.withArray("unknown").add("있다");
     STUB.set(new Stub(200, node.toString(), 0, false));
@@ -239,7 +242,7 @@ class GenerationApiTests {
     }
     GenerationSettings settings = new GenerationSettings(java.net.URI.create("http://127.0.0.1:" + port + "/generate"),
         Duration.ofSeconds(2), Duration.ofSeconds(3), 32, 2);
-    GenerationService service = new GenerationService(translation, new InferenceClient(settings, JSON), settings);
+    GenerationService service = new GenerationService(glossTranslator, new InferenceClient(settings, JSON), settings);
     MockMvc isolated = MockMvcBuilders.standaloneSetup(new GenerationController(service))
         .setControllerAdvice(new GenerationErrorHandler()).build();
     isolated.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
@@ -248,7 +251,7 @@ class GenerationApiTests {
         .andExpect(jsonPath("$.error.code").value("GENERATION_UNAVAILABLE"))
         .andExpect(jsonPath("$.error.retryable").value(true))
         .andExpect(jsonPath("$.source").doesNotExist()).andExpect(jsonPath("$.items").doesNotExist());
-    verify(translation, times(1)).translate(anyString());
+    verify(glossTranslator, times(1)).translate(anyString());
   }
 
   @ParameterizedTest @ValueSource(strings = {"{}", "null", "{\"text\":null}", "{\"text\":12}",
@@ -260,12 +263,12 @@ class GenerationApiTests {
         .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.error.retryable").value(false))
         .andExpect(jsonPath("$.items").doesNotExist());
-    verifyNoInteractions(translation);
+    verifyNoInteractions(glossTranslator, translation);
     assertThat(REQUESTS.get()).isZero();
   }
 
   @Test void translationFailureIsAnErrorWithoutFabricatedVideo() throws Exception {
-    when(translation.translate(anyString())).thenThrow(new IllegalStateException("SECRET"));
+    when(glossTranslator.translate(anyString())).thenThrow(new IllegalStateException("SECRET"));
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
         .andExpect(status().isBadGateway()).andExpect(jsonPath("$.error.code").value("TRANSLATION_UNAVAILABLE"))
         .andExpect(jsonPath("$.error.retryable").value(true)).andExpect(jsonPath("$.items").doesNotExist())
@@ -283,25 +286,27 @@ class GenerationApiTests {
 
   @Test void unrelatedRouteStillRequiresAuthentication() throws Exception {
     mvc.perform(get("/api/sign/private")).andExpect(status().is3xxRedirection());
-    verifyNoInteractions(translation);
+    verifyNoInteractions(glossTranslator, translation);
   }
 
   @Test void emptyTranslatedGlossIsNotASystemFailureOrVideo() throws Exception {
-    TranslateResponse old = translated();
-    when(translation.translate(anyString())).thenReturn(new TranslateResponse(old.input(), old.simplifiedSentence(),
-        List.of(), old.appliedRules(), old.metadata(), old.clips(), old.items(), old.unknown(), old.noVideoWords()));
+    when(glossTranslator.translate(anyString())).thenReturn(new GlossTranslator.Gloss(List.of(), true));
     assertFailure(422, "NO_GENERATABLE_INPUT", false);
     assertThat(REQUESTS.get()).isZero();
   }
 
-  @Test void generationDoesNotDependOnTranslatedVideoItems() throws Exception {
-    TranslateResponse old = translated();
-    when(translation.translate(anyString())).thenReturn(new TranslateResponse(old.input(), old.simplifiedSentence(),
-        old.normalizedTokens(), old.appliedRules(), old.metadata(), null, null, null, null));
+  @Test void generationDoesNotUseTheVideoTranslation() throws Exception {
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
         .content("{\"text\":\"화장실 있어요?\"}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"));
-    verify(translation, times(1)).translate(anyString());
+    verify(glossTranslator, times(1)).translate(anyString());
+    verifyNoInteractions(translation);
+  }
+
+  @Test void missingVocabularyIsUnavailableWithoutCallingInference() throws Exception {
+    when(glossTranslator.translate(anyString())).thenThrow(new GlossTranslator.VocabularyUnavailable());
+    assertFailure(503, "GENERATION_UNAVAILABLE", true);
+    assertThat(REQUESTS.get()).isZero();
   }
 
   @ParameterizedTest @ValueSource(strings = {"busy", "server", "timeout", "bodyTimeout", "malformed"})
@@ -317,7 +322,7 @@ class GenerationApiTests {
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
         .content("{\"text\":\"화장실 있어요?\"}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"));
-    verify(translation, times(2)).translate("화장실 있어요?");
+    verify(glossTranslator, times(2)).translate("화장실 있어요?");
     assertThat(REQUESTS.get()).isEqualTo(2);
   }
 
@@ -329,14 +334,14 @@ class GenerationApiTests {
   }
 
   @Test void translationFailureCanBeRetriedByTheUser() throws Exception {
-    when(translation.translate(anyString())).thenThrow(new IllegalStateException("SECRET"));
+    when(glossTranslator.translate(anyString())).thenThrow(new IllegalStateException("SECRET"));
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
         .andExpect(status().isBadGateway()).andExpect(jsonPath("$.error.code").value("TRANSLATION_UNAVAILABLE"));
     assertThat(REQUESTS.get()).isZero();
-    doReturn(translated()).when(translation).translate(anyString());
+    doReturn(gloss(true)).when(glossTranslator).translate(anyString());
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.source").value("baseline"));
-    verify(translation, times(2)).translate("문장");
+    verify(glossTranslator, times(2)).translate("문장");
     assertThat(REQUESTS.get()).isEqualTo(1);
   }
 }
