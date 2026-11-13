@@ -1,0 +1,10 @@
+{
+  "chapters": 18,
+  "exact_source_files": 27,
+  "internal_link_references": 158,
+  "duplicate_ids": 0,
+  "broken_internal_links": 0,
+  "external_runtime_dependencies": 0,
+  "source_commit": "2df9317c1f2edd86c39373b2626ea88d06d9b017",
+  "result": "pass"
+}
