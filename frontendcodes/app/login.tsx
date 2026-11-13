@@ -9,15 +9,28 @@ import { usePaintNav } from '@/components/paint/transition';
 import { Size } from '@/constants/paint';
 
 import { useAuth } from '@/context/auth-context';
-import { useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
+import { getGoogleClientConfiguration, useGoogleIdTokenAuthRequest } from '@/lib/auth/google';
 import { getBaseUrl } from '@/lib/api/base-url';
 
 export default function LoginScreen() {
+  // Separate components keep hook order stable without constructing a request with a fake ID.
+  return getGoogleClientConfiguration().hasGoogleClientId
+    ? <ConfiguredLoginScreen />
+    : <LoginContent googleAuth={null} />;
+}
+
+function ConfiguredLoginScreen() {
+  const googleAuth = useGoogleIdTokenAuthRequest();
+  return <LoginContent googleAuth={googleAuth} />;
+}
+
+function LoginContent({ googleAuth }: { googleAuth: ReturnType<typeof useGoogleIdTokenAuthRequest> | null }) {
   const apiBaseUrl = getBaseUrl();
   const router = useRouter();
   const nav = usePaintNav();
   const { signInWithGoogleIdToken, signInWithBackendUser, continueAsGuest, accessToken, isGuest } = useAuth();
-  const { request, response, promptAsync, hasGoogleClientId } = useGoogleIdTokenAuthRequest();
+  const request = googleAuth?.request ?? null;
+  const response = googleAuth?.response ?? null;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const processedIdTokenRef = useRef<string | null>(null);
@@ -196,8 +209,8 @@ export default function LoginScreen() {
   }, [processGoogleIdToken]);
 
   const handleGooglePress = async () => {
-    if (!hasGoogleClientId) {
-      setErrorMessage('frontendcodes/.env의 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID를 확인해 주세요.');
+    if (!googleAuth) {
+      setErrorMessage('Google 로그인 설정이 없습니다. 로그인 없이 시작을 이용해 주세요.');
       return;
     }
 
@@ -208,7 +221,7 @@ export default function LoginScreen() {
 
     setErrorMessage(null);
 
-    const result = await promptAsync();
+    const result = await googleAuth.promptAsync();
 
     if (result.type === 'cancel' || result.type === 'dismiss') {
       setErrorMessage('Google 로그인 창이 닫혔습니다.');

@@ -52,6 +52,52 @@ import { feel } from '@/lib/feel';
 const QUIZ_COUNT = 10;
 const CHOICE_IDS: ChoiceId[] = ['A', 'B', 'C', 'D'];
 
+const QUIZ_WORD_MAP: Record<string, string> = {
+  q001: '가다',
+  q002: '눈',
+  q003: '좋다',
+  q004: '모르다',
+  q005: '우유',
+  q006: '하늘',
+  q007: '지도',
+  q008: '복습',
+  q009: '십',
+  q010: '가깝다',
+  q011: '공항',
+  q012: '서울역',
+  q013: '보건소',
+  q014: '대출',
+  q015: '지불하다',
+  q016: '에어컨',
+  q017: '배고프다',
+  q018: '막차',
+  q019: '알려주다',
+  q020: '포기',
+};
+
+function extractWordFromQuestion(question: QuizSessionQuestion | null): string {
+  if (!question) return '';
+  if (question.quizId && QUIZ_WORD_MAP[question.quizId]) {
+    return QUIZ_WORD_MAP[question.quizId];
+  }
+  if (question.videoUrl) {
+    try {
+      const decoded = decodeURIComponent(question.videoUrl);
+      const filenameMatch = decoded.match(/\/([^/?#]+)\.mp4/i);
+      if (filenameMatch && filenameMatch[1]) {
+        const rawName = filenameMatch[1];
+        const wordPart = rawName.split('_')[0];
+        if (wordPart && wordPart.trim()) {
+          return wordPart.trim();
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return question.choices?.[0] ?? '수어 단어';
+}
+
 type Option = {
   id: ChoiceId;
   text: string;
@@ -135,6 +181,7 @@ export default function QuizScreen() {
   const categoryParam = typeof params.category === 'string' ? params.category : undefined;
   const sessionTitle = sessionTitleParam || (isWrongOnlyMode ? '오답 복습 퀴즈' : '오늘의 퀴즈');
 
+  const [isStudyMode, setIsStudyMode] = useState(!isWrongOnlyMode && params.mode !== 'quiz');
   const [questions, setQuestions] = useState<QuizSessionQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<ChoiceId | null>(null);
@@ -166,6 +213,7 @@ export default function QuizScreen() {
   const savedIn = useSharedValue(0);
 
   const currentQuestion = questions[currentIndex] ?? null;
+  const currentWord = useMemo(() => extractWordFromQuestion(currentQuestion), [currentQuestion]);
   const options = useMemo(() => toOptions(currentQuestion), [currentQuestion]);
   const player = useVideoPlayer(currentQuestion?.videoUrl ?? null, (videoPlayer) => {
     videoPlayer.loop = true;

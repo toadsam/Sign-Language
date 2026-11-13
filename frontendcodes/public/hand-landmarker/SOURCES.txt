@@ -1,0 +1,6 @@
+Library: @mediapipe/tasks-vision 1.1.0 (npm), Apache-2.0, author mediapipe@google.com.
+vision_bundle.js and wasm/ copied from the installed official package without modification.
+Model: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
+Test image: https://storage.googleapis.com/mediapipe-assets/right_hands.jpg
+Guide: https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js
+Assets downloaded for local prototype testing. No user camera frames are transmitted to these sources.
