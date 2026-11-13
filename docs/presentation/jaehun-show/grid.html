@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>자모표 512칸</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&family=Fredoka:wght@500;600&display=swap">
+<style>
+  /* 발표 무대(index.html)와 같은 색. 512칸이 한 화면에서 계속 움직이고, 누르면 크게 본다. */
+  :root {
+    --bg: #F6F3FF; --bg2: #FFF1F4; --card: #FFFFFF;
+    --purple: #7C6CF2; --purple-soft: #E9E4FF; --ink: #2B2350; --ink-soft: #6B6490;
+    --butter: #FFD66B; --pink: #FF7A9A;
+    --display: 'Jua', 'Malgun Gothic', sans-serif; --body: 'Gowun Dodum', 'Malgun Gothic', sans-serif; --num: 'Fredoka', 'Jua', sans-serif;
+    --shadow: 0 10px 30px rgba(92, 76, 200, .16), 0 2px 6px rgba(92, 76, 200, .08);
+  }
+  * { box-sizing: border-box }
+  html, body { height: 100%; margin: 0; overflow: hidden; color: var(--ink); font-family: var(--body);
+    background: radial-gradient(120% 90% at 20% 10%, #FFFFFF 0%, var(--bg) 45%, var(--bg2) 100%); }
+  header { position: fixed; left: 24px; right: 24px; top: 16px; display: flex; gap: 14px; align-items: center; z-index: 2 }
+  .brand { font-family: var(--display); font-size: 20px; color: var(--purple); display: flex; align-items: center; gap: 10px;
+    background: var(--card); padding: 8px 18px 8px 10px; border-radius: 999px; box-shadow: var(--shadow) }
+  .brand b { font-weight: 400; color: var(--ink) }
+  .brand .logo { width: 30px; height: 30px; border-radius: 50%; background: var(--purple); display: grid; place-items: center; color: #fff; font-size: 16px }
+  .info { font-family: var(--display); color: var(--ink-soft); font-size: 16px }
+  .info b { color: var(--purple); font-family: var(--num); font-weight: 600 }
+  .search { margin-left: auto; display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 999px; padding: 6px 8px 6px 18px; box-shadow: var(--shadow); font-family: var(--display) }
+  .search input { border: 0; background: var(--purple-soft); border-radius: 999px; padding: 8px 14px; width: 150px; font: inherit; color: var(--ink); outline: none }
+  .search output { font-size: 14px; color: var(--ink-soft); min-width: 64px }
+  .btn { font-family: var(--display); font-size: 15px; color: var(--ink); background: var(--card); border: 0; border-radius: 999px; padding: 9px 16px; box-shadow: var(--shadow); cursor: pointer }
+  .btn:focus-visible, .search input:focus-visible { outline: 3px solid var(--pink); outline-offset: 2px }
+  #board { position: fixed; left: 0; right: 0; top: 74px; bottom: 0; display: grid; place-items: center }
+  #board canvas { display: block; cursor: pointer; border-radius: 22px; background: #E9E4FF; box-shadow: 0 0 0 8px var(--purple), var(--shadow) }
+
+  /* 크게 보기 */
+  #zoom { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(43, 35, 80, .35); backdrop-filter: blur(4px) }
+  #zoom[hidden] { display: none }
+  .zc { width: min(880px, 94vw); background: var(--card); border-radius: 32px; padding: 22px 26px; box-shadow: 0 24px 60px rgba(92,76,200,.3);
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; animation: pop .4s cubic-bezier(.34,1.56,.64,1) both }
+  @keyframes pop { from { transform: scale(.85); opacity: 0 } }
+  .zc canvas { width: 100%; height: auto; display: block; background: linear-gradient(#FBFAFF, #F1EDFF); border-radius: 24px }
+  .zc .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px }
+  .zc .no { font-family: var(--num); font-weight: 600; font-size: 44px; color: var(--purple) }
+  .zc .x { border: 0; background: var(--purple-soft); color: var(--purple); width: 38px; height: 38px; border-radius: 50%; font-size: 20px; cursor: pointer }
+  .zc .use { font-family: var(--display); font-size: 18px; color: var(--ink-soft); margin: 4px 0 14px }
+  .zc .use b { font-family: var(--num); color: var(--ink); font-weight: 600 }
+  .zc h3 { font-family: var(--display); font-weight: 400; font-size: 17px; margin: 0 0 6px; color: var(--ink) }
+  .zc .w { display: grid; grid-template-columns: 120px 1fr 44px; align-items: center; gap: 8px; font-family: var(--display); font-size: 16px; margin: 6px 0 }
+  .zc .w b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .zc .w span { height: 10px; border-radius: 999px; background: var(--purple-soft); position: relative; overflow: hidden }
+  .zc .w span i { position: absolute; inset: 0 auto 0 0; background: var(--butter); border-radius: 999px }
+  .zc .w em { font-style: normal; color: var(--ink-soft); font-size: 14px; text-align: right }
+  .zc .note { font-family: var(--display); color: var(--ink-soft); background: var(--purple-soft); border-radius: 16px; padding: 10px 14px }
+  .zc .ctl { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap }
+  .zc .ctl .btn { box-shadow: none; background: var(--purple-soft) }
+  .zc .frames { display: flex; gap: 6px; margin-top: 10px }
+  .zc .frames i { flex: 1; height: 6px; border-radius: 999px; background: var(--purple-soft) }
+  .zc .frames i.on { background: var(--purple) }
+  .brand, .info, .search, .btn { white-space: nowrap }
+  @media (max-width: 1000px) { .info { display: none } }
+  @media (max-width: 720px) { .zc { grid-template-columns: 1fr } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">✋</span>손짓의 알파벳 · <b>자모표 512칸</b></div>
+  <div class="info">칸 하나 = <b>0.13</b>초 동작 · 누르면 크게 보기</div>
+  <label class="search">단어로 찾기 <input id="q" placeholder="예: 학교" autocomplete="off"><output id="qOut"></output></label>
+  <button class="btn" id="play" type="button">일시정지</button>
+</header>
+<div id="board"><canvas id="cv" aria-label="동작 글자 512개 격자"></canvas></div>
+<div id="zoom" hidden></div>
+
+<script type="module">
+import { drawGlyph } from './src/util.js';
+import { loadData } from './src/data.js';
+
+/**
+ * 512칸 격자. 토큰마다 4프레임(0.13초)을 시트 캔버스에 미리 그려 두고, 133ms마다 프레임을 넘겨 한 장으로 옮긴다.
+ * 칸 번호 = 토큰 번호 (32열 × 16행, 발표 무대의 스티커판과 같은 배치).
+ */
+const COLS = 32, ROWS = 16, PX = 96, FRAME_MS = 133;
+const { atlas: A } = await loadData();
+
+const sheet = document.createElement('canvas'); sheet.width = COLS * PX; sheet.height = ROWS * PX * 4;
+const sg = sheet.getContext('2d');
+for (let f = 0; f < 4; f++) for (let t = 0; t < A.n; t++)
+  drawGlyph(sg, A.x[t][f], (t % COLS) * PX, f * ROWS * PX + Math.floor(t / COLS) * PX, PX, A.lim);
+
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let cell = 0, gap = 0, frame = 0, playing = true, hover = -1, hot = new Set();
+
+function layout() {
+  const box = document.getElementById('board').getBoundingClientRect();
+  cell = Math.floor(Math.min((box.width - 48) / COLS, (box.height - 48) / ROWS));
+  gap = Math.max(2, Math.round(cell * .08));
+  const dpr = devicePixelRatio || 1;
+  cv.style.width = COLS * cell + 'px'; cv.style.height = ROWS * cell + 'px';
+  cv.width = COLS * cell * dpr; cv.height = ROWS * cell * dpr;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function draw() {
+  g.clearRect(0, 0, COLS * cell, ROWS * cell);
+  for (let t = 0; t < A.n; t++) {
+    const x = (t % COLS) * cell, y = Math.floor(t / COLS) * cell, s = cell - gap;
+    g.fillStyle = t === hover ? '#FFD9E3' : hot.has(t) ? '#FFE9A8' : A.rest[t] ? '#EFEBFF' : '#FFFFFF';
+    g.beginPath(); g.roundRect(x + gap / 2, y + gap / 2, s, s, s * .18); g.fill();
+    if (hot.size && !hot.has(t)) g.globalAlpha = .3;
+    g.drawImage(sheet, (t % COLS) * PX, frame * ROWS * PX + Math.floor(t / COLS) * PX, PX, PX, x + gap / 2, y + gap / 2, s, s);
+    g.globalAlpha = 1;
+  }
+}
+
+setInterval(() => { if (playing) { frame = (frame + 1) % 4; draw(); } }, FRAME_MS);
+addEventListener('resize', layout);
+
+const tokenAt = e => {
+  const r = cv.getBoundingClientRect(), col = Math.floor((e.clientX - r.left) / cell), row = Math.floor((e.clientY - r.top) / cell);
+  return col >= 0 && col < COLS && row >= 0 && row < ROWS ? row * COLS + col : -1;
+};
+cv.addEventListener('mousemove', e => { const t = tokenAt(e); if (t !== hover) { hover = t; draw(); } });
+cv.addEventListener('mouseleave', () => { hover = -1; draw(); });
+// 한글 입력 중(조합 중)에 판을 누르면 click 이 묻히므로 pointerdown 으로 연다
+cv.addEventListener('pointerdown', e => { const t = tokenAt(e); if (t >= 0) { q.blur(); openZoom(t); } });
+
+const playBtn = document.getElementById('play');
+const togglePlay = () => { playing = !playing; playBtn.textContent = playing ? '일시정지' : '재생'; };
+playBtn.onclick = togglePlay;
+
+// 단어로 찾기: 발표 무대 TypeCase.search 와 같은 규칙
+const q = document.getElementById('q'), qOut = document.getElementById('qOut');
+q.addEventListener('input', () => {
+  const word = q.value.trim();
+  hot = new Set();
+  if (word) A.words.forEach((ws, t) => { if (ws && ws.some(([w]) => w === word || (word.length >= 2 && w.includes(word)))) hot.add(t); });
+  qOut.textContent = word ? `${hot.size}칸` : '';
+  draw();
+});
+
+// 크게 보기
+const zoom = document.getElementById('zoom');
+let zt = -1, zf = 0, zTimer = null, slow = false;
+function openZoom(t) {
+  zt = (t + A.n) % A.n; zf = 0;
+  const words = (A.words[zt] || []).slice(0, 5);
+  zoom.innerHTML = `<div class="zc" role="dialog" aria-label="토큰 ${zt}">
+    <div><canvas width="640" height="640" aria-label="토큰 ${zt}의 0.13초 동작"></canvas><div class="frames">${'<i></i>'.repeat(4)}</div></div>
+    <div>
+      <div class="top"><span class="no">#${zt}</span><button class="x" type="button" aria-label="닫기">✕</button></div>
+      <div class="use">단어 클립 <b>${(A.useWord?.[zt] ?? 0).toLocaleString()}</b> · 문장 클립 <b>${(A.useSen?.[zt] ?? 0).toLocaleString()}</b></div>
+      ${A.rest[zt] ? '<div class="note">손을 내린 대기 · 공통 자세 조각이에요</div>' : ''}
+      ${!words.length ? (A.rest[zt] ? '' : '<div class="note">특정 단어에 몰리지 않고 여러 단어에 조금씩 나와요</div>')
+        : `<h3${A.rest[zt] ? ' style="margin-top:12px"' : ''}>이 글자가 자주 나오는 단어</h3>` + words.map(([w, s]) => `<div class="w"><b title="${w}">${w}</b><span><i style="width:${Math.round(s * 100)}%"></i></span><em>${Math.round(s * 100)}%</em></div>`).join('')}
+      <div class="ctl">
+        <button class="btn" data-a="prev" type="button">◀ 이전</button>
+        <button class="btn" data-a="next" type="button">다음 ▶</button>
+        <button class="btn" data-a="slow" type="button">${slow ? '보통 속도' : '느리게'}</button>
+      </div>
+    </div></div>`;
+  zoom.hidden = false;
+  const c = zoom.querySelector('canvas'), zg = c.getContext('2d'), bars = zoom.querySelectorAll('.frames i');
+  const step = () => {
+    zg.clearRect(0, 0, 640, 640); drawGlyph(zg, A.x[zt][zf], 0, 0, 640, A.lim);
+    bars.forEach((b, i) => b.classList.toggle('on', i === zf)); zf = (zf + 1) % 4;
+  };
+  step(); clearInterval(zTimer); zTimer = setInterval(step, slow ? FRAME_MS * 4 : FRAME_MS);
+  zoom.querySelector('.x').onclick = closeZoom;
+  zoom.querySelector('[data-a=prev]').onclick = () => openZoom(zt - 1);
+  zoom.querySelector('[data-a=next]').onclick = () => openZoom(zt + 1);
+  zoom.querySelector('[data-a=slow]').onclick = () => { slow = !slow; openZoom(zt); };
+  hover = zt; draw();
+}
+function closeZoom() { zoom.hidden = true; clearInterval(zTimer); hover = -1; draw(); }
+zoom.addEventListener('click', e => { if (e.target === zoom) closeZoom(); });
+addEventListener('keydown', e => {
+  if (e.target === q) return;
+  if (!zoom.hidden) {
+    if (e.key === 'Escape') closeZoom();
+    else if (e.key === 'ArrowLeft') openZoom(zt - 1);
+    else if (e.key === 'ArrowRight') openZoom(zt + 1);
+  } else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'f' || e.key === 'F') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+});
+
+layout();
+</script>
+</body>
+</html>
