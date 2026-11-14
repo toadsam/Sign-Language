@@ -182,6 +182,59 @@ def test_metrics_worked_example():
     assert s["tp"] == 2 and math.isclose(r["f1"], 0.5) and math.isclose(r["precision"], 0.5)
 
 
+def test_semantic_matcher_rules():
+    m = metrics.Matcher(units={"가다": "S:가다", "가다2": "S:가다", "오다": "S:오다", "없음": None, "없음2": None},
+                        synonyms={"학교": ["학원"], "학원": [], "병원": ["의원"], "의원": ["의사당"]})
+    assert m.same("가다", "가다2")             # 같은 동작 단위
+    assert not m.same("가다", "오다")
+    assert not m.same("없음", "없음2")          # 단위가 None끼리는 같다고 치지 않는다
+    assert m.same("학교", "학원") and m.same("학원", "학교")   # 동의어는 어느 쪽 목록이든
+    assert not m.same("병원", "의사당")         # 한 단계만 (이어 가지 않는다)
+    s = metrics.sentence_stats(["학원", "가다2"], [["학교", "가다"]], m)
+    assert s["tp"] == 2 and s["edits"] == 0 and s["exact"]
+    assert metrics.sentence_stats(["가다2", "학원"], [["학교", "가다"]], m)["edits"] == 2  # 순서는 본다
+    assert metrics.sentence_stats(["가다2", "학원"], [["학교", "가다"]])["tp"] == 0  # 판정기 없으면 이름만
+
+
+def test_overlap_matching_is_maximal():
+    m = metrics.Matcher(units={"A": "u1", "B": "u1", "C": "u2"})
+    # 탐욕적으로 A-A를 먼저 잡아도 B가 남은 A 자리에 갈 수 없으면 최대 매칭이 다시 짝을 바꾼다
+    assert metrics.overlap(["A", "B"], ["B", "A"], m) == 2
+    assert metrics.overlap(["A", "A", "C"], ["B", "C"], m) == 2
+
+
+def test_human_baseline_leave_one_out():
+    groups = [[["A", "B"], ["A", "C"]], [["X"]]]  # 두 번째는 번역이 하나라 빠진다
+    hb = metrics.human_baseline(groups, metrics.Matcher(units={"B": "u", "C": "u"}))
+    assert hb["groups"] == 1
+    assert math.isclose(hb["single"]["f1"], 0.5) and math.isclose(hb["multi"]["f1"], 0.5)
+    assert hb["semantic"]["f1"] == 1.0
+
+
+def test_all_references_gathers_every_split():
+    from gen.translate.evaluate import all_references, human_groups
+
+    allp = [{"korean": "가", "gloss": ["A"]}, {"korean": "가", "gloss": ["B"]}, {"korean": "가", "gloss": ["A"]},
+            {"korean": "나", "gloss": ["C"]}]
+    assert all_references([allp[1]], allp) == [[["B"], ["A"]]]
+    assert human_groups(allp) == [[["A"], ["B"]]]
+    assert human_groups(allp, {"나"}) == []
+
+
+def test_judge_page_pick_and_render():
+    from gen.translate.judge_page import build_items, pick, render
+
+    test = [{"id": f"SEN{i:04d}", "korean": "오늘 학교에 가요", "gloss": ["오늘", "학교", "가다"]} for i in range(10)]
+    a, b = pick(test, 4, seed=1), pick(list(reversed(test)), 4, seed=1)
+    assert [p["id"] for p in a] == [p["id"] for p in b] and len(a) == 4   # 입력 순서와 상관없이 같은 문장
+    items = build_items(_translator(), a[:1], test + [{"korean": "오늘 학교에 가요", "gloss": ["학교", "가다"]}])
+    assert items[0]["pred"] == ["오늘", "학교", "가다"] and items[0]["other_refs"] == [["학교", "가다"]]
+    items[0]["korean"] = "</script><b>"  # 데이터 안의 태그가 페이지를 깨지 않게
+    page = render(items, "x/model.json", 1)
+    assert "<\\/script><b>" in page and page.count("</script>") == 2
+    assert "localStorage" in page and "try {" in page and "http" not in page.split("<body>")[1]
+
+
 def test_metrics_edges():
     assert metrics.aggregate([metrics.sentence_stats([], ["A"])])["f1"] == 0.0
     r = metrics.aggregate([metrics.sentence_stats(["A", "B"], ["A", "B"])])
@@ -401,9 +454,12 @@ def test_synonym_saved_with_translator(tmp_path):
 def test_synonym_fetch_parsers_with_fake_api():
     from gen.translate.synonyms import SEARCH_URL, build, parse_similar, parse_target_codes
 
-    search = {"channel": {"item": [{"word": "학교^1", "target_code": 11}, {"word": "학교장", "target_code": 12}]}}
-    view = {"channel": {"item": {"word_info": {"relation_info": [{"word": "학원", "type": "비슷한말"},
-                                                                   {"word": "교실", "type": "참고어"}]}}}}
+    # 11-14 실제로 확인한 모양 (값은 지어낸 것)
+    search = {"channel": {"item": [{"word": "학교", "sense": [{"target_code": "11", "pos": "명사"}]},
+                                   {"word": "학교장", "sense": [{"target_code": "12"}]}]}}
+    view = {"channel": {"item": {"senseInfo": {"relation_info": [{"word": "학원002", "type": "비슷한말"},
+                                                                  {"word": "교실", "type": "참고어"}],
+                                               "proverb_info": [{"word": "학교 가다", "type": "관용구"}]}}}}
     assert parse_target_codes(search, "학교") == ["11"]
     assert parse_similar(view) == ["학원"]
     sent = []
