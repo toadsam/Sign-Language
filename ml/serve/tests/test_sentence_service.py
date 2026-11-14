@@ -99,6 +99,25 @@ def test_adapter_marks_units_the_generator_skipped():
     assert out["unknown"] == ["화장실"] and out["segments"] == [{"gloss": "있다", "start": 2, "end": 8}]
 
 
+def test_adapter_falls_back_to_drawable_alt():
+    table = {"schema_version": 2, "units": {},
+             "glosses": {"곳": {"default": "S:곳", "alts": ["W:WORD1"], "homonym": False, "senses": {}},
+                         "집": {"default": "S:집", "alts": [], "homonym": False, "senses": {}}}}
+
+    class Vocab(sentence.SyntheticSentenceGenerator):
+        def known(self, units):
+            return [u for u in units if u.startswith("W:")], [u for u in units if not u.startswith("W:")]
+
+        def generate(self, units, signer=None, seed=None):
+            self.units = units
+            return super().generate([u for u in units if self.known([u])[0]], signer, seed)
+
+    inner = Vocab()
+    out = sentence.GlossSentenceAdapter(inner, table).generate(["곳", "집"])
+    assert inner.units == ["W:WORD1", "S:집"]
+    assert out["unknown"] == ["집"] and [s["gloss"] for s in out["segments"]] == ["곳"]
+
+
 @pytest.mark.parametrize("segments", [
     [{"unit": "S:화장실", "start": 0, "end": 99}],
     [{"unit": "S:화장실", "start": 0, "end": 4}, {"unit": "S:없는것", "start": 4, "end": 6}],

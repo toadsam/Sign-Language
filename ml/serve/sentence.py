@@ -220,13 +220,24 @@ class GlossSentenceAdapter:
     """gloss 이름 열 → 글로스 표 → 단위 열 → SentenceGenerator → 응답 ⑤에 맞는 dict.
 
     표에 없는 이름과 생성기가 구간을 돌려주지 않은 단위의 이름은 unknown에 원래 이름 그대로 넣는다.
+    생성기가 known(units) -> (그릴 수 있는 것, 없는 것)을 주면, 기본 단위를 못 그릴 때 alts 중 그릴 수 있는
+    첫 단위로 바꾼다(11-14: 문장 GPT 학습에 없던 S 단위 16개 대응).
     """
 
     def __init__(self, sentence_generator, table: dict, signer: str | None = None):
         self.sentence, self.table, self.signer = sentence_generator, table, signer
+        self._known = getattr(sentence_generator, "known", None)
+
+    def _unit(self, name):
+        unit = resolve(self.table, name)
+        if unit is None or not callable(self._known):
+            return unit
+        candidates = [unit] + [a for a in self.table["glosses"][name].get("alts", []) if a != unit]
+        drawable, _ = self._known(candidates)
+        return next((c for c in candidates if c in drawable), unit)
 
     def generate(self, gloss, nonmanual=(), seed=None) -> dict:
-        known = [(name, resolve(self.table, name)) for name in gloss]
+        known = [(name, self._unit(name)) for name in gloss]
         units = [unit for _, unit in known if unit is not None]
         result = self.sentence.generate(units, signer=self.signer, seed=seed) if units else {
             "fps": FPS, "motion": np.empty((0, JOINTS, 3), np.float32), "tokens": [], "segments": [],
