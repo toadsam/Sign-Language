@@ -281,24 +281,74 @@ def coarse_morphs(pairs):
     return out
 
 
+# 원형 맞추기 (11-15, v5). madi는 문맥에 따라 용언 어간을 분석하지 못하고 "불능"으로 낸다.
+#   "여권 있으세요?" → 있으/불능 + 시/선어말 + 어요   (같은 낱말이 "표 있으세요?"에서는 있/형용사 + 으시/선어말)
+# 그러면 단위가 원형(있다)이 아니라 조각(있으)이 되어 학습 · 서비스 단위가 어긋난다.
+# 고치는 법: "불능" 바로 뒤가 어미(선어말 · 종결어 · 연결어 · 관형어 · 명사형)면 용언 어간으로 본다.
+#   1) 그 조각이 든 어절만 madi로 다시 분석해서, 조각의 앞부분인 용언 형태소가 나오면 그것을 쓴다(madi 자신의 원형)
+#   2) 그래도 없으면 받침 뒤 매개 모음 "으"를 뗀다 (있으 → 있, 받으 → 받)
+_STEM_NEXT = {"선어말", "종결어", "연결어", "관형어", "명사형"}
+_VERB_TAGS = {"동사", "형용사", "보조용"}
+
+
+def _strip_epenthetic(form):
+    """받침 뒤 매개 모음 '으' 떼기: 있으 → 있. 아니면 그대로."""
+    if len(form) >= 2 and form[-1] == "으" and is_hangul(form[-2]) and final_of(form[-2]):
+        return form[:-1]
+    return form
+
+
+def fix_unknown_stems(pairs, text, engine=None):
+    """[(form, madi 태그)]에서 어미 앞 "불능" 조각을 용언 어간으로 바꾼다. 돌려주는 것: (새 pairs, 바꾼 개수)."""
+    out, n = [], 0
+    for k, (f, t) in enumerate(pairs):
+        nxt = pairs[k + 1][1] if k + 1 < len(pairs) else None
+        if t != "불능" or nxt not in _STEM_NEXT or not f or not all(is_hangul(c) for c in f):
+            out.append((f, t))
+            continue
+        stem, tag = None, "동사"
+        if engine is not None:
+            for word in str(text).split():
+                if f not in word:
+                    continue
+                again = [(str(a), str(b)) for a, b in engine.pos(word)]
+                for a, b in again:
+                    if b in _VERB_TAGS and f.startswith(a):
+                        stem, tag = a, b
+                        break
+                if stem is not None:
+                    break
+        if stem is None:
+            stem = _strip_epenthetic(f)
+        out.append((stem, tag))
+        n += 1
+    return out, n
+
+
 class MadiAnalyzer:
     """madi 감싸기: Analyzer().pos(text) → [(form, 한국어 태그)] → 거친 품사.
-    engine을 주면 그것을 쓴다(테스트에서 pos()만 있는 가짜를 넣는다)."""
+    engine을 주면 그것을 쓴다(테스트에서 pos()만 있는 가짜를 넣는다).
+    fix_stems=True면 어미 앞 "불능" 조각을 용언 원형으로 맞춘다(fix_unknown_stems). 기본은 끔(예전 학습 파일과 같게)."""
 
     name = "madi"
 
-    def __init__(self, engine=None):
+    def __init__(self, engine=None, fix_stems=False):
         if engine is None:
             import madi  # noqa: PLC0415 (없을 때 바로 ImportError)
 
             engine = madi.Analyzer()
         self._m = engine
+        self.fix_stems = fix_stems
         self.tag_counts = {}
+        self.stems_fixed = 0
 
     def analyze(self, text):
         pairs = [(str(f), str(t)) for f, t in self._m.pos(text)]
         for _f, t in pairs:
             self.tag_counts[t] = self.tag_counts.get(t, 0) + 1
+        if self.fix_stems:
+            pairs, n = fix_unknown_stems(pairs, text, self._m)
+            self.stems_fixed += n
         return coarse_morphs(pairs)
 
 
@@ -319,11 +369,12 @@ class FixedAnalyzer:
         return self.fallback.analyze(text)
 
 
-def get_analyzer(name="madi", lexicon=()):
-    """'madi'(기본, 없으면 ImportError) | 'rule' | 'auto'(madi가 있으면 madi, 없으면 rule)."""
+def get_analyzer(name="madi", lexicon=(), fix_stems=False):
+    """'madi'(기본, 없으면 ImportError) | 'rule' | 'auto'(madi가 있으면 madi, 없으면 rule).
+    fix_stems: madi의 어미 앞 "불능" 조각을 원형으로 맞춘다 (v5)."""
     if name in ("madi", "auto"):
         try:
-            return MadiAnalyzer()
+            return MadiAnalyzer(fix_stems=fix_stems)
         except ImportError:
             if name == "madi":
                 raise

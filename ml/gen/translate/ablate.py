@@ -68,6 +68,21 @@ _V4 = [
 SETS["v4"] = [(f"{n} / {'strict' if s else '기본'}", {**_BASE, **c}, s, GRID, k)
               for s in (True, False) for n, c, k in _V4]
 
+# 11-15 v5: 원형 맞추기, 대체어 표. 바탕은 v4에서 고른 것(내용어 지키기, 생략 ≥0.9 허용). 조정은 여러 정답 기준
+_V4_PICK = {"content_keep": True, "keep_drop_prob": 0.9}
+_V5 = [
+    ("v4 (개선 전)", {}),
+    ("+ 원형 맞추기", {"lemma_fix": True}),
+    ("+ 대체어 표", {"use_subst": True}),
+    ("+ 원형 맞추기 + 대체어 표", {"lemma_fix": True, "use_subst": True}),
+    ("+ 원형 맞추기 + 대체어 표 (몫 ≥0.6)", {"lemma_fix": True, "use_subst": True, "subst_min_share": 0.6,
+                                      "subst_min_keep": 0.3}),
+    ("+ 원형 맞추기 + 대체어 표 (몫 ≥0.9, 3회)", {"lemma_fix": True, "use_subst": True, "subst_min_share": 0.9,
+                                         "subst_min_count": 3}),
+]
+SETS["v5"] = [(f"{n} / {'strict' if s else '기본'}", {**_BASE, **_V4_PICK, **c}, s, GRID, "multi:f1wer")
+              for s in (True, False) for n, c in _V5]
+
 
 def coverage(train, val):
     """검증 정답 글로스 중 학습 글로스에 나온 비율 (학습으로 낼 수 있는 상한), 같은 한국어 문장이 학습에 있는 비율."""
@@ -92,7 +107,8 @@ def main():
     syn = load_synonyms(a.synonyms)
     rows, extra = [], {}
     all_pairs = read_pairs(a.pairs)
-    multi_lines = ["| 설정 | 여러 정답 정밀도 | 재현율 | F1 | WER | 기존 F1 | unknown/문장 |", "|---|---|---|---|---|---|---|"]
+    multi_lines = ["| 설정 | 여러 정답 정밀도 | 재현율 | F1 | WER | 기존 F1 | unknown/문장 | 대체/문장 | 대체어 수 |",
+                   "|---|---|---|---|---|---|---|---|---|"]
     for name, cfg, strict, grid, kind in SETS[a.set]:
         if cfg.get("use_synonyms") and syn is None:
             print(f"skip {name}: 동의어 표 없음")
@@ -107,10 +123,13 @@ def main():
         mr = suite["여러 정답 F1"]
         row["multi"] = {k: mr[k] for k in ("precision", "recall", "f1", "wer")}
         multi_lines.append(f"| {name} | {mr['precision']:.3f} | {mr['recall']:.3f} | {mr['f1']:.3f} | {mr['wer']:.3f} | "
-                           f"{row['f1']:.3f} | {row['unknown_per_sent']:.2f} |")
+                           f"{row['f1']:.3f} | {row['unknown_per_sent']:.2f} | "
+                           f"{sum(len(o.get('substituted', [])) for o in outs) / max(1, len(outs)):.2f} | "
+                           f"{len(t.subst) if t.subst is not None else 0} |")
         print(multi_lines[-1], flush=True)
         row["weights"] = dict(t.weights)
         row["substituted_per_sent"] = sum(len(o.get("substituted", [])) for o in outs) / max(1, len(outs))
+        row["subst_entries"] = len(t.subst) if t.subst is not None else 0
         rows.append((name, row))
         print(table_md([(name, row)]).splitlines()[-1], flush=True)
     print(table_md(rows))
