@@ -477,6 +477,26 @@ def test_content_keep_blocks_drop_of_drawable_unit():
     assert gl == ["가다"] and path[0][3] == "oov"
 
 
+def test_content_keep_does_not_repeat_neighbor_gloss():
+    from gen.translate.decode import decode
+
+    # "들어가다"는 대개 생략(0.7)인데 이웃 "안"의 글로스가 새어 든 후보("안")가 있다.
+    # content_keep이 생략을 지우면 "안 안"이 나오던 문제(11-14 판정 메모)
+    pt = {("학교",): [(("학교",), 0.0, 0.0, 9)],
+          ("안",): [(("안",), math.log(0.6), 0.0, 6), ((), math.log(0.4), 0.0, 4)],
+          ("들어가다",): [((), math.log(0.7), 0.0, 7), (("안",), math.log(0.3), 0.0, 3)]}
+    lm = KneserNeyLM().fit([["학교", "안"], ["안"]])
+    w = {"glosses": 1.0}
+    units = ["학교", "안", "들어가다"]
+    assert decode(units, pt, lm, w, lookup=lambda u: None)[0] == ["학교", "안"]
+    gl, path = decode(units, pt, lm, w, lookup=lambda u: None, content_keep=True)
+    assert gl == ["학교", "안"] and path[-1][:3] == (2, 3, ())
+    # 한국어가 같은 말을 두 번 하면(서로 다른 원문 단위) 반복은 남는다: 규칙 이름은 구간 자신의 몫
+    lk = {"학교": "학교", "안": "안"}.get
+    gl, _ = decode(["안", "학교", "안"], pt, lm, w, lookup=lk, content_keep=True)
+    assert gl == ["안", "학교", "안"]
+
+
 def test_join_neighbors_and_derivation_lookup():
     from gen.translate.decode import decode
 
