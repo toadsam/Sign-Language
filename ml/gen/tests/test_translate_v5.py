@@ -111,6 +111,18 @@ def test_build_subst_thresholds_and_filters():
     assert stats["subst_entries"] == len(st)
     loose = build_subst(ex, al, lookup, min_count=1)
     assert loose.map.get("커피숍") == "카페"
+    denied = build_subst(ex, al, lookup, min_count=1, deny=[["커피숍", "카페"]])
+    assert "커피숍" not in denied.map and denied.map["주민등록증"] == "신분증"
+
+
+def test_load_deny(tmp_path):
+    from gen.translate.subst import load_deny
+    p = tmp_path / "judge.json"
+    p.write_text(json.dumps([{"key": "많이", "to": "시간", "verdict": "bad"},
+                             {"key": "주민등록증", "to": "신분증", "verdict": "ok"},
+                             {"key": "x", "to": "y", "verdict": None}], ensure_ascii=False), encoding="utf-8")
+    assert load_deny(p) == [["많이", "시간"]]
+    assert load_deny(tmp_path / "없음.json") == []
 
 
 def test_subst_save_load(tmp_path):

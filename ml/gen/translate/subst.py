@@ -98,9 +98,12 @@ class SubstTable:
         return {"schema": "subst_v1", "max_parts": self.max_parts, "map": dict(sorted(self.map.items()))}
 
 
-def build_subst(examples, alignments, lookup, min_count=2, min_share=0.8, min_keep=0.5, max_parts=3, stats=None):
+def build_subst(examples, alignments, lookup, min_count=2, min_share=0.8, min_keep=0.5, max_parts=3, stats=None,
+                deny=()):
     """examples: [(단위 열, 글로스 열, 한국어 문장)] (학습 쌍만), alignments: 쌍마다 {(i, j)} 링크.
-    lookup(낱말) -> 글로스 이름 | None (글로스 표 규칙). 돌려주는 것: SubstTable."""
+    lookup(낱말) -> 글로스 이름 | None (글로스 표 규칙). deny: 사람이 틀렸다고 판정한 (말, 글로스) 쌍 — 다시 넣지 않는다.
+    돌려주는 것: SubstTable."""
+    deny = {tuple(d) for d in deny}
     seen = collections.defaultdict(collections.Counter)
     sents = collections.defaultdict(lambda: collections.defaultdict(set))
     for (units, gloss, text), links in zip(examples, alignments):
@@ -124,11 +127,13 @@ def build_subst(examples, alignments, lookup, min_count=2, min_share=0.8, min_ke
         tgt, k = max(((t, v) for t, v in c.items() if t), key=lambda x: (x[1], x[0]))
         if len(tgt) != 1 or lookup(tgt[0]) != tgt[0]:
             continue
+        if (key, tgt[0]) in deny:
+            continue
         if (k >= min_count and len(sents[key][tgt]) >= min_count and k / nonempty >= min_share
                 and k / total >= min_keep):
             mapping[key] = tgt[0]
     if stats is not None:
-        stats.update({"keys_seen": len(seen), "subst_entries": len(mapping)})
+        stats.update({"keys_seen": len(seen), "subst_entries": len(mapping), "subst_denied": len(deny)})
     return SubstTable(mapping, max_parts)
 
 
@@ -138,6 +143,14 @@ def save_subst(table, path, overwrite=False):
     with path.open("w" if overwrite else "x", encoding="utf-8") as fh:
         json.dump(table.to_json(), fh, ensure_ascii=False, indent=1)
         fh.write("\n")
+
+
+def load_deny(path):
+    """대체어 판정 화면 결과 JSON([{key, to, verdict}]) → 틀림으로 고른 [[말, 글로스]]. 파일이 없으면 []."""
+    if not path or not Path(path).exists():
+        return []
+    return sorted([d["key"], d["to"]] for d in json.loads(Path(path).read_text(encoding="utf-8"))
+                  if d.get("verdict") == "bad")
 
 
 def load_subst(path):

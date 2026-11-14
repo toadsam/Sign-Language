@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {"analyzer": "madi", "keep_endings": True, "max_src": 3, "max_t
                   "content_keep": False, "keep_drop_prob": 1.01, "use_join": False,
                   # 11-15 v5: 원형 맞추기, 대체어 표 (대체어 기준: 횟수, 정렬된 것 중 몫, 전체 중 몫)
                   "lemma_fix": False, "use_subst": False, "subst_min_count": 2, "subst_min_share": 0.8,
-                  "subst_min_keep": 0.5}
+                  "subst_min_keep": 0.5, "subst_deny": [], "subst_realign": True}
 
 
 # 동음이의어 문맥 단서: 글로스 이름 → 뜻(글로스 표 senses의 값) → 그 뜻을 가리키는 원문 단위(원형).
@@ -236,10 +236,16 @@ def build_translator(train_pairs, gloss_table, config=None, weights=None, analyz
         pairs, texts, alignments = aligned()
         st = {}
         t.subst = build_subst([(u, g, k) for (u, g), k in zip(pairs, texts)], alignments, t.lookup.lookup,
-                              cfg["subst_min_count"], cfg["subst_min_share"], cfg["subst_min_keep"], stats=st)
+                              cfg["subst_min_count"], cfg["subst_min_share"], cfg["subst_min_keep"], stats=st,
+                              deny=cfg.get("subst_deny") or ())
         t.info.update(st)
         t.config["use_subst"] = True
-    pairs, _texts, alignments = aligned()
+        if not cfg.get("subst_realign", True):
+            pass  # 대응표는 대체어를 적용하지 않은 정렬로 만든다 (11-15: 다시 정렬하면 이웃 단위 정렬이 흔들림)
+        else:
+            pairs, _texts, alignments = aligned()
+    else:
+        pairs, _texts, alignments = aligned()
     t.phrase_table = build_phrase_table(pairs, alignments, cfg["max_src"], cfg["max_tgt"], cfg["top_k"])
     t.lm = KneserNeyLM().fit([p["gloss"] for p in train_pairs if p["gloss"]])
     t.info.update({"train_pairs": len(pairs), "phrase_sources": len(t.phrase_table),

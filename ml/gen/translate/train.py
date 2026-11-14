@@ -22,7 +22,7 @@ from pathlib import Path
 from gen.translate import metrics
 from gen.translate.evaluate import all_references, load_split
 from gen.translate.pairs import read_pairs
-from gen.translate.subst import save_subst
+from gen.translate.subst import load_deny, save_subst
 from gen.translate.synonyms import load_synonyms
 from gen.translate.translator import build_translator
 
@@ -101,6 +101,9 @@ def main():
     p.add_argument("--subst-min-share", type=float, default=0.8)
     p.add_argument("--subst-min-keep", type=float, default=0.5)
     p.add_argument("--subst-out", help="대체어 표를 따로 저장할 경로 (덮어쓰지 않음)")
+    p.add_argument("--subst-no-realign", action="store_true",
+                   help="대응표는 대체어 적용 전 정렬로 만들고 대체어는 번역할 때만 적용 (11-15)")
+    p.add_argument("--subst-deny", help="대체어 판정 결과 JSON. 틀림으로 고른 항목은 표에 넣지 않는다 (11-15)")
     p.add_argument("--tune", action="store_true")
     p.add_argument("--all", action="store_true", help="서비스용: 2,000쌍 전부로 학습 (평가에 쓰지 않음)")
     p.add_argument("--weights-from", help="가중치를 이 학습 파일에서 가져온다")
@@ -116,7 +119,8 @@ def main():
            "content_drop_min": a.content_drop_min, "use_split": a.split_compounds, "use_synonyms": syn is not None,
            "content_keep": a.content_keep, "keep_drop_prob": a.keep_drop_prob, "use_join": a.join,
            "lemma_fix": a.lemma_fix, "use_subst": a.subst, "subst_min_count": a.subst_min_count,
-           "subst_min_share": a.subst_min_share, "subst_min_keep": a.subst_min_keep}
+           "subst_min_share": a.subst_min_share, "subst_min_keep": a.subst_min_keep,
+           "subst_deny": load_deny(a.subst_deny), "subst_realign": not a.subst_no_realign}
     train = parts["train"] + (parts["val"] + parts["test"] if a.all else [])
     info = {"strict": a.strict, "all_pairs": a.all, "split_sizes": {k: len(v) for k, v in parts.items()},
             "train_used": len(train), "gloss_table_stats": table.get("stats"),
