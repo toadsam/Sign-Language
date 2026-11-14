@@ -388,6 +388,14 @@ def test_synonym_saved_with_translator(tmp_path):
     t.save(tmp_path / "s.json")
     t2 = load_translator(str(tmp_path / "s.json"))
     assert t2.translate("벗을 만나요")["substituted"][0]["to"] == "친구"
+    # 동의어 없이 학습한 파일에 나중에 동의어 표만 붙이기
+    plain = build_translator(TRAIN, TABLE, config={"analyzer": "rule"})
+    plain.save(tmp_path / "p.json")
+    (tmp_path / "syn.json").write_text(json.dumps({"schema": "synonyms_v1", "map": {"벗": ["친구"]}}), encoding="utf-8")
+    assert load_translator(str(tmp_path / "p.json")).translate("벗을 만나요")["substituted"] == []
+    t3 = load_translator(str(tmp_path / "p.json"), synonyms=str(tmp_path / "syn.json"))
+    assert t3.translate("벗을 만나요")["gloss"] == ["친구", "만나다"]
+    assert load_translator(str(tmp_path / "p.json"), synonyms=str(tmp_path / "none.json")).synonyms is None
 
 
 def test_synonym_fetch_parsers_with_fake_api():

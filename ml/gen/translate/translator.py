@@ -203,8 +203,17 @@ def build_translator(train_pairs, gloss_table, config=None, weights=None, analyz
     return t
 
 
-def load_translator(path: str, analyzer=None) -> Translator:
+def load_translator(path: str, analyzer=None, synonyms: str | None = None) -> Translator:
+    """synonyms: 동의어 표 파일 경로. 있으면 학습 파일에 담긴 것 대신 이것을 쓰고 동의어 단계를 켠다
+    (파일이 없으면 학습 파일 그대로). 다시 학습하지 않고 동의어 표만 바꿀 때 쓴다."""
     obj = json.loads(Path(path).read_text(encoding="utf-8"))
+    if synonyms:
+        from gen.translate.synonyms import load_synonyms  # noqa: PLC0415
+
+        table = load_synonyms(synonyms)
+        if table is not None:
+            obj["synonyms"] = table.map
+            obj["config"]["use_synonyms"] = True
     if obj.get("schema") != SCHEMA:
         raise ValueError(f"not a {SCHEMA} file: {path}")
     pt = {tuple(s): [(tuple(t), lf, lb, c) for t, lf, lb, c in cands] for s, cands in obj["phrase_table"]}
