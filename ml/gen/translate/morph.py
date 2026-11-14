@@ -10,9 +10,9 @@
   X   그 밖
 
 분석기 세 가지
-  MadiAnalyzer     madi(`pip install madipy`, import madi). 세종 계열 태그를 위 품사로 줄인다.
-                   **실제 태그 이름은 아직 돌려 확인하지 못했다** (11-14 설치 권한이 막힘). 첫 실행 때 tag_counts로 확인할 것.
-  RuleAnalyzer     madi가 없을 때 쓰는 규칙 분석기. 어절마다 조사·어미를 뒤에서 떼고, 어휘 목록(글로스 이름)에
+  MadiAnalyzer     기본. madi(`pip install madipy`, import madi, 0.4.0). pos()의 한국어 태그(일반명, 동사, 주격조 …)를
+                   위 품사로 줄인다(MADI_TAGS, 11-14 실제 출력으로 확인).
+  RuleAnalyzer     madi가 없는 환경용 대체 규칙 분석기. 어절마다 조사·어미를 뒤에서 떼고, 어휘 목록(글로스 이름)에
                    있는 쪽을 고른다. 정확한 형태소 분석이 아니라 "같은 낱말은 늘 같은 단위가 되게" 하는 것이 목적이다.
   FixedAnalyzer    미리 받은 분석 결과를 주입한다(테스트, 캐시).
 
@@ -215,72 +215,91 @@ _STRONG_ENDINGS = {"요", "어요", "아요", "여요", "세요", "으세요", "
 
 # ---------------------------------------------------------------- madi
 
+# madipy 0.4.0의 한국어 태그 → 거친 품사 (11-14 엑셀 문장 590종으로 확인한 29종 + 비슷한 이름)
+MADI_TAGS = {
+    "일반명": "N", "고유명": "N", "의존명": "N", "대명사": "N", "수사": "N", "일반부": "N", "접속부": "N",
+    "관형사": "N", "감탄사": "N", "불능": "N",
+    "동사": "V", "형용사": "V", "보조용": "V", "부정지": "V",
+    "긍정지": "J",  # 서술격 "이다"는 조사처럼 뺀다
+    "종결어": "E", "연결어": "E", "선어말": "E", "관형어": "E", "명사형": "E",
+    "동접미": "XSV", "형접미": "XSA", "명접미": "XSN", "체접두": "XPN", "접두사": "XPN",
+    "숫자": "NUM", "마침": "SF", "쉼표": "X", "묶음": "X",
+}
+
+
 def _coarse(tag):
-    t = str(tag).upper()
-    if t.startswith("NN") or t in ("NP", "NR", "MAG", "MAJ", "MM", "IC", "XR", "SL", "SH"):
-        return "N"
-    if t in ("VV", "VA", "VX", "VCN"):
-        return "V"
-    if t == "VCP":
-        return "J"  # 서술격 조사 "이다"는 조사처럼 뺀다
-    if t.startswith("J"):
+    """madi 한국어 태그(또는 세종 태그) → 거친 품사."""
+    t = str(tag)
+    if t in MADI_TAGS:
+        return MADI_TAGS[t]
+    if t.endswith("조"):
         return "J"
-    if t.startswith("E") or t in ("XSV", "XSA", "XSN", "XPN"):
-        return "E" if t.startswith("E") else t
-    if t == "SN":
+    u = t.upper()  # 세종 계열 (다른 분석기 결과를 주입할 때)
+    if u.startswith("NN") or u in ("NP", "NR", "MAG", "MAJ", "MM", "IC", "XR", "SL", "SH"):
+        return "N"
+    if u in ("VV", "VA", "VX", "VCN"):
+        return "V"
+    if u == "VCP" or u.startswith("J"):
+        return "J"
+    if u in ("XSV", "XSA", "XSN", "XPN"):
+        return u
+    if u.startswith("E"):
+        return "E"
+    if u == "SN":
         return "NUM"
-    if t == "SF" or t.startswith("S"):
+    if u == "SF":
         return "SF"
     return "X"
 
 
+def coarse_morphs(pairs):
+    """[(form, 태그)] → [(form, 거친 품사)]. 용언은 "-다" 원형, 명사 + 하(동접미) → "명사하다"."""
+    out = []
+    prefix = None
+    for form, tag in pairs:
+        c = _coarse(tag)
+        if c in ("XSV", "XSA"):
+            if out and out[-1][1] == "N":
+                out[-1] = (out[-1][0] + form + "다", "V")
+            else:
+                out.append((form + "다", "V"))
+        elif c == "V":
+            out.append((form + "다", "V"))
+        elif c == "XSN":
+            if out and out[-1][1] == "N":
+                out[-1] = (out[-1][0] + form, "N")
+            else:
+                out.append((form, "N"))
+        elif c == "XPN":
+            prefix = form
+            continue
+        else:
+            if prefix and c == "N":
+                form = prefix + form
+            out.append((form, c))
+        prefix = None
+    return out
+
+
 class MadiAnalyzer:
-    """madi 감싸기. 태그 이름은 세종 계열이라고 가정했다(확인 필요)."""
+    """madi 감싸기: Analyzer().pos(text) → [(form, 한국어 태그)] → 거친 품사.
+    engine을 주면 그것을 쓴다(테스트에서 pos()만 있는 가짜를 넣는다)."""
 
     name = "madi"
 
-    def __init__(self):
-        import madi  # noqa: PLC0415 (없을 때 바로 ImportError)
+    def __init__(self, engine=None):
+        if engine is None:
+            import madi  # noqa: PLC0415 (없을 때 바로 ImportError)
 
-        self._m = madi.Analyzer()
+            engine = madi.Analyzer()
+        self._m = engine
         self.tag_counts = {}
 
-    @staticmethod
-    def _pairs(raw):
-        for item in raw:
-            if isinstance(item, (tuple, list)) and len(item) >= 2:
-                yield str(item[0]), str(item[1])
-            else:
-                form = getattr(item, "form", None) or getattr(item, "surface", None)
-                tag = getattr(item, "tag", None) or getattr(item, "pos", None)
-                if form is not None and tag is not None:
-                    yield str(form), str(tag)
-
     def analyze(self, text):
-        out = []
-        prev = None
-        for form, tag in self._pairs(self._m.pos(text)):
-            self.tag_counts[tag] = self.tag_counts.get(tag, 0) + 1
-            c = _coarse(tag)
-            if c in ("XSV", "XSA"):  # 명사 + 하다 → "명사하다"
-                if out and out[-1][1] == "N":
-                    out[-1] = (out[-1][0] + form + "다", "V")
-                else:
-                    out.append((form + "다", "V"))
-            elif c == "V":
-                out.append((form if form.endswith("다") else form + "다", "V"))
-            elif c == "XSN":
-                if out and out[-1][1] == "N":
-                    out[-1] = (out[-1][0] + form, "N")
-            elif c == "XPN":
-                prev = form
-                continue
-            else:
-                if prev and c == "N":
-                    form = prev + form
-                out.append((form, c))
-            prev = None
-        return out
+        pairs = [(str(f), str(t)) for f, t in self._m.pos(text)]
+        for _f, t in pairs:
+            self.tag_counts[t] = self.tag_counts.get(t, 0) + 1
+        return coarse_morphs(pairs)
 
 
 class FixedAnalyzer:
@@ -300,8 +319,8 @@ class FixedAnalyzer:
         return self.fallback.analyze(text)
 
 
-def get_analyzer(name="auto", lexicon=()):
-    """'madi' | 'rule' | 'auto'(madi가 있으면 madi)."""
+def get_analyzer(name="madi", lexicon=()):
+    """'madi'(기본, 없으면 ImportError) | 'rule' | 'auto'(madi가 있으면 madi, 없으면 rule)."""
     if name in ("madi", "auto"):
         try:
             return MadiAnalyzer()

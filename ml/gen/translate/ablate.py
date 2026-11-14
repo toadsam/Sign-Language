@@ -41,7 +41,7 @@ def main():
     p.add_argument("--pairs", required=True)
     p.add_argument("--gloss-table", required=True)
     p.add_argument("--sen-meta")
-    p.add_argument("--analyzer", default="auto")
+    p.add_argument("--analyzer", default="madi", choices=["madi", "rule", "auto"])
     p.add_argument("--out")
     a = p.parse_args()
     table = json.loads(Path(a.gloss_table).read_text(encoding="utf-8"))

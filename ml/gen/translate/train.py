@@ -65,7 +65,7 @@ def main():
     p.add_argument("--val")
     p.add_argument("--sen-meta")
     p.add_argument("--strict", action="store_true", help="검증·시험과 한국어 문장이 같은 학습 쌍도 뺀다")
-    p.add_argument("--analyzer", default="auto", choices=["auto", "madi", "rule"])
+    p.add_argument("--analyzer", default="madi", choices=["madi", "rule", "auto"])
     p.add_argument("--no-endings", action="store_true", help="어미 단위를 빼고 학습 (ablation)")
     p.add_argument("--max-src", type=int, default=3)
     p.add_argument("--tune", action="store_true")

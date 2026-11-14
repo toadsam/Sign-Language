@@ -11,7 +11,7 @@ from gen.translate.align import (build_phrase_table, extract_phrases, grow_diag_
                                  train_ibm1)
 from gen.translate.decode import decode
 from gen.translate.lm import BOS, KneserNeyLM
-from gen.translate.morph import CachedAnalyzer, FixedAnalyzer, RuleAnalyzer, _coarse, get_analyzer
+from gen.translate.morph import CachedAnalyzer, FixedAnalyzer, MadiAnalyzer, RuleAnalyzer, _coarse, get_analyzer
 from gen.translate.pairs import heldout_ids, pairs_from_rows, read_xlsx_rows, references, split_pairs
 from gen.translate.rules import GlossLookup
 from gen.translate.translator import build_translator
@@ -71,11 +71,38 @@ def test_get_analyzer_falls_back_without_madi():
         assert get_analyzer("auto").name == "rule"
         with pytest.raises(ImportError):
             get_analyzer("madi")
+    else:
+        assert get_analyzer().name == "madi"  # 기본은 madi
     assert get_analyzer("rule").name == "rule"
 
 
 def test_coarse_tags():
     assert [_coarse(t) for t in ("NNG", "VV", "JKS", "EF", "SN", "SF", "VCP")] == ["N", "V", "J", "E", "NUM", "SF", "J"]
+    assert [_coarse(t) for t in ("일반명", "동사", "주격조", "종결어", "숫자", "마침", "긍정지", "묶음", "관형격조")] == \
+        ["N", "V", "J", "E", "NUM", "SF", "J", "X", "J"]
+
+
+class _FakeMadi:
+    """madi.Analyzer().pos()의 모양만 흉내 낸다 (지어낸 분석 결과)."""
+
+    TABLE = {
+        "공부해요?": [("공부", "일반명"), ("하", "동접미"), ("아요", "종결어"), ("?", "마침")],
+        "학교(본관)에 갔어요": [("학교", "일반명"), ("(", "묶음"), ("본관", "일반명"), (")", "묶음"), ("에", "부사조"),
+                         ("가", "동사"), ("았", "선어말"), ("어요", "종결어")],
+        "학생이에요": [("학생", "일반명"), ("이", "긍정지"), ("에요", "종결어")],
+    }
+
+    def pos(self, text):
+        return self.TABLE[text]
+
+
+def test_madi_analyzer_with_injected_engine():
+    a = MadiAnalyzer(engine=_FakeMadi())
+    assert a.analyze("공부해요?") == [("공부하다", "V"), ("아요", "E"), ("?", "SF")]
+    m = a.analyze("학교(본관)에 갔어요")
+    assert to_units(m, keep_endings=False)[0] == ["학교", "본관", "가다"]
+    assert to_units(a.analyze("학생이에요"), keep_endings=False) == (["학생"], ["이", "에요"])
+    assert a.tag_counts["일반명"] == 4
 
 
 def test_units_keep_and_drop():

@@ -26,7 +26,7 @@ from gen.translate.rules import GlossLookup
 from gen.translate.units import ENDING_MARK, is_marker, to_units
 
 SCHEMA = "translator_v1"
-DEFAULT_CONFIG = {"analyzer": "auto", "keep_endings": True, "max_src": 3, "max_tgt": 4, "top_k": 8,
+DEFAULT_CONFIG = {"analyzer": "madi", "keep_endings": True, "max_src": 3, "max_tgt": 4, "top_k": 8,
                   "ibm_iters": 10, "beam": 32, "use_lm": True, "use_phrases": True, "use_rules": True,
                   "anchor": True}
 
