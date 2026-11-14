@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -13,6 +14,7 @@ import java.net.UnknownHostException;
 import java.nio.channels.UnresolvedAddressException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +30,7 @@ import org.springframework.stereotype.Component;
 public class InferenceClient {
   private static final List<String> FIELDS = List.of(
       "fps", "joints", "frames", "units", "data", "tokens", "segments", "unknown", "source");
+  private static final int TRANSLATION_MAX_BYTES = 1_048_576;
   private final GenerationSettings settings;
   private final ObjectMapper mapper;
   private final HttpClient http;
@@ -39,24 +42,59 @@ public class InferenceClient {
         .followRedirects(HttpClient.Redirect.NEVER).build();
   }
 
+  /** Words from the inference server's own translator; other response fields are ignored. */
+  public record Translation(List<String> gloss, List<String> unknown) {}
+
+  private interface Reader<T> {
+    T read(JsonNode node) throws IOException;
+  }
+
   public ObjectNode generate(List<String> gloss, boolean question) {
+    int maxBytes = Math.toIntExact((long) settings.maxFrames() * 2000 + 65_536);
+    return post(settings.url(), Map.of("gloss", gloss, "nonmanual", question ? List.of("의문") : List.of()),
+        maxBytes, GenerationFailure.Reason.GENERATION_FAILED, node -> {
+          validate(node, gloss);
+          ObjectNode result = mapper.createObjectNode();
+          FIELDS.forEach(field -> result.set(field, node.get(field)));
+          return result;
+        });
+  }
+
+  /** {@code POST /translate} on the inference server (serve translator mode). */
+  public Translation translate(String text) {
+    return post(settings.translateUrl(), Map.of("text", text), TRANSLATION_MAX_BYTES,
+        GenerationFailure.Reason.TRANSLATION_UNAVAILABLE, InferenceClient::readTranslation);
+  }
+
+  private static Translation readTranslation(JsonNode node) throws IOException {
+    require(node != null && node.isObject() && node.hasNonNull("gloss") && node.get("gloss").isArray()
+        && node.hasNonNull("unknown") && node.get("unknown").isArray());
+    List<String> gloss = new ArrayList<>();
+    for (JsonNode word : node.get("gloss")) {
+      require(word.isTextual() && !word.textValue().isBlank());
+      gloss.add(word.textValue());
+    }
+    List<String> unknown = new ArrayList<>();
+    for (JsonNode word : node.get("unknown")) {
+      require(word.isTextual());
+      unknown.add(word.textValue());
+    }
+    return new Translation(List.copyOf(gloss), List.copyOf(unknown));
+  }
+
+  /** One POST with bounded body size and deadline, no redirects; never keeps upstream bodies in errors. */
+  private <T> T post(URI url, Object payload, int maxBytes, GenerationFailure.Reason malformed, Reader<T> reader) {
     CompletableFuture<HttpResponse<byte[]>> pending = null;
     try {
-      byte[] body = mapper.writeValueAsBytes(Map.of("gloss", gloss,
-          "nonmanual", question ? List.of("의문") : List.of()));
-      HttpRequest request = HttpRequest.newBuilder(settings.url())
+      byte[] body = mapper.writeValueAsBytes(payload);
+      HttpRequest request = HttpRequest.newBuilder(url)
           .header("Content-Type", "application/json").header("Accept", "application/json")
           .timeout(settings.responseTimeout()).POST(HttpRequest.BodyPublishers.ofByteArray(body)).build();
       // Bound both response allocation and the full response deadline, including body reads.
-      int maxBytes = Math.toIntExact((long) settings.maxFrames() * 2000 + 65_536);
       pending = http.sendAsync(request, info -> new LimitedBody(maxBytes));
       HttpResponse<byte[]> response = pending.get(settings.responseTimeout().toMillis(), TimeUnit.MILLISECONDS);
       checkStatus(response.statusCode());
-      JsonNode node = mapper.readTree(response.body());
-      validate(node, gloss);
-      ObjectNode result = mapper.createObjectNode();
-      FIELDS.forEach(field -> result.set(field, node.get(field)));
-      return result;
+      return reader.read(mapper.readTree(response.body()));
     } catch (GenerationFailure error) {
       throw error;
     } catch (InterruptedException error) {
@@ -72,7 +110,7 @@ public class InferenceClient {
           throw new GenerationFailure(GenerationFailure.Reason.GENERATION_UNAVAILABLE);
         }
       }
-      throw new GenerationFailure(GenerationFailure.Reason.GENERATION_FAILED);
+      throw new GenerationFailure(malformed);
     } finally {
       if (pending != null && !pending.isDone()) {
         pending.cancel(true);
