@@ -2,7 +2,10 @@
 
     python -m gen.translate.train --pairs <엑셀> --gloss-table <gloss_table_v2.json> \
         --out <.local/translate/translator_v1.json> [--tune] [--strict] [--analyzer madi|rule|auto] \
-        [--content-drop-min 0.8] [--split-compounds] [--synonyms .local/translate/synonyms_v1.json]
+        [--content-drop-min 0.8] [--split-compounds] [--synonyms .local/translate/synonyms_v1.json]         [--lemma-fix] [--subst [--subst-out .local/translate/subst_v5.json]]
+
+v5 (11-15): --lemma-fix 원형 맞추기, --subst 대체어 표(학습 몫의 정렬로 만들어 학습 파일에 담는다.
+--subst-out을 주면 따로 JSON으로도 남긴다).
 
 서비스용: --all 이면 2,000쌍 전부로 학습한다(검증 · 시험 문장도 학습에 들어가므로 평가에 쓰지 않는다).
 가중치는 --weights-from <평가용 학습 파일>에서 가져온다.
@@ -19,6 +22,7 @@ from pathlib import Path
 from gen.translate import metrics
 from gen.translate.evaluate import all_references, load_split
 from gen.translate.pairs import read_pairs
+from gen.translate.subst import save_subst
 from gen.translate.synonyms import load_synonyms
 from gen.translate.translator import build_translator
 
@@ -91,6 +95,12 @@ def main():
     p.add_argument("--content-keep", action="store_true", help="그릴 수 있는 내용어는 버리지 않는다")
     p.add_argument("--keep-drop-prob", type=float, default=1.01, help="content-keep에서 이 확률 이상 생략은 남긴다")
     p.add_argument("--join", action="store_true", help="쪼개진 이웃 단위를 붙여 표 이름 찾기")
+    p.add_argument("--lemma-fix", action="store_true", help="madi 어미 앞 '불능' 조각을 용언 원형으로 (v5)")
+    p.add_argument("--subst", action="store_true", help="학습 몫으로 대체어 표를 만들어 디코딩 전에 적용 (v5)")
+    p.add_argument("--subst-min-count", type=int, default=2)
+    p.add_argument("--subst-min-share", type=float, default=0.8)
+    p.add_argument("--subst-min-keep", type=float, default=0.5)
+    p.add_argument("--subst-out", help="대체어 표를 따로 저장할 경로 (덮어쓰지 않음)")
     p.add_argument("--tune", action="store_true")
     p.add_argument("--all", action="store_true", help="서비스용: 2,000쌍 전부로 학습 (평가에 쓰지 않음)")
     p.add_argument("--weights-from", help="가중치를 이 학습 파일에서 가져온다")
@@ -104,7 +114,9 @@ def main():
         print(f"synonyms file not found, skipped: {a.synonyms}")
     cfg = {"analyzer": a.analyzer, "keep_endings": not a.no_endings, "max_src": a.max_src,
            "content_drop_min": a.content_drop_min, "use_split": a.split_compounds, "use_synonyms": syn is not None,
-           "content_keep": a.content_keep, "keep_drop_prob": a.keep_drop_prob, "use_join": a.join}
+           "content_keep": a.content_keep, "keep_drop_prob": a.keep_drop_prob, "use_join": a.join,
+           "lemma_fix": a.lemma_fix, "use_subst": a.subst, "subst_min_count": a.subst_min_count,
+           "subst_min_share": a.subst_min_share, "subst_min_keep": a.subst_min_keep}
     train = parts["train"] + (parts["val"] + parts["test"] if a.all else [])
     info = {"strict": a.strict, "all_pairs": a.all, "split_sizes": {k: len(v) for k, v in parts.items()},
             "train_used": len(train), "gloss_table_stats": table.get("stats"),
@@ -122,6 +134,10 @@ def main():
         t.info["val_objective"] = tune(t, parts["val"], kind=a.objective, refs=refs)
         t.info["objective"] = a.objective + ("/multi_ref" if a.multi_ref else "")
     t.save(a.out, overwrite=a.overwrite)
+    if a.subst and a.subst_out and t.subst is not None:
+        save_subst(t.subst, a.subst_out, overwrite=a.overwrite)
+        ex = list(t.subst.map.items())[:3]
+        print(f"saved {a.subst_out} entries={len(t.subst)} examples={ex}")
     print(f"saved {a.out} analyzer={t.config['analyzer']}")
 
 
