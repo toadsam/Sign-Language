@@ -136,7 +136,7 @@ public class InferenceClient {
         && node.get("data").isTextual() && node.get("source").isTextual()
         && List.of("model", "baseline").contains(node.get("source").textValue())
         && node.get("tokens").isArray() && node.get("unknown").isArray()
-        && node.get("segments").isArray() && node.get("segments").isEmpty());
+        && node.get("segments").isArray());
     for (JsonNode token : node.get("tokens")) {
       require(integer(token, 0, Integer.MAX_VALUE));
     }
@@ -154,6 +154,7 @@ public class InferenceClient {
     });
     int frames = node.get("frames").intValue();
     require((frames == 0) == allUnknown && (!allUnknown || node.get("tokens").isEmpty()));
+    validateSegments(node.get("segments"), gloss, frames);
     String data = node.get("data").textValue();
     long byteCount = (long) frames * 125 * 3 * Float.BYTES;
     require(data.length() == (byteCount + 2) / 3 * 4);
@@ -162,6 +163,23 @@ public class InferenceClient {
     ByteBuffer coordinates = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN);
     while (coordinates.hasRemaining()) {
       require(Float.isFinite(coordinates.getFloat()));
+    }
+  }
+
+  /** Sentence mode: [{"gloss", "start", "end"}] in time order, end exclusive, no overlap (ml/serve check_segments). */
+  private static void validateSegments(JsonNode segments, List<String> gloss, int frames) throws IOException {
+    require(segments.size() <= gloss.size() && (frames > 0 || segments.isEmpty()));
+    int last = 0;
+    for (JsonNode segment : segments) {
+      require(segment.isObject() && segment.size() == 3 && segment.hasNonNull("gloss")
+          && segment.hasNonNull("start") && segment.hasNonNull("end"));
+      JsonNode word = segment.get("gloss");
+      require(word.isTextual() && !word.textValue().isBlank() && gloss.contains(word.textValue()));
+      require(integer(segment.get("start"), last, frames - 1) && integer(segment.get("end"), 1, frames));
+      int start = segment.get("start").intValue();
+      int end = segment.get("end").intValue();
+      require(start < end);
+      last = end;
     }
   }
 

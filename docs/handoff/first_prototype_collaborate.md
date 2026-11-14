@@ -47,8 +47,12 @@
 ```
 POST /api/sign/generate   {"text": "병원에 가고 싶어요."}
 → 200 {"fps": 30, "joints": 125, "frames": 152, "units": "shoulder", "data": "<base64 float32 [152×125×3]>",
-       "tokens": [...38개], "segments": [], "unknown": [], "source": "model"}
+       "tokens": [...38개], "segments": [{"gloss": "병원", "start": 0, "end": 70}, {"gloss": "가다", "start": 82, "end": 152}],
+       "unknown": [], "source": "model"}
 ```
+
+`segments`(11-14부터 켜짐): 문장 모드는 단어마다 `{"gloss", "start", "end"}`를 시간 순으로 보낸다. 30fps 프레임 번호, `end`는 끝 프레임 다음,
+단어 사이 연결 구간은 빠진다(위 70~82). 화면에서는 재생 중인 프레임이 들어 있는 구간의 `gloss`를 자막으로 띄우면 된다. 위 숫자는 예시다.
 
 **지원하지 않는 입력**
 
@@ -87,13 +91,13 @@ bash /data/work/jiheon/serve_vm_sentence/start_sentence.sh       # 끄기: 같�
 |---|---|---|
 | 1 | `feature/sentence-jiheon`을 main에 PR. main과 충돌 없음을 미리 확인함 (main에 승현 커밋 6개 있음) | 지헌이 올리고 팀이 같이 리뷰 |
 | 2 | 화면을 `/api/sign/generate` 문장 모드에 연결하고, `unknown` 표시와 오류 안내 확인 | 승혁 (프론트는 재훈과 나눠서) |
-| 3 | 계약 ⑤ `segments` 결정: 각 단어가 몇 번째 프레임부터 몇 번째까지인지 알려 주는 정보다. 화면에 "지금 재생 중인 단어" 자막을 띄우려면 필요하다 | 팀 회의 |
-| 4 | 3에서 넣기로 하면: 추론 서버 `SIGN_SEGMENTS=1`, Spring 검증 한 줄 수정 (지헌), 화면 표시 (승혁) | 지헌 · 승혁 |
+| 3 | 계약 ⑤ `segments` 켜짐(11-14): 문장 모드 서버가 단어별 프레임 구간을 보내고 Spring이 검증 후 전달한다 | 지헌 (완료) |
+| 4 | `segments`로 "지금 재생 중인 단어" 자막 표시 | 승혁 |
 | 5 | 읽는 모델로 문장 동작 채점 (읽는 모델 검증이 끝난 뒤) | 승현 |
 
 합칠 때 주의할 점:
 - `data/`, `runs/`, `*.npy`, `*.pt`, 번역기 · 글로스 표 JSON, 엑셀은 커밋하지 않는다 (AI Hub 파생물). VM의 `/data/work/jiheon/` 아래에 있다.
-- 지금 문장 모드 서버는 `segments: []`로 보낸다. 3이 결정될 때까지 Spring 검증을 바꾸지 않는다.
+- 문장 모드 서버는 `segments`를 채워 보낸다(`SIGN_SEGMENTS=1`, 기본값). 단어 모드는 계속 `[]`다.
 
 ## 5. 알려진 한계
 

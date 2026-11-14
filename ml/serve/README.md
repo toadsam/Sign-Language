@@ -75,8 +75,7 @@ is an average face, and expression generation has not been validated.
 두 POST 응답에는 서버 처리 시간이 `Server-Timing` 헤더(`tr;dur=`, `gen;dur=` ms)로 붙는다. JSON 본문은 바뀌지 않는다.
 
 문장 모드에서 `segments`는 `[{"gloss": 글로스 이름, "start": 첫 프레임, "end": 끝 프레임 다음}]`(시간 순, 연결 구간 제외)이다.
-단어 모드(기본)는 예전처럼 항상 `[]`다. **지금 Spring은 segments가 비어 있지 않으면 거부한다** — Spring이 문장 모드
-서버를 부르기 전에 그 검사를 고쳐야 한다(또는 `SIGN_SEGMENTS=0`).
+단어 모드(기본)는 예전처럼 항상 `[]`다. Spring(2026-11-14~)은 segments를 검증한 뒤 앱에 그대로 전달한다.
 
 | 환경 변수 | 기본값 | 뜻 |
 |---|---|---|
@@ -150,7 +149,7 @@ Spring environment variables (configured URL is never taken from request input):
 
 Timeouts are ISO-8601 durations. Response timeout bounds the full HTTP exchange,
 including reading the body. Response size is bounded; redirects and retries are
-disabled. Spring validates required keys, integer fields, source, empty segments,
+disabled. Spring validates required keys, integer fields, source, segments,
 canonical base64, exact byte count, finite float coordinates, and unknown entries
 before returning the coordinate response. Align the two frame limits when deploying.
 Only `metadata.question` is forwarded, as `nonmanual=["의문"]`.
