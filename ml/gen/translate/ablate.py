@@ -47,9 +47,11 @@ _RECALL = [
 ]
 SETS["recall"] = [(f"{n} / {'strict' if s else '기본'}", {**_BASE, **c}, s, g, o)
                   for s in (False, True) for n, c, g, o in _RECALL]
-SETS["synonyms"] = [(f"①+② 동의어 / {'strict' if s else '기본'}",
-                     {**_BASE, "content_drop_min": 0.8, "use_split": True, "use_synonyms": True}, s, GRID, "f1wer")
-                    for s in (False, True)]
+# ①은 검증에서 고른 것(줄임 특징만)을 바탕으로 동의어를 더한다
+SETS["synonyms"] = [(f"{n} / {'strict' if s else '기본'}", {**_BASE, **c}, s, GRID, "f1wer")
+                    for s in (False, True)
+                    for n, c in (("① 줄임 특징", {}), ("①+② 동의어", {"use_synonyms": True}),
+                                 ("①+② 동의어 + 합성어", {"use_synonyms": True, "use_split": True}))]
 
 
 def coverage(train, val):
