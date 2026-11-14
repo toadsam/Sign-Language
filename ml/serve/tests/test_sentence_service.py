@@ -287,6 +287,21 @@ def test_settings_from_env(monkeypatch):
         Settings(mode="video")
 
 
+def test_check_sentences_summary_counts_without_text():
+    from ml.serve import check_sentences
+
+    with TestClient(create_sentence_demo_app()) as client:
+        def post(path, body):
+            response = client.post(path, json=body)
+            return response.status_code, response.json() if response.status_code == 200 else None
+        rows = check_sentences.run(["화장실 어디에 있어요", "퀘이사 별", "나 학교 퀘이사", ""], post)
+    summary = check_sentences.summarize(rows)
+    assert summary["sentences"] == 4 and summary["translate_ok"] == 3 and summary["no_gloss"] == 1
+    assert summary["generate_ok"] == 2 and summary["success_rate"] == 0.5
+    assert summary["drawable_gloss_rate"] == 1.0 and summary["unknown_pieces"] == 3
+    assert "화장실" not in json.dumps(summary, ensure_ascii=False)
+
+
 # ---------------------------------------------------------------- 단어 Generator 이어 붙이기 stub
 
 def test_word_concat_with_actual_baseline_generator(tmp_path, monkeypatch):
