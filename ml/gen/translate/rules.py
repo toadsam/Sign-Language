@@ -55,3 +55,15 @@ class GlossLookup:
             if hit is not None:
                 return hit
         return None
+
+    def split(self, unit, min_len=2):
+        """표에 없는 합성어를 표 안 이름 둘로: 앞쪽이 긴 것부터. 각 부분은 min_len 글자 이상
+        (뒤쪽은 용언 원형이어도 된다: 운동하다 → 운동 + 하다 꼴은 lookup이 먼저 처리)."""
+        w = unit.replace(" ", "")
+        if len(w) < 2 * min_len or w.endswith("다") or not w.isalnum():
+            return None
+        for k in range(len(w) - min_len, min_len - 1, -1):
+            a, b = self._direct(w[:k]), self._direct(w[k:])
+            if a is not None and b is not None:
+                return (a, b)
+        return None

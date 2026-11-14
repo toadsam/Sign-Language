@@ -254,7 +254,8 @@ def _translator():
 def test_translate_contract_shape():
     t = _translator()
     out = t.translate("오늘 학교에 가요")
-    assert set(out) == {"gloss", "units", "senses", "unknown", "dropped"}
+    assert set(out) == {"gloss", "units", "senses", "unknown", "dropped", "substituted"}
+    assert out["substituted"] == []
     assert out["gloss"] == ["오늘", "학교", "가다"]
     assert out["units"] == ["S:오늘", "S:학교", "S:가다"]
     assert len(out["units"]) == len(out["gloss"]) == len(out["senses"])
@@ -331,3 +332,86 @@ def test_tune_and_evaluate_on_toy_data():
     row, outs = evaluate(t, val, n_boot=20)
     assert row["n"] == 2 and row["f1"] == 1.0 and row["drawable"] == 1.0 and len(outs) == 2
     assert {"f1_lo", "f1_hi", "ms_per_sent", "unknown_per_sent"} <= set(row)
+
+
+# ------------------------------------------------------------------ 재현율 개선: 내용어 지키기 · 합성어 · 동의어
+
+def test_content_drop_min_removes_unsure_drop():
+    from gen.translate.decode import span_candidates
+
+    pt = {("오늘",): [((), math.log(0.6), 0.0, 6), (("오늘",), math.log(0.4), 0.0, 4)]}
+    keep = span_candidates(["오늘"], 0, 1, pt, None)
+    assert any(t == () and k == "phrase" for t, k, _ in keep)
+    strict = span_candidates(["오늘"], 0, 1, pt, None, content_drop_min=0.8)
+    assert not any(k == "phrase" and t == () for t, k, _ in strict)
+    assert any(k == "drop" for _t, k, _ in strict)  # 벌점 있는 버림은 남는다
+
+
+def test_shrink_feature_counts_lost_content():
+    from gen.translate.decode import span_candidates
+
+    pt = {("학교", "가다"): [(("가다",), 0.0, 0.0, 3)], ("~요",): [((), 0.0, 0.0, 3)]}
+    (tgt, kind, feats), = span_candidates(["학교", "가다"], 0, 2, pt, None)
+    assert feats["shrink"] == 1
+    (_t, _k, f2), = span_candidates(["~요"], 0, 1, pt, None)
+    assert f2["shrink"] == 0  # 어미 생략은 줄임이 아니다
+
+
+def test_compound_split_lookup():
+    lk = GlossLookup({"지하철": 1, "출구": 1, "가다": 1})
+    assert lk.split("지하철출구") == ("지하철", "출구")
+    assert lk.split("지하철") is None or lk.lookup("지하철") == "지하철"
+    assert lk.split("모르는말") is None and lk.split("가다가다") is None
+
+
+def test_synonym_table_and_substituted():
+    from gen.translate.synonyms import SynonymTable, invert, load_synonyms
+
+    by_gloss = {"학교": ["학원^1", "학교"], "친구": ["벗", "동무"], "만나다": ["보다"], "가다": ["동무"]}
+    m = invert(by_gloss, set(TABLE["glosses"]))
+    assert m["학원"] == ["학교"] and "학교" not in m and "보다" in m
+    st = SynonymTable(m)
+    assert st.lookup("학원") == "학교" and st.lookup("동무") is None  # 후보가 둘이면 바꾸지 않는다
+    t = build_translator(TRAIN, TABLE, config={"analyzer": "rule", "use_synonyms": True}, synonyms=m)
+    out = t.translate("벗을 만나요")
+    assert out["gloss"] == ["친구", "만나다"]
+    assert out["substituted"] == [{"from": "벗", "to": "친구", "how": "synonym"}]
+    out = t.translate("벗을 만나요", mode="rules")
+    assert out["substituted"][0]["to"] == "친구"
+    off = build_translator(TRAIN, TABLE, config={"analyzer": "rule"}, synonyms=m)
+    assert off.translate("벗을 만나요")["unknown"] == ["벗"]
+    assert load_synonyms("없는/파일.json") is None
+
+
+def test_synonym_saved_with_translator(tmp_path):
+    t = build_translator(TRAIN, TABLE, config={"analyzer": "rule", "use_synonyms": True}, synonyms={"벗": ["친구"]})
+    t.save(tmp_path / "s.json")
+    t2 = load_translator(str(tmp_path / "s.json"))
+    assert t2.translate("벗을 만나요")["substituted"][0]["to"] == "친구"
+    # 동의어 없이 학습한 파일에 나중에 동의어 표만 붙이기
+    plain = build_translator(TRAIN, TABLE, config={"analyzer": "rule"})
+    plain.save(tmp_path / "p.json")
+    (tmp_path / "syn.json").write_text(json.dumps({"schema": "synonyms_v1", "map": {"벗": ["친구"]}}), encoding="utf-8")
+    assert load_translator(str(tmp_path / "p.json")).translate("벗을 만나요")["substituted"] == []
+    t3 = load_translator(str(tmp_path / "p.json"), synonyms=str(tmp_path / "syn.json"))
+    assert t3.translate("벗을 만나요")["gloss"] == ["친구", "만나다"]
+    assert load_translator(str(tmp_path / "p.json"), synonyms=str(tmp_path / "none.json")).synonyms is None
+
+
+def test_synonym_fetch_parsers_with_fake_api():
+    from gen.translate.synonyms import SEARCH_URL, build, parse_similar, parse_target_codes
+
+    search = {"channel": {"item": [{"word": "학교^1", "target_code": 11}, {"word": "학교장", "target_code": 12}]}}
+    view = {"channel": {"item": {"word_info": {"relation_info": [{"word": "학원", "type": "비슷한말"},
+                                                                   {"word": "교실", "type": "참고어"}]}}}}
+    assert parse_target_codes(search, "학교") == ["11"]
+    assert parse_similar(view) == ["학원"]
+    sent = []
+
+    def fake_get(url, params):
+        sent.append(params["q"])
+        return search if url == SEARCH_URL else view
+
+    obj = build({"학교": {}, "W1": {}}, "KEY", get=fake_get, sleep=0, log=lambda *_: None)
+    assert obj["map"] == {"학원": ["학교"]} and obj["queried"] == 1
+    assert sent == ["학교", "11"]  # 보내는 것은 글로스 이름과 사전 번호뿐
