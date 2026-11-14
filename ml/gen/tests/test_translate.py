@@ -233,6 +233,25 @@ def test_judge_page_pick_and_render():
     page = render(items, "x/model.json", 1)
     assert "<\\/script><b>" in page and page.count("</script>") == 2
     assert "localStorage" in page and "try {" in page and "http" not in page.split("<body>")[1]
+    for label in ("정답과 같음", "다른 표현이지만 뜻이 맞음", "단어가 빠짐", "엉뚱한 글로스가 있음", "빠짐+엉뚱함 둘 다"):
+        assert label in page
+    assert "mark-wrong" in page and "mark-missing" in page
+
+
+def test_judge_summary_ratios():
+    from gen.translate.judge_summary import summarize, table_md
+
+    res = [{"no": 1, "verdict": "same", "wrong": [], "missing": []},
+           {"no": 2, "verdict": "paraphrase", "wrong": [], "missing": [], "note": "괜찮음"},
+           {"no": 3, "verdict": "missing", "wrong": [], "missing": [{"i": 1, "gloss": "가다"}]},
+           {"no": 4, "verdict": "both", "wrong": [{"i": 0, "gloss": "오다"}], "missing": [{"i": 0, "gloss": "가다"}]},
+           {"no": 5, "verdict": None, "wrong": [], "missing": []}]
+    s = summarize(res)
+    assert s["judged"] == 4 and s["total"] == 5
+    assert s["by_kind"]["missing"]["count"] == 1 and math.isclose(s["by_kind"]["same"]["ratio"], 0.25)
+    assert s["meaning_ok"]["count"] == 2 and s["has_missing"]["count"] == 2 and s["has_wrong"]["count"] == 1
+    assert s["marked_missing_chips"] == 2 and s["_top_missing"][0] == ("가다", 2) and s["notes"] == 1
+    assert "빠짐 있음" in table_md(s)
 
 
 def test_metrics_edges():
