@@ -27,6 +27,7 @@ def tiny_inputs(n_tok=10):
                   sen_meta(f"S7_{signer}", "SEN7", signer, [("나", 4, 14), ("가", 18, 30)]),
                   word_meta(f"W1_{signer}", "WORD1", signer)]
     metas.append(sen_meta("S9_T", "SEN9", "T", [("가", 4, 12), ("나", 18, 30)]))
+    metas.append(sen_meta("S7x_A", "SEN7", "A", [("나", 4, 14), ("모름", 18, 30)]))  # 검증 문장에만 있는 단위
     tokens = {"nb_code": 8, "down": 4, "clips": {}}
     for m in metas:
         n = n_tok if m["type"] == "SEN" else 5
@@ -131,7 +132,8 @@ class TrainInferTests(unittest.TestCase):
         sel = json.loads((self.run_dir / "selection.json").read_text(encoding="utf-8"))
         self.assertEqual(sel["leak_check"], "passed")
         self.assertFalse(set(sel["clips"]["train"]) & (set(sel["clips"]["test"]) | set(sel["clips"]["val"])))
-        self.assertEqual(self.result["train_sen"], 2)  # SEN1 × 2명 (SEN2는 SEN7과 같은 글로스 열이라 아님)
+        self.assertEqual(self.result["train_sen"], 2)
+        self.assertEqual(self.result["val_skipped_unknown_unit"], 1)  # SEN1 × 2명 (SEN2는 SEN7과 같은 글로스 열이라 아님)
 
     def test_resume_continues(self):
         cfg = Config(**{**self.cfg.__dict__, "iters": 160})

@@ -170,7 +170,9 @@ def train(sel, run, cfg, device="cpu", sources=None, vq_path=None, resume=False,
     train_items = encode_rows(sel["train"], vocab, signers, context)
     sen = [it for it in train_items if it["type"] == "SEN"]
     word = [it for it in train_items if it["type"] == "WORD"]
-    val_items = encode_rows(sel["val"], vocab, signers, context)
+    # 학습 몫에 없는 단위가 든 검증 문장은 손실을 잴 수 없어 뺀다(수는 결과에 남긴다).
+    val_rows = [r for r in sel["val"] if all(c[0] in vocab for c in r["cond"])]
+    val_items = encode_rows(val_rows, vocab, signers, context)
     if not sen:
         raise ValueError("no sentence clips in train")
     step, best = 0, None
@@ -223,7 +225,8 @@ def train(sel, run, cfg, device="cpu", sources=None, vq_path=None, resume=False,
                            run / "latest.pt.tmp")
                 os.replace(run / "latest.pt.tmp", run / "latest.pt")
     return {"step": step, "best_val_loss": best, "sec_per_step": (time.time() - started) / max(seen, 1),
-            "train_clips": len(train_items), "train_sen": len(sen), "train_word": len(word), "val_clips": len(val_items)}
+            "train_clips": len(train_items), "train_sen": len(sen), "train_word": len(word), "val_clips": len(val_items),
+            "val_skipped_unknown_unit": len(sel["val"]) - len(val_rows)}
 
 
 def main(argv=None):
