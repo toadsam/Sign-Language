@@ -165,6 +165,14 @@ class TrainInferTests(unittest.TestCase):
         base = load_sentence_generator(self.run_dir, "cpu", mode="baseline")
         b = base.generate(["S:가", "S:나"])
         self.assertEqual(b["source"], "baseline")
+        self.assertEqual(b["tokens"], [])
+        for o in (out, pooled, b):  # ③ 요구: 받은 순서, int, 0 <= start < end <= T (end 배타)
+            T = len(o["motion"])
+            for s in o["segments"]:
+                self.assertIs(type(s["start"]), int)
+                self.assertIs(type(s["end"]), int)
+                self.assertTrue(0 <= s["start"] < s["end"] <= T)
+        self.assertEqual([s["unit"] for s in pooled["segments"]], ["W:WORD1", "S:가"])
         self.assertEqual(b["segments"][1]["start"] - b["segments"][0]["end"], 2)
 
         gen = load_sentence_generator(self.run_dir, "cpu")
