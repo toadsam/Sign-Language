@@ -31,6 +31,14 @@ DEFAULT_CONFIG = {"analyzer": "auto", "keep_endings": True, "max_src": 3, "max_t
                   "anchor": True}
 
 
+# 동음이의어 문맥 단서: 글로스 이름 → 뜻(글로스 표 senses의 값) → 그 뜻을 가리키는 원문 단위(원형).
+# 11-14 지헌 표시 결과 진짜 동음이의어는 "눈" 하나다.
+SENSE_CUES = {
+    "눈": {"내리는 눈": ("내리다", "오다", "쌓이다", "녹다", "펑펑"),
+           "보는 눈": ("보다", "감다", "뜨다", "아프다", "깜빡이다", "안경")},
+}
+
+
 def _glosses_of(table):
     """글로스 표에서 번역기가 쓰는 부분만."""
     return {n: {"default": g["default"], "alts": list(g.get("alts", [])), "senses": dict(g.get("senses", {}))}
@@ -94,14 +102,21 @@ class Translator:
                     dropped.append(_fragment(u))
         return gloss, unknown, dropped
 
-    def _sense(self, name, text):
+    def _sense(self, name, text, units=()):
+        """글로스 표에 senses가 있는 이름만 뜻을 고른다. 뜻 문자열이 문장에 있거나, 그 뜻의 문맥 단서(SENSE_CUES)가
+        원문 단위에 있으면 그 뜻. 맞는 뜻이 없거나 둘 이상이면 None(기본값)."""
         g = self.glosses.get(name)
         if not g or not g["senses"]:
             return None
+        lemmas = set(units)
+        hits = []
         for _unit, meaning in g["senses"].items():
-            if meaning and meaning in text:
-                return meaning
-        return None
+            if not meaning:
+                continue
+            cues = SENSE_CUES.get(name, {}).get(meaning, ())
+            if meaning in text or lemmas.intersection(cues):
+                hits.append(meaning)
+        return hits[0] if len(hits) == 1 else None
 
     def translate(self, text: str, mode: str | None = None) -> dict:
         """mode: None(격자 디코딩) | 'rules'(B0 규칙만)."""
@@ -110,7 +125,7 @@ class Translator:
             gloss, unknown, more = self._rules_only(units)
         else:
             gloss, unknown, more = self._lattice(units)
-        senses = [self._sense(g, text) for g in gloss]
+        senses = [self._sense(g, text, units) for g in gloss]
         return {"gloss": gloss,
                 "units": [resolve(self.table, g, s) for g, s in zip(gloss, senses)],
                 "senses": senses,

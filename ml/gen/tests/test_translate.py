@@ -259,6 +259,22 @@ def test_homonym_sense_only_when_marked():
     assert out["senses"] == [None] and out["units"] == ["W:WORD0030"]
 
 
+def test_snow_eye_homonym_cues():
+    glosses = {"눈": {"default": "W:WORD0005", "alts": ["W:WORD1372"],
+                     "senses": {"W:WORD0005": "내리는 눈", "W:WORD1372": "보는 눈"}},
+               "오다": {"default": "S:오다", "alts": [], "senses": {}},
+               "아프다": {"default": "S:아프다", "alts": [], "senses": {}}}
+    t = Translator(glosses, analyzer=RuleAnalyzer(glosses))
+    out = t.translate("눈이 와요", mode="rules")
+    assert out["gloss"][0] == "눈" and out["senses"][0] == "내리는 눈" and out["units"][0] == "W:WORD0005"
+    out = t.translate("눈이 아파요", mode="rules")
+    assert out["senses"][0] == "보는 눈" and out["units"][0] == "W:WORD1372"
+    out = t.translate("눈", mode="rules")
+    assert out["senses"] == [None] and out["units"] == ["W:WORD0005"]
+    out = t.translate("눈이 와서 눈이 아파요", mode="rules")  # 단서가 둘 다면 기본값
+    assert out["senses"][0] is None and out["units"][0] == "W:WORD0005"
+
+
 def test_save_and_load_roundtrip(tmp_path):
     t = _translator()
     path = tmp_path / "tr.json"
@@ -273,3 +289,18 @@ def test_save_and_load_roundtrip(tmp_path):
     bad.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError):
         load_translator(str(bad))
+
+
+def test_tune_and_evaluate_on_toy_data():
+    from gen.translate.evaluate import evaluate
+    from gen.translate.train import objective, tune
+
+    t = _translator()
+    val = [{"korean": "오늘 학교에 가요", "gloss": ["오늘", "학교", "가다"]},
+           {"korean": "친구를 만나요", "gloss": ["친구", "만나다"]}]
+    before, _ = objective(t, val)
+    after = tune(t, val, rounds=1, grid={"lm": [0.0, 1.0], "drop": [-4.0]}, log=lambda *_: None)
+    assert after >= before
+    row, outs = evaluate(t, val, n_boot=20)
+    assert row["n"] == 2 and row["f1"] == 1.0 and row["drawable"] == 1.0 and len(outs) == 2
+    assert {"f1_lo", "f1_hi", "ms_per_sent", "unknown_per_sent"} <= set(row)
