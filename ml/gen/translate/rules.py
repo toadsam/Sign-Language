@@ -4,14 +4,20 @@
   1. 원형 그대로
   2. 띄어쓰기 제거
   3. "-하다" 붙이기 / 떼기 (공부 ↔ 공부하다), 용언이면 "-다"를 뗀 어간
-  4. 숫자 이름: 표의 "거지1"은 "거지"로도 찾는다 (가장 작은 번호)
+  4. 파생 · 보조 용언 떼기 (11-14 추가): -되다 · -시키다 · -받다 · -당하다 → 명사(+하다),
+     -스럽다 · -롭다 · -답다 → 명사, -아지다 · -어지다 → 원래 형용사 (좋아지다 → 좋다)
+  5. 숫자 이름: 표의 "거지1"은 "거지"로도 찾는다 (가장 작은 번호)
 그래도 없으면 None (unknown).
+
+join(units): 분석기가 나눈 이웃 내용어 2~3개를 붙인 것이 표 이름이면 그 이름 (합성어 · 고유 명사가 쪼개진 경우).
 
 설계 참고: sign-motion-gloss (코드 복사 없음)
 """
 import re
 
 _NUM_TAIL = re.compile(r"^(.*[^\d])(\d+)$")
+_NOUN_VERB_SUFFIXES = ("시키다", "당하다", "되다", "받다")
+_ADJ_NOUN_SUFFIXES = ("스럽다", "롭다", "답다")
 
 
 class GlossLookup:
@@ -42,6 +48,16 @@ class GlossLookup:
             out.append(nospace + "하다")
         if nospace.endswith("다") and len(nospace) > 1:
             out.append(nospace[:-1])
+        for suf in _NOUN_VERB_SUFFIXES:
+            if nospace.endswith(suf) and len(nospace) > len(suf):
+                base = nospace[: -len(suf)]
+                out.extend([base + "하다", base])
+        for suf in _ADJ_NOUN_SUFFIXES:
+            if nospace.endswith(suf) and len(nospace) > len(suf):
+                out.append(nospace[: -len(suf)])
+        for suf in ("아지다", "어지다"):
+            if nospace.endswith(suf) and len(nospace) > len(suf):
+                out.append(nospace[: -len(suf)] + "다")
         seen, uniq = set(), []
         for c in out:
             if c and c not in seen:
@@ -55,6 +71,17 @@ class GlossLookup:
             if hit is not None:
                 return hit
         return None
+
+    def join(self, units):
+        """이웃 단위들을 붙여 표 이름 찾기. 어미 · 부호 단위가 끼면 None. 앞쪽 용언은 "-다"를 뗀다."""
+        if len(units) < 2 or any(u.startswith("~") or u == "?" for u in units):
+            return None
+        parts = [u[:-1] if (k < len(units) - 1 and u.endswith("다") and len(u) > 1) else u
+                 for k, u in enumerate(units)]
+        joined = "".join(p.replace(" ", "") for p in parts)
+        if len(joined) < 2:
+            return None
+        return self._direct(joined)
 
     def split(self, unit, min_len=2):
         """표에 없는 합성어를 표 안 이름 둘로: 앞쪽이 긴 것부터. 각 부분은 min_len 글자 이상

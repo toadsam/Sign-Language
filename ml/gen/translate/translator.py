@@ -7,8 +7,9 @@
        "senses":  [None | 뜻, ...],            동음이의어 뜻을 골랐을 때만
        "unknown": [한국어 조각, ...],          동작을 못 찾은 내용어
        "dropped": [한국어 조각, ...],         일부러 뺀 조사 · 어미 · 생략
-       "substituted": [{"from": 원형, "to": 글로스 이름, "how": "synonym"|"split"}, ...]}
-                                                표에 없는 말을 동의어 · 합성어 나누기로 바꾼 것 (사람 검토용, 11-14 추가)
+       "substituted": [{"from": 원형, "to": 글로스 이름, "how": "synonym"|"split"|"join"}, ...]}
+                                                표에 없는 말을 동의어 · 합성어 나누기 · 이웃 단위 붙이기로 찾은 것
+                                                (사람 검토용, 11-14 추가. join의 from은 붙인 단위들을 띄어 쓴 것)
 
 학습 결과는 JSON 한 파일이다(구 대응표, 글로스 LM, 가중치, 글로스 표의 glosses 부분을 함께 담는다).
 AI Hub 데이터에서 나온 파생물이라 커밋하지 않는다(.local/ 또는 runs/).
@@ -33,7 +34,9 @@ DEFAULT_CONFIG = {"analyzer": "madi", "keep_endings": True, "max_src": 3, "max_t
                   "ibm_iters": 10, "beam": 32, "use_lm": True, "use_phrases": True, "use_rules": True,
                   "anchor": True,
                   # 11-14 재현율 개선. 기본값은 끈 상태라 예전 학습 파일은 예전처럼 동작한다
-                  "content_drop_min": 0.0, "use_split": False, "use_synonyms": False}
+                  "content_drop_min": 0.0, "use_split": False, "use_synonyms": False,
+                  # 11-14 저녁: 그릴 수 있는 내용어는 버리지 않기, 쪼개진 이웃 단위 붙여 찾기
+                  "content_keep": False, "keep_drop_prob": 1.01, "use_join": False}
 
 
 # 동음이의어 문맥 단서: 글로스 이름 → 뜻(글로스 표 senses의 값) → 그 뜻을 가리키는 원문 단위(원형).
@@ -120,11 +123,13 @@ class Translator:
         syn = self._synonym if (self.config["use_synonyms"] and self.synonyms) else None
         gloss, path = decode(units, pt, self.lm, self.weights, lookup, max_src=self.config["max_src"],
                              beam=self.config["beam"], use_lm=self.config["use_lm"], split=split, synonyms=syn,
-                             content_drop_min=self.config["content_drop_min"])
+                             content_drop_min=self.config["content_drop_min"],
+                             join=self.lookup.join if (self.config["use_join"] and lookup) else None,
+                             content_keep=self.config["content_keep"], keep_drop_prob=self.config["keep_drop_prob"])
         unknown, dropped, subst = [], [], []
         for i, j, tgt, kind in path:
-            if kind in ("split", "synonym"):
-                subst.append({"from": units[i], "to": "+".join(tgt), "how": kind})
+            if kind in ("split", "synonym", "join"):
+                subst.append({"from": " ".join(units[i:j]), "to": "+".join(tgt), "how": kind})
             if tgt:
                 continue
             for u in units[i:j]:
