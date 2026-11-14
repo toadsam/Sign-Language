@@ -6,6 +6,10 @@
 결과 JSON: 문장마다 {no, id, verdict, wrong: [{i, gloss}], missing: [{i, gloss}], note}.
 종류별 비율은 python -m gen.translate.judge_summary <결과 JSON>.
 
+다시 판정 (11-14 추가): --prev-judge <이전 결과 JSON> --prev-model <이전 학습 파일>을 주면, 출력이 이전과 같은 문장은
+이전 판정을 그대로 채워 둔다. --changed-only면 바뀐 문장만 화면에 보이고, 결과 JSON에는 바뀌지 않은 문장도
+이전 판정 그대로(carried: true) 들어간다.
+
     python -m gen.translate.judge_page --model <translator.json> --pairs <엑셀> --sen-meta <meta> \
         --out .local/review/translate_judge.html [--n 50] [--seed 0] [--synonyms <synonyms_v1.json>]
 
@@ -34,14 +38,26 @@ def pick(test_pairs, n, seed):
     return sorted(rng.sample(ordered, min(n, len(ordered))), key=lambda p: p["id"])
 
 
-def build_items(translator, chosen, all_pairs):
+def build_items(translator, chosen, all_pairs, prev_translator=None, prev_results=None):
+    """prev_translator · prev_results(이전 결과 JSON의 results)를 주면 문장마다 changed와 prev를 붙인다."""
     refs = all_references(chosen, all_pairs)
+    prev_by_id = {r["id"]: r for r in (prev_results or [])}
     items = []
     for p, r in zip(chosen, refs):
         out = translator.translate(p["korean"])
-        items.append({"id": p["id"], "korean": p["korean"], "pred": out["gloss"], "ref": p["gloss"],
-                      "other_refs": r[1:], "unknown": out["unknown"],
-                      "substituted": out.get("substituted", [])})
+        it = {"id": p["id"], "korean": p["korean"], "pred": out["gloss"], "ref": p["gloss"],
+              "other_refs": r[1:], "unknown": out["unknown"], "substituted": out.get("substituted", []),
+              "changed": True, "prev": None}
+        if prev_translator is not None:
+            old = prev_translator.translate(p["korean"])["gloss"]
+            it["changed"] = old != out["gloss"]
+            it["prev_pred"] = old
+            pr = prev_by_id.get(p["id"])
+            if pr and not it["changed"]:
+                it["prev"] = {"verdict": pr.get("verdict"), "note": pr.get("note", ""),
+                              "wrong": [w["i"] for w in pr.get("wrong", [])],
+                              "missing": [m["i"] for m in pr.get("missing", [])]}
+        items.append(it)
     return items
 
 
@@ -110,6 +126,9 @@ details summary { cursor:pointer; color:var(--muted); font-size:13px; }
   var CHOICES = DATA.choices;
   var state = {};
   try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { state = {}; }
+  DATA.items.forEach(function (it) {  // 출력이 같은 문장은 이전 판정을 채워 둔다
+    if (it.prev && !state[it.id]) state[it.id] = JSON.parse(JSON.stringify(it.prev));
+  });
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} updateCount(); }
   function chips(list, id, field, cls) {
     var d = document.createElement('div'); d.className = 'chips';
@@ -134,16 +153,22 @@ details summary { cursor:pointer; color:var(--muted); font-size:13px; }
     r.appendChild(l); r.appendChild(node); return r;
   }
   function updateCount() {
-    var n = DATA.items.filter(function (it) { return state[it.id] && state[it.id].verdict; }).length;
-    document.getElementById('count').textContent = n + ' / ' + DATA.items.length + ' 판정';
+    var shown = DATA.items.filter(function (it) { return !DATA.changed_only || it.changed; });
+    var n = shown.filter(function (it) { return state[it.id] && state[it.id].verdict; }).length;
+    document.getElementById('count').textContent = n + ' / ' + shown.length + ' 판정' +
+      (shown.length < DATA.items.length ? ' (바뀌지 않은 ' + (DATA.items.length - shown.length) + '문장은 이전 판정)' : '');
   }
   var list = document.getElementById('list');
   DATA.items.forEach(function (it, i) {
+    if (DATA.changed_only && !it.changed) return;
     var c = document.createElement('section'); c.className = 'card';
-    var m = document.createElement('div'); m.className = 'meta'; m.textContent = (i + 1) + '. ' + it.id; c.appendChild(m);
+    var m = document.createElement('div'); m.className = 'meta';
+    m.textContent = (i + 1) + '. ' + it.id + (it.prev_pred && it.changed ? ' · 출력이 바뀜' : (it.prev ? ' · 이전 판정' : ''));
+    c.appendChild(m);
     var ko = document.createElement('div'); ko.className = 'ko'; ko.textContent = it.korean; c.appendChild(ko);
     c.appendChild(row('번역기', chips(it.pred, it.id, 'wrong', 'mark-wrong')));
     c.appendChild(row('사람 정답', chips(it.ref, it.id, 'missing', 'mark-missing')));
+    if (it.prev_pred && it.changed) c.appendChild(row('이전 출력', chips(it.prev_pred)));
     if (i === 0) { var h = document.createElement('div'); h.className = 'hint';
       h.textContent = '선택: 번역기 글로스를 누르면 "엉뚱함", 정답 글로스를 누르면 "빠짐"으로 표시됩니다.'; c.appendChild(row('', h)); }
     if (it.unknown.length) { var u = document.createElement('div'); u.className = 'note'; u.textContent = '못 찾은 말: ' + it.unknown.join(', '); c.appendChild(row('', u)); }
@@ -181,7 +206,8 @@ details summary { cursor:pointer; color:var(--muted); font-size:13px; }
       function pick(list, idx) { return (idx || []).slice().sort(function (a, b) { return a - b; })
         .map(function (i) { return { i: i, gloss: list[i] }; }); }
       return { no: n + 1, id: it.id, verdict: s.verdict || null, wrong: pick(it.pred, s.wrong),
-               missing: pick(it.ref, s.missing), note: s.note || '' };
+               missing: pick(it.ref, s.missing), note: s.note || '', changed: it.changed,
+               carried: !!(it.prev && !it.changed) };
     });
     var blob = new Blob([JSON.stringify({ tag: DATA.tag, model: DATA.model, seed: DATA.seed, choices: CHOICES, counts: counts,
       judged: results.filter(function (r) { return r.verdict; }).length, results: results }, null, 1)], { type: 'application/json' });
@@ -195,9 +221,10 @@ details summary { cursor:pointer; color:var(--muted); font-size:13px; }
 """
 
 
-def render(items, model, seed):
+def render(items, model, seed, changed_only=False):
     tag = f"{Path(model).stem}_seed{seed}_n{len(items)}"
-    data = {"tag": tag, "model": Path(model).name, "seed": seed, "choices": CHOICES, "items": items}
+    data = {"tag": tag, "model": Path(model).name, "seed": seed, "choices": CHOICES, "items": items,
+            "changed_only": bool(changed_only)}
     blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     meta = html.escape(f"{Path(model).name} · seed {seed} · {len(items)}문장")
     return PAGE.replace("__META__", meta).replace("__DATA__", blob)
@@ -212,14 +239,19 @@ def main():
     p.add_argument("--out", required=True)
     p.add_argument("--n", type=int, default=50)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--prev-judge", help="이전 판정 결과 JSON")
+    p.add_argument("--prev-model", help="이전 판정 때 쓴 학습 파일")
+    p.add_argument("--changed-only", action="store_true", help="출력이 바뀐 문장만 보이기")
     a = p.parse_args()
     t = load_translator(a.model, synonyms=a.synonyms)
+    prev_t = load_translator(a.prev_model) if a.prev_model else None
+    prev_r = json.loads(Path(a.prev_judge).read_text(encoding="utf-8"))["results"] if a.prev_judge else None
     test = load_split(a.pairs, "test", sen_meta=a.sen_meta)
-    items = build_items(t, pick(test, a.n, a.seed), read_pairs(a.pairs))
+    items = build_items(t, pick(test, a.n, a.seed), read_pairs(a.pairs), prev_t, prev_r)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(items, a.model, a.seed), encoding="utf-8")
-    print(f"wrote {out} items={len(items)}")
+    out.write_text(render(items, a.model, a.seed, a.changed_only), encoding="utf-8")
+    print(f"wrote {out} items={len(items)} changed={sum(it['changed'] for it in items)}")
 
 
 if __name__ == "__main__":

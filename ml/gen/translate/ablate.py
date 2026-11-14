@@ -14,7 +14,8 @@ import collections
 import json
 from pathlib import Path
 
-from gen.translate.evaluate import evaluate, load_split, table_md
+from gen.translate.evaluate import all_references, evaluate, load_split, make_matcher, score_suite, table_md
+from gen.translate.pairs import read_pairs
 from gen.translate.synonyms import load_synonyms
 from gen.translate.train import GRID, tune
 from gen.translate.translator import build_translator
@@ -53,6 +54,20 @@ SETS["synonyms"] = [(f"{n} / {'strict' if s else '기본'}", {**_BASE, **c}, s, 
                     for n, c in (("① 줄임 특징", {}), ("①+② 동의어", {"use_synonyms": True}),
                                  ("①+② 동의어 + 합성어", {"use_synonyms": True, "use_split": True}))]
 
+# 11-14 저녁: 빠짐 줄이기. 바탕은 v3(줄임 특징). 골라 쓰는 기준은 여러 정답 재현율(정밀도가 0.05 넘게 떨어지지 않게)
+_V4 = [
+    ("v3 (개선 전)", {}, "f1wer"),
+    ("v3, 여러 정답으로 조정", {}, "multi:f1wer"),
+    ("내용어 지키기", {"content_keep": True}, "multi:f1wer"),
+    ("내용어 지키기 (생략 ≥0.9는 허용)", {"content_keep": True, "keep_drop_prob": 0.9}, "multi:f1wer"),
+    ("내용어 지키기 + 붙여 찾기", {"content_keep": True, "use_join": True}, "multi:f1wer"),
+    ("내용어 지키기 (≥0.9 허용) + 붙여 찾기", {"content_keep": True, "keep_drop_prob": 0.9, "use_join": True},
+     "multi:f1wer"),
+    ("붙여 찾기만", {"use_join": True}, "multi:f1wer"),
+]
+SETS["v4"] = [(f"{n} / {'strict' if s else '기본'}", {**_BASE, **c}, s, GRID, k)
+              for s in (True, False) for n, c, k in _V4]
+
 
 def coverage(train, val):
     """검증 정답 글로스 중 학습 글로스에 나온 비율 (학습으로 낼 수 있는 상한), 같은 한국어 문장이 학습에 있는 비율."""
@@ -76,6 +91,8 @@ def main():
     table = json.loads(Path(a.gloss_table).read_text(encoding="utf-8"))
     syn = load_synonyms(a.synonyms)
     rows, extra = [], {}
+    all_pairs = read_pairs(a.pairs)
+    multi_lines = ["| 설정 | 여러 정답 정밀도 | 재현율 | F1 | WER | 기존 F1 | unknown/문장 |", "|---|---|---|---|---|---|---|"]
     for name, cfg, strict, grid, kind in SETS[a.set]:
         if cfg.get("use_synonyms") and syn is None:
             print(f"skip {name}: 동의어 표 없음")
@@ -83,13 +100,21 @@ def main():
         parts = load_split(a.pairs, None, sen_meta=a.sen_meta, strict=strict)
         extra[name] = {"train": len(parts["train"]), **coverage(parts["train"], parts["val"])}
         t = build_translator(parts["train"], table, config={"analyzer": a.analyzer, **cfg}, synonyms=syn)
-        tune(t, parts["val"], grid=grid, kind=kind, log=lambda *_: None)
+        refs = all_references(parts["val"], all_pairs) if kind.startswith("multi:") else None
+        tune(t, parts["val"], grid=grid, kind=kind.split(":")[-1], refs=refs, log=lambda *_: None)
         row, outs = evaluate(t, parts["val"], n_boot=500)
+        suite, _ = score_suite(t, parts["val"], all_pairs, make_matcher(t.glosses), n_boot=200)
+        mr = suite["여러 정답 F1"]
+        row["multi"] = {k: mr[k] for k in ("precision", "recall", "f1", "wer")}
+        multi_lines.append(f"| {name} | {mr['precision']:.3f} | {mr['recall']:.3f} | {mr['f1']:.3f} | {mr['wer']:.3f} | "
+                           f"{row['f1']:.3f} | {row['unknown_per_sent']:.2f} |")
+        print(multi_lines[-1], flush=True)
         row["weights"] = dict(t.weights)
         row["substituted_per_sent"] = sum(len(o.get("substituted", [])) for o in outs) / max(1, len(outs))
         rows.append((name, row))
         print(table_md([(name, row)]).splitlines()[-1], flush=True)
     print(table_md(rows))
+    print("\n".join(multi_lines))
     print(json.dumps(extra, ensure_ascii=False))
     if a.out:
         Path(a.out).write_text(json.dumps({"set": a.set, "rows": dict(rows), "data": extra}, ensure_ascii=False,

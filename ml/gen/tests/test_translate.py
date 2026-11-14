@@ -238,6 +238,36 @@ def test_judge_page_pick_and_render():
     assert "mark-wrong" in page and "mark-missing" in page
 
 
+def test_judge_page_carries_unchanged_verdicts():
+    from gen.translate.judge_page import build_items, render
+
+    test = [{"id": "SEN0001", "korean": "오늘 학교에 가요", "gloss": ["오늘", "학교", "가다"]},
+            {"id": "SEN0002", "korean": "친구를 만나요", "gloss": ["친구", "만나다"]}]
+    new = _translator()
+    old = build_translator(TRAIN[:2], TABLE, config={"analyzer": "rule"})  # 친구 문장을 못 배운 이전 모델
+    prev = [{"id": "SEN0001", "verdict": "same", "wrong": [], "missing": [], "note": "x"},
+            {"id": "SEN0002", "verdict": "missing", "wrong": [], "missing": [{"i": 0, "gloss": "친구"}]}]
+    items = build_items(new, test, test, old, prev)
+    assert [it["changed"] for it in items] == [False, True]
+    assert items[0]["prev"]["verdict"] == "same" and items[1]["prev"] is None
+    page = render(items, "m.json", 0, changed_only=True)
+    assert '"changed_only": true' in page and "이전 판정" in page
+
+
+def test_judge_recheck_counts():
+    from gen.translate.judge_recheck import recheck
+
+    test = [{"id": "SEN0002", "korean": "친구를 만나요", "gloss": ["친구", "만나다"]}]
+    old = build_translator(TRAIN[:2], TABLE, config={"analyzer": "rule"})
+    new = _translator()
+    res = [{"id": "SEN0002", "verdict": "missing", "wrong": [], "missing": [{"i": 0, "gloss": "친구"}]}]
+    out = recheck(res, {p["id"]: p for p in test}, old, new, test)
+    assert out["changed"] == 1 and out["missing_marked"] == 1
+    assert out["missing_recovered"] == (("친구" in new.translate("친구를 만나요")["gloss"]) and
+                                        ("친구" not in old.translate("친구를 만나요")["gloss"]))
+    assert out["added_not_in_any_human"] == 0
+
+
 def test_judge_summary_ratios():
     from gen.translate.judge_summary import summarize, table_md
 
@@ -427,6 +457,36 @@ def test_shrink_feature_counts_lost_content():
     assert feats["shrink"] == 1
     (_t, _k, f2), = span_candidates(["~요"], 0, 1, pt, None)
     assert f2["shrink"] == 0  # 어미 생략은 줄임이 아니다
+
+
+def test_content_keep_blocks_drop_of_drawable_unit():
+    from gen.translate.decode import decode, drawable_units
+
+    # "학교"는 학습상 생략이 더 흔하지만(0.7) 그릴 후보가 있다 → content_keep이면 버리지 않는다
+    pt = {("학교",): [((), math.log(0.7), 0.0, 7), (("학교",), math.log(0.3), 0.0, 3)],
+          ("가다",): [(("가다",), 0.0, 0.0, 5)], ("~요",): [((), 0.0, 0.0, 9)]}
+    lm = KneserNeyLM().fit([["가다"], ["학교", "가다"]])
+    w = {"glosses": 0.0}
+    assert decode(["학교", "가다", "~요"], pt, lm, w)[0] == ["가다"]
+    assert decode(["학교", "가다", "~요"], pt, lm, w, content_keep=True)[0] == ["학교", "가다"]
+    # 생략 확률이 keep_drop_prob 이상이면 생략을 남긴다
+    assert decode(["학교", "가다", "~요"], pt, lm, w, content_keep=True, keep_drop_prob=0.6)[0] == ["가다"]
+    assert drawable_units(["학교", "모름", "~요"], pt, lambda u: None) == {0}
+    # 그릴 후보가 전혀 없는 내용어는 여전히 unknown(oov)
+    gl, path = decode(["모름", "가다"], pt, lm, w, lookup=lambda u: None, content_keep=True)
+    assert gl == ["가다"] and path[0][3] == "oov"
+
+
+def test_join_neighbors_and_derivation_lookup():
+    from gen.translate.decode import decode
+
+    lk = GlossLookup({"지하철역": 1, "가다": 1, "공부": 1, "좋다": 1, "자연": 1})
+    assert lk.join(["지하철", "역"]) == "지하철역"
+    assert lk.join(["지하철", "~요"]) is None and lk.join(["가다"]) is None
+    assert lk.lookup("공부되다") == "공부" and lk.lookup("좋아지다") == "좋다" and lk.lookup("자연스럽다") == "자연"
+    lm = KneserNeyLM().fit([["지하철역", "가다"]])
+    gl, path = decode(["지하철", "역", "가다"], {}, lm, None, lookup=lk.lookup, join=lk.join)
+    assert gl == ["지하철역", "가다"] and path[0][3] == "join"
 
 
 def test_compound_split_lookup():

@@ -17,7 +17,8 @@ import json
 from pathlib import Path
 
 from gen.translate import metrics
-from gen.translate.evaluate import load_split
+from gen.translate.evaluate import all_references, load_split
+from gen.translate.pairs import read_pairs
 from gen.translate.synonyms import load_synonyms
 from gen.translate.translator import build_translator
 
@@ -34,19 +35,21 @@ GRID = {
 }
 
 
-def objective(translator, pairs, kind="f1wer"):
-    """kind: 'f1wer' = (F1 + (1 − WER)) / 2,  'f1' = F1."""
-    stats = [metrics.sentence_stats(translator.translate(p["korean"])["gloss"], p["gloss"]) for p in pairs]
+def objective(translator, pairs, kind="f1wer", refs=None):
+    """kind: 'f1wer' = (F1 + (1 − WER)) / 2,  'f1' = F1.
+    refs를 주면(문장마다 정답 후보 목록) 여러 정답 기준으로 잰다."""
+    refs = refs or [p["gloss"] for p in pairs]
+    stats = [metrics.sentence_stats(translator.translate(p["korean"])["gloss"], r) for p, r in zip(pairs, refs)]
     r = metrics.aggregate(stats)
     return (r["f1"] if kind == "f1" else (r["f1"] + 1 - r["wer"]) / 2), r
 
 
-def tune(translator, val_pairs, rounds=3, grid=None, log=print, kind="f1wer"):
+def tune(translator, val_pairs, rounds=3, grid=None, log=print, kind="f1wer", refs=None):
     """좌표별 탐색. 같은 점수면 지금 값을 유지한다."""
     grid = dict(grid or GRID)
     if not (translator.config.get("use_synonyms") and translator.synonyms):
         grid.pop("syn", None)
-    best, _ = objective(translator, val_pairs, kind)
+    best, _ = objective(translator, val_pairs, kind, refs)
     log(f"tune start objective={best:.4f}")
     for rnd in range(rounds):
         changed = False
@@ -56,7 +59,7 @@ def tune(translator, val_pairs, rounds=3, grid=None, log=print, kind="f1wer"):
                 if v == cur:
                     continue
                 translator.weights[name] = v
-                score, _ = objective(translator, val_pairs, kind)
+                score, _ = objective(translator, val_pairs, kind, refs)
                 if score > best + 1e-9:
                     best, cur, changed = score, v, True
             translator.weights[name] = cur
@@ -83,6 +86,11 @@ def main():
     p.add_argument("--split-compounds", action="store_true", help="표에 없는 합성어를 표 안 이름 둘로 나눈다")
     p.add_argument("--synonyms", help="동의어 표 파일 (없으면 건너뜀)")
     p.add_argument("--objective", default="f1wer", choices=["f1wer", "f1"])
+    p.add_argument("--multi-ref", action="store_true",
+                   help="가중치 조정을 여러 정답 기준으로 (같은 한국어 문장의 사람 번역 전부)")
+    p.add_argument("--content-keep", action="store_true", help="그릴 수 있는 내용어는 버리지 않는다")
+    p.add_argument("--keep-drop-prob", type=float, default=1.01, help="content-keep에서 이 확률 이상 생략은 남긴다")
+    p.add_argument("--join", action="store_true", help="쪼개진 이웃 단위를 붙여 표 이름 찾기")
     p.add_argument("--tune", action="store_true")
     p.add_argument("--all", action="store_true", help="서비스용: 2,000쌍 전부로 학습 (평가에 쓰지 않음)")
     p.add_argument("--weights-from", help="가중치를 이 학습 파일에서 가져온다")
@@ -95,7 +103,8 @@ def main():
     if a.synonyms and syn is None:
         print(f"synonyms file not found, skipped: {a.synonyms}")
     cfg = {"analyzer": a.analyzer, "keep_endings": not a.no_endings, "max_src": a.max_src,
-           "content_drop_min": a.content_drop_min, "use_split": a.split_compounds, "use_synonyms": syn is not None}
+           "content_drop_min": a.content_drop_min, "use_split": a.split_compounds, "use_synonyms": syn is not None,
+           "content_keep": a.content_keep, "keep_drop_prob": a.keep_drop_prob, "use_join": a.join}
     train = parts["train"] + (parts["val"] + parts["test"] if a.all else [])
     info = {"strict": a.strict, "all_pairs": a.all, "split_sizes": {k: len(v) for k, v in parts.items()},
             "train_used": len(train), "gloss_table_stats": table.get("stats"),
@@ -109,8 +118,9 @@ def main():
     if a.tune:
         if a.all:
             raise SystemExit("--all과 --tune은 같이 쓰지 않는다 (검증 문장이 학습에 들어감). --weights-from을 쓴다")
-        t.info["val_objective"] = tune(t, parts["val"], kind=a.objective)
-        t.info["objective"] = a.objective
+        refs = all_references(parts["val"], read_pairs(a.pairs)) if a.multi_ref else None
+        t.info["val_objective"] = tune(t, parts["val"], kind=a.objective, refs=refs)
+        t.info["objective"] = a.objective + ("/multi_ref" if a.multi_ref else "")
     t.save(a.out, overwrite=a.overwrite)
     print(f"saved {a.out} analyzer={t.config['analyzer']}")
 
