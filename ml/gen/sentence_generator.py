@@ -137,10 +137,12 @@ def save_baseline(path, table, rest, gap):
 def load_sentence_generator(run_dir, device="cpu", mode="model", vq_path=None, **sampling):
     """run 폴더 → SentenceGenerator. vq_path를 주면 generator.json의 경로 대신 쓴다(해시는 그대로 확인).
 
-    sampling: top_k(10), temperature(1.0), guidance(1.0), per_signer(1)."""
+    sampling: top_k(10), temperature(1.0), guidance(1.0), per_signer(1).
+    generator.json에 "sampling"이 있으면 그것을 기본으로 쓰고, 인자로 준 값이 우선한다(서버는 인자를 못 넘김)."""
     from vq.model import load_vqvae
     run = Path(run_dir)
     meta = json.loads((run / "generator.json").read_text(encoding="utf-8"))
+    sampling = {**(meta.get("sampling") or {}), **sampling}
     vocab_file = json.loads((run / "vocab.json").read_text(encoding="utf-8"))
     stats = json.loads((run / "schedule.json").read_text(encoding="utf-8"))
     vq = Path(vq_path or meta["vq_checkpoint"])
