@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wow.signlanguage.service.TranslationService;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -40,7 +39,7 @@ class ModelHttpFlowTests {
     return JSON.readTree(Files.readString(Path.of(System.getenv("SIGN_TEST_MODELS_FILE"))));
   }
 
-  static MockMvc mvc(TranslationService translation, String address, int timeoutMillis) {
+  static MockMvc mvc(GlossTranslator translation, String address, int timeoutMillis) {
     URI url = URI.create(address);
     assertThat(url.getScheme()).isEqualTo("http");
     assertThat(url.getHost()).isEqualTo("127.0.0.1");
@@ -65,7 +64,7 @@ class ModelHttpFlowTests {
   @ParameterizedTest @MethodSource("sequences")
   void realModelResponsePreservesContract(String kind, List<String> gloss) throws Exception {
     JsonNode model = manifest().get("models").get(kind);
-    TranslationService translation = mock(TranslationService.class);
+    GlossTranslator translation = mock(GlossTranslator.class);
     when(translation.translate("합성 입력")).thenReturn(BaselineHttpFlowTests.translated(gloss, true));
     MockMvc mvc = mvc(translation, model.get("url").textValue(), 3000);
     List<String> known = gloss.stream().filter(word -> !word.equals("미등록")).toList();
@@ -126,7 +125,7 @@ class ModelHttpFlowTests {
       String expectedCode, String recoveryUrl) throws Exception {
     assertThat(kind).isIn("word_gpt", "word_regress");
     assertThat(failure).isNotBlank();
-    TranslationService translation = mock(TranslationService.class);
+    GlossTranslator translation = mock(GlossTranslator.class);
     when(translation.translate("합성 입력")).thenReturn(
         BaselineHttpFlowTests.translated(List.of("화장실", "있다"), true));
     MockMvc mvc = mvc(translation, url, timeoutMillis);

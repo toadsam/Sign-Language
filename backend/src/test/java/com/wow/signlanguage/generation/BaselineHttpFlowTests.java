@@ -7,10 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wow.signlanguage.service.TranslationService;
-import com.wow.signlanguage.translate.SimplificationMetadata;
-import com.wow.signlanguage.translate.TranslatePlaybackItem;
-import com.wow.signlanguage.translate.TranslateResponse;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -47,14 +43,11 @@ class BaselineHttpFlowTests {
         Arguments.of(List.of("미등록", "미등록"), List.of(), List.of("미등록", "미등록"), false));
   }
 
-  static TranslateResponse translated(List<String> gloss, boolean question) {
-    return new TranslateResponse("합성 입력", "합성 번역", gloss, List.of(),
-        new SimplificationMetadata(question, false, "present"), List.of(),
-        List.of(new TranslatePlaybackItem("화장실", 1, "synthetic.mp4", "https://example.invalid/synthetic.mp4", true),
-            new TranslatePlaybackItem("미등록", 0, "", "", false)), List.of("미등록"), List.of());
+  static GlossTranslator.Gloss translated(List<String> gloss, boolean question) {
+    return new GlossTranslator.Gloss(gloss, question);
   }
 
-  static MockMvc mvc(TranslationService translation, URI url) {
+  static MockMvc mvc(GlossTranslator translation, URI url) {
     GenerationSettings settings = new GenerationSettings(url, Duration.ofSeconds(1), Duration.ofSeconds(3), 4096, 1800);
     return MockMvcBuilders.standaloneSetup(new GenerationController(
         new GenerationService(translation, new InferenceClient(settings, JSON), settings)))
@@ -64,7 +57,7 @@ class BaselineHttpFlowTests {
   @ParameterizedTest @MethodSource("sequences")
   void actualBaselinePreservesWordOrderAndEveryFloat(List<String> gloss, List<Integer> markers,
                                                    List<String> unknown, boolean question) throws Exception {
-    TranslationService translation = mock(TranslationService.class);
+    GlossTranslator translation = mock(GlossTranslator.class);
     when(translation.translate("합성 입력")).thenReturn(translated(gloss, question));
     MockMvc mvc = mvc(translation, localUrl("SIGN_TEST_BASELINE_URL"));
     String first = null;
@@ -107,7 +100,7 @@ class BaselineHttpFlowTests {
 
   @Test @EnabledIfEnvironmentVariable(named = "SIGN_TEST_UNAVAILABLE_URL", matches = ".+")
   void badProductionConfigReturnsUnavailableWithoutVideo() throws Exception {
-    TranslationService translation = mock(TranslationService.class);
+    GlossTranslator translation = mock(GlossTranslator.class);
     when(translation.translate("합성 입력")).thenReturn(translated(List.of("화장실", "미등록"), true));
     MockMvc mvc = mvc(translation, localUrl("SIGN_TEST_UNAVAILABLE_URL"));
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
