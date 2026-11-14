@@ -29,6 +29,18 @@
 
 ## 3. 결과물 위치
 
+### 앱에 합칠 최종 버전 (2026-11-15)
+
+| 부품 | 파일 | 비고 |
+|---|---|---|
+| 번역기 | `/data/work/jiheon/translate/translator_v5n_service.json` | 대체어 표 41개 포함 |
+| 글로스 표 | `/data/work/jiheon/vocab/gloss_table_v2.json` | |
+| 문장 GPT | `/data/work/jiheon/sent_gpt/runs/sent_gpt_v1_serve/` | 이 폴더를 쓴다 (guidance 2 설정, 모델 파일은 `sent_gpt_v1/`을 가리킴) |
+| VQ 디코더 (재훈) | `/data/runs/vq_e5/model.pt` | 문장 GPT가 토큰을 좌표로 바꿀 때 필요 |
+| 서버 실행 | `start_sentence.sh`가 위 파일을 모두 연결해 켠다 | 경로를 바꿀 때는 이 스크립트를 고친다 |
+
+`/data/work/jiheon` 폴더 목록은 다른 계정이 볼 수 없다. 위 경로를 그대로 쓰면 파일은 읽을 수 있다.
+
 ### 코드 (GitHub `feature/sentence-jiheon`)
 
 | 부품 | 폴더 |
