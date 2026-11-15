@@ -207,7 +207,7 @@ export default function FollowAlong({ reference, title }: { reference: Motion; t
   const busy = phase === 'countdown' || phase === 'recording';
   const score = outcome?.kind === 'score' ? outcome.score : null;
   return (
-    <section aria-label="따라 하기" style={{ fontFamily: 'system-ui, sans-serif', color: INK }}>
+    <section aria-label="따라 하기" style={{ fontFamily: 'GowunDodum_400Regular, system-ui, sans-serif', color: INK }}>
       {title ? <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>{title}</div> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
         <div style={frame}>

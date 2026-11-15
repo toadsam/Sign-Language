@@ -20,6 +20,7 @@ import { Handwrite } from '@/components/paint/handwrite';
 import { BodyText, PaintButton, PaintHeader, PaintIcon, PaintTabBar, PaperScreen, RoughBox, StoryText, Wash, type PaintIconName } from '@/components/paint/paint-ui';
 import { PenAvatar } from '@/components/paint/pen-avatar';
 import { PenLoader } from '@/components/paint/pen-loader';
+import FollowAlong from '@/components/sign-camera/FollowAlong';
 import { TalkChain } from '@/components/paint/talk-chain';
 import { usePaintNav } from '@/components/paint/transition';
 import { Font, Paint, Size } from '@/constants/paint';
@@ -71,6 +72,8 @@ export default function TranslatorScreen() {
   const [motionPlayKey, setMotionPlayKey] = useState(0);
   // AI 동작에 대해 한 줄로 알려 줄 것 (AI가 그렸다 · 못 그린 낱말 · 영상으로 보여 주는 까닭)
   const [motionNote, setMotionNote] = useState<string | null>(null);
+  // 따라 하기: 친구(AI 동작) 옆에서 카메라로 따라 하고 점수를 받는다. 카메라 좌표 받기가 웹에서만 돼서 웹에서만 연다
+  const [followOpen, setFollowOpen] = useState(false);
   const motionRunRef = useRef(0);
   const motionSegRef = useRef(-1);
   // 3D 캐릭터(발표 영상과 같은 캐릭터)로 보여 준다. 3D를 못 띄우면 2D 펜 아바타로 돌아간다. ?avatar=2d 로 2D 고정
@@ -688,6 +691,7 @@ export default function TranslatorScreen() {
       setMotionSeg(-1);
       setMotionDone(false);
       setMotionNote(null);
+      setFollowOpen(false);
       // AI 동작과 영상 번역을 같이 물어본다. 서로 기다리지 않는다
       const motionAsk = requestMotion(text, { devEndpoint: params.gen });
       let next: TranslateResponse;
@@ -1133,12 +1137,19 @@ export default function TranslatorScreen() {
                 active={chainActive}
                 runKey={chainRunKey}
                 onPick={motion ? undefined : (index) => setCurrentClipIndex(index)}
-                doneNote={motion ? '다시 보려면 「다시 보기」를 눌러요' : undefined}
+                doneNote={motion && !followOpen ? '다시 보려면 「다시 보기」를 눌러요' : undefined}
                 sentence={result.simplifiedSentence || undefined}
               />
             </View>
           ) : null}
 
+          {followOpen && motion ? (
+            /* 따라 하기: 친구 시범과 내 카메라를 나란히 두고 점수를 낸다. 닫으면 카메라도 꺼진다 */
+            <RoughBox seed={31} radius={18} style={styles.followBox}>
+              <FollowAlong reference={motion} title={`「${(result?.input || inputText).trim()}」 따라 하기`} />
+            </RoughBox>
+          ) : (
+            <>
           {/* 손짓 액자 */}
           <RoughBox seed={9} radius={18} style={[styles.signerFrame, { width: frameWidth, height: frameHeight }]}>
             <Animated.View style={[styles.signerInner, { opacity: avatarOpacity, transform: [{ scale: avatarScale }] }]}>
@@ -1185,11 +1196,24 @@ export default function TranslatorScreen() {
               </BodyText>
             ) : null}
           </View>
+            </>
+          )}
 
           {/* 재생 조절 · 저장 · 북마크 · 자세히 */}
           <View style={styles.actionRow}>
             {motion ? (
-              <IconAction icon="play" label="다시 보기" onPress={replayMotion} />
+              <>
+                {followOpen ? null : <IconAction icon="play" label="다시 보기" onPress={replayMotion} />}
+                {isWeb ? (
+                  <IconAction
+                    icon="learn"
+                    label={followOpen ? '시범 보기' : '따라 하기'}
+                    a11y={followOpen ? '따라 하기 닫고 시범 보기' : '카메라로 따라 하고 점수 받기'}
+                    onPress={() => setFollowOpen((v) => !v)}
+                    active={followOpen}
+                  />
+                ) : null}
+              </>
             ) : (
               <>
                 <IconAction icon="play" flip label="이전" onPress={() => moveClip(-1)} disabled={currentClipIndex <= 0} />
@@ -1504,6 +1528,7 @@ const styles = StyleSheet.create({
   captionPill: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center' },
   counter: { marginTop: 6 },
   motionNote: { marginTop: 8, textAlign: 'center' },
+  followBox: { marginHorizontal: 12, marginTop: 16, padding: 14 },
   progressTrack: { marginTop: 6, width: '54%', height: 6, borderRadius: 3, borderWidth: 1, borderColor: Paint.line, backgroundColor: Paint.paperDeep, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Paint.sky },
   actionRow: { marginTop: 18, marginHorizontal: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
