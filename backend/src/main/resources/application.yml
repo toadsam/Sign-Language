@@ -8,6 +8,10 @@ sign:
     response-timeout: ${SIGN_GENERATION_RESPONSE_TIMEOUT:PT10S}
     max-text-chars: ${SIGN_GENERATION_MAX_TEXT_CHARS:4096}
     max-frames: ${SIGN_GENERATION_MAX_FRAMES:1800}
+    # spring: GlossTranslator(OpenAI·ETRI·규칙) / serve: 추론 서버의 POST /translate (외부 API 없음)
+    translator: ${SIGN_GENERATION_TRANSLATOR:spring}
+    # 비우면 url의 끝 /generate를 /translate로 바꾼 주소
+    translate-url: ${SIGN_GENERATION_TRANSLATE_URL:}
     word-vocab-path: ${SIGN_WORD_VOCAB_PATH:}
     synonym:
       enabled: ${SIGN_SYNONYM_ENABLED:true}

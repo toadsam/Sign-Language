@@ -128,10 +128,14 @@ class GenerationApiTests {
   }
 
   static ObjectNode motion() {
-    ByteBuffer bytes = ByteBuffer.allocate(1500).order(ByteOrder.LITTLE_ENDIAN);
-    for (int index = 0; index < 375; index++) bytes.putFloat((index - 100) / 100f);
+    return motion(1);
+  }
+
+  static ObjectNode motion(int frames) {
+    ByteBuffer bytes = ByteBuffer.allocate(1500 * frames).order(ByteOrder.LITTLE_ENDIAN);
+    for (int index = 0; index < 375 * frames; index++) bytes.putFloat((index % 375 - 100) / 100f);
     ObjectNode node = JSON.createObjectNode();
-    node.put("fps", 30).put("joints", 125).put("frames", 1).put("units", "shoulder")
+    node.put("fps", 30).put("joints", 125).put("frames", frames).put("units", "shoulder")
         .put("data", Base64.getEncoder().encodeToString(bytes.array())).put("source", "baseline");
     node.putArray("tokens");
     node.putArray("segments");
@@ -179,6 +183,63 @@ class GenerationApiTests {
     mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.frames").value(0))
         .andExpect(jsonPath("$.data").value("")).andExpect(jsonPath("$.source").value("baseline"));
+  }
+
+  static ObjectNode segment(ObjectNode node, String gloss, int start, int end) {
+    node.withArray("segments").addObject().put("gloss", gloss).put("start", start).put("end", end);
+    return node;
+  }
+
+  @Test void sentenceSegmentsPassThroughUnchanged() throws Exception {
+    ObjectNode node = segment(segment(motion(2), "화장실", 0, 1), "있다", 1, 2);
+    STUB.set(new Stub(200, node.toString(), 0, false));
+    String content = mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"text\":\"화장실 있어요?\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.segments[0].gloss").value("화장실"))
+        .andExpect(jsonPath("$.segments[1].end").value(2)).andReturn().getResponse()
+        .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+    assertThat(JSON.readTree(content)).isEqualTo(node);
+  }
+
+  @Test void segmentsWithGapAndUnknownWordPass() throws Exception {
+    ObjectNode node = segment(motion(2), "화장실", 1, 2);
+    node.withArray("unknown").add("있다");
+    STUB.set(new Stub(200, node.toString(), 0, false));
+    mvc.perform(post("/api/sign/generate").contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"문장\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.segments.length()").value(1))
+        .andExpect(jsonPath("$.segments[0].start").value(1));
+  }
+
+  @ParameterizedTest @ValueSource(strings = {"unknownGloss", "blankGloss", "numberGloss", "emptyRange",
+      "reversed", "pastEnd", "negative", "overlap", "outOfOrder", "extraKey", "missingKey", "fractional",
+      "stringFrame", "notObject", "tooMany", "zeroFrames", "notArray"})
+  void malformedSegmentsReturnErrors(String kind) throws Exception {
+    ObjectNode node = motion(2);
+    switch (kind) {
+      case "unknownGloss" -> segment(node, "invented", 0, 1);
+      case "blankGloss" -> segment(node, " ", 0, 1);
+      case "numberGloss" -> node.withArray("segments").addObject().put("gloss", 1).put("start", 0).put("end", 1);
+      case "emptyRange" -> segment(node, "화장실", 1, 1);
+      case "reversed" -> segment(node, "화장실", 1, 0);
+      case "pastEnd" -> segment(node, "화장실", 0, 3);
+      case "negative" -> segment(node, "화장실", -1, 1);
+      case "overlap" -> segment(segment(node, "화장실", 0, 2), "있다", 1, 2);
+      case "outOfOrder" -> segment(segment(node, "화장실", 1, 2), "있다", 0, 1);
+      case "extraKey" -> ((ObjectNode) segment(node, "화장실", 0, 1).withArray("segments").get(0)).put("unit", "x");
+      case "missingKey" -> node.withArray("segments").addObject().put("gloss", "화장실").put("start", 0);
+      case "fractional" -> node.withArray("segments").addObject().put("gloss", "화장실").put("start", 0).put("end", 1.5);
+      case "stringFrame" -> node.withArray("segments").addObject().put("gloss", "화장실").put("start", "0").put("end", 1);
+      case "notObject" -> node.withArray("segments").add("화장실");
+      case "tooMany" -> segment(segment(segment(node, "화장실", 0, 1), "있다", 1, 2), "있다", 2, 2);
+      case "zeroFrames" -> {
+        node = segment(motion().put("frames", 0).put("data", ""), "화장실", 0, 1);
+        node.withArray("unknown").add("화장실").add("있다");
+      }
+      case "notArray" -> node.put("segments", "화장실");
+      default -> { }
+    }
+    STUB.set(new Stub(200, node.toString(), 0, false));
+    assertFailure(502, "GENERATION_FAILED", true);
   }
 
   static Stream<Arguments> upstreamFailures() {

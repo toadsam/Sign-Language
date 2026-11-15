@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>문장 동작 검증</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #dddbd5;
+  --accent: #2f6fd6; --ok: #2e7d4f; --ok-bg: #e5f2ea; --bad: #b3261e; --bad-bg: #fbe7e5;
+  --warn-bg: #f4efe1; --body: #3a3a38; --lhand: #d0682a; --rhand: #2f6fd6; --face: #b9b6ae;
+  --seg-a: #cfe0fb; --seg-b: #f6dcc8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --panel: #1f1f1e; --ink: #ecebe7; --muted: #a09e98; --line: #34332f;
+    --accent: #7aa7f0; --ok: #7fd09c; --ok-bg: #1d3326; --bad: #f2a29b; --bad-bg: #3a1f1c;
+    --warn-bg: #2f2b20; --body: #d8d6cf; --lhand: #f0a066; --rhand: #7aa7f0; --face: #5c5a55;
+    --seg-a: #23395e; --seg-b: #4a3324;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 20px 16px 40px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#text { flex: 1 1 320px; min-width: 0; font: inherit; padding: 9px 11px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--bg); color: var(--ink); }
+button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+label.opt { font-size: 13px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; margin-top: 14px; }
+@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+canvas#stage { width: 100%; aspect-ratio: 4 / 3; display: block; background: var(--bg); border-radius: 8px; }
+.controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+#scrub { flex: 1 1 200px; }
+#frameInfo { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; min-width: 110px; }
+#timeline { position: relative; height: 34px; margin-top: 8px; border-radius: 6px; background: var(--bg);
+  overflow: hidden; border: 1px solid var(--line); }
+#timeline .seg { position: absolute; top: 0; bottom: 0; font-size: 12px; padding: 0 4px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; line-height: 34px; border-right: 1px solid var(--panel); }
+#timeline .seg.on { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 600; }
+#cursor { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
+section + section { margin-top: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border-radius: 999px; padding: 2px 10px; font-size: 13px; background: var(--ok-bg); color: var(--ok);
+  border: 1px solid transparent; }
+.chip small { opacity: .75; margin-left: 4px; }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.drop { background: var(--warn-bg); color: var(--muted); }
+.chip.on { border-color: var(--accent); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+td { padding: 3px 0; border-bottom: 1px solid var(--line); }
+td:last-child { text-align: right; }
+.muted { color: var(--muted); font-size: 13px; }
+#error { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bad-bg);
+  color: var(--bad); }
+#history { margin: 0; padding-left: 18px; font-size: 13px; }
+#history li { cursor: pointer; }
+#history li:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main>
+  <h1>문장 → 수어 동작 검증</h1>
+  <p class="sub">한국어 문장을 넣으면 <code>/translate</code> → <code>/generate</code> 순서로 부르고 결과 동작을 정면에서 보여 준다.
+    글로스 직접 입력은 번역을 건너뛴다(띄어쓰기로 나눔).</p>
+
+  <div class="panel">
+    <form id="form">
+      <input id="text" autocomplete="off" placeholder="예: 화장실 어디에 있어요?" maxlength="4096">
+      <label class="opt"><input type="checkbox" id="glossMode"> 글로스 직접</label>
+      <label class="opt"><input type="checkbox" id="question"> 의문</label>
+      <button class="primary" id="run" type="submit">만들기</button>
+    </form>
+    <div id="error" role="alert"></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <canvas id="stage" width="960" height="720"></canvas>
+      <div class="controls">
+        <button id="play" type="button" disabled>재생</button>
+        <input id="scrub" type="range" min="0" max="0" value="0" disabled>
+        <span id="frameInfo">–</span>
+        <label class="opt">속도
+          <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option><option value="2">2×</option></select></label>
+        <label class="opt"><input type="checkbox" id="showFace" checked> 얼굴</label>
+        <label class="opt"><input type="checkbox" id="loop" checked> 반복</label>
+      </div>
+      <div id="timeline"><div id="cursor" style="left:0"></div></div>
+      <p class="muted" id="caption">아직 결과가 없다.</p>
+    </div>
+
+    <div class="panel">
+      <section>
+        <h2>글로스 열</h2>
+        <div class="chips" id="glossChips"><span class="muted">–</span></div>
+      </section>
+      <section>
+        <h2>못 찾은 조각 · 뺀 조사·어미</h2>
+        <div class="chips" id="otherChips"><span class="muted">–</span></div>
+      </section>
+      <section>
+        <h2>응답</h2>
+        <table id="stats"><tbody><tr><td class="muted">–</td><td></td></tr></tbody></table>
+      </section>
+      <section>
+        <h2>최근 입력</h2>
+        <ol id="history"></ol>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+"use strict";
+const SKELETON = /*SKELETON*/null;
+const $ = (id) => document.getElementById(id);
+const state = { motion: null, frames: 0, fps: 30, segments: [], frame: 0, playing: false, last: 0, box: null };
+const history = [];
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function showError(message) { const e = $("error"); e.textContent = message; e.style.display = message ? "block" : "none"; }
+function chip(text, cls, sub) {
+  const s = document.createElement("span");
+  s.className = "chip" + (cls ? " " + cls : "");
+  s.textContent = text;
+  if (sub) { const m = document.createElement("small"); m.textContent = sub; s.appendChild(m); }
+  return s;
+}
+function timing(response) {
+  const h = response.headers.get("Server-Timing") || "";
+  const m = h.match(/dur=([0-9.]+)/);
+  return m ? parseFloat(m[1]) : null;
+}
+async function post(path, body) {
+  const t0 = performance.now();
+  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                       body: JSON.stringify(body) });
+  let data = null;
+  try { data = await response.json(); } catch (_) { /* 본문 없음 */ }
+  const total = performance.now() - t0;
+  if (!response.ok) {
+    const detail = data && typeof data.detail === "string" ? data.detail : "";
+    throw new Error(`${path} ${response.status}${detail ? " · " + detail : ""}`);
+  }
+  return { data, total, server: timing(response) };
+}
+
+function decode(b64, frames) {
+  const bin = atob(b64);
+  const view = new DataView(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) view.setUint8(i, bin.charCodeAt(i));
+  const out = new Float32Array(frames * 375);
+  for (let i = 0; i < out.length; i++) out[i] = view.getFloat32(i * 4, true);
+  return out;
+}
+
+function fitBox(motion, frames) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let f = 0; f < frames; f++) {
+    for (let j = 0; j < 125; j++) {
+      if (j === 8) continue;  // 골반은 화면 아래로 멀어 상자에서 뺀다
+      const k = (f * 125 + j) * 3, x = motion[k], y = motion[k + 1];
+      if (!isFinite(x) || !isFinite(y)) continue;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+  }
+  if (!isFinite(x0)) return { cx: 0, cy: 0, w: 1, h: 1 };
+  const pad = 0.15;
+  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: (x1 - x0) * (1 + pad) || 1, h: (y1 - y0) * (1 + pad) || 1 };
+}
+
+function draw() {
+  const c = $("stage"), g = c.getContext("2d");
+  g.clearRect(0, 0, c.width, c.height);
+  if (!state.motion || !state.frames) {
+    g.fillStyle = css("--muted"); g.font = "28px system-ui"; g.textAlign = "center";
+    g.fillText(state.motion ? "그릴 동작이 없다 (모두 unknown)" : "문장을 넣고 만들기", c.width / 2, c.height / 2);
+    return;
+  }
+  const b = state.box, s = Math.min(c.width / b.w, c.height / b.h);
+  const base = state.frame * 375, m = state.motion;
+  const P = (j) => [c.width / 2 + (m[base + j * 3] - b.cx) * s, c.height / 2 + (m[base + j * 3 + 1] - b.cy) * s];
+  const showFace = $("showFace").checked;
+  const color = (j) => j >= SKELETON.face[0] ? css("--face") : j >= 34 ? css("--rhand") : j >= 13 ? css("--lhand") : css("--body");
+  g.lineCap = "round";
+  for (const [a, z] of SKELETON.edges) {
+    if (!showFace && a >= SKELETON.face[0]) continue;
+    const [ax, ay] = P(a), [zx, zy] = P(z);
+    g.strokeStyle = color(a);
+    g.lineWidth = a < 13 ? 7 : a < 55 ? 3 : 1.5;
+    g.beginPath(); g.moveTo(ax, ay); g.lineTo(zx, zy); g.stroke();
+  }
+  for (let j = 0; j < 55; j++) {
+    const [x, y] = P(j);
+    g.fillStyle = color(j);
+    g.beginPath(); g.arc(x, y, j < 13 ? 5 : 2.5, 0, Math.PI * 2); g.fill();
+  }
+  const seg = state.segments.find((v) => state.frame >= v.start && state.frame < v.end);
+  g.fillStyle = css("--ink"); g.font = "600 34px system-ui, 'Malgun Gothic'"; g.textAlign = "left";
+  g.fillText(seg ? seg.gloss : "(연결)", 20, 48);
+  updateMarks(seg);
+}
+
+function updateMarks(seg) {
+  $("scrub").value = state.frame;
+  $("frameInfo").textContent = `${state.frame + 1} / ${state.frames} · ${(state.frame / state.fps).toFixed(2)}초`;
+  $("cursor").style.left = `${(state.frame / Math.max(state.frames - 1, 1)) * 100}%`;
+  document.querySelectorAll("#timeline .seg").forEach((el, i) => el.classList.toggle("on", state.segments[i] === seg));
+  document.querySelectorAll("#glossChips .chip").forEach((el) =>
+    el.classList.toggle("on", seg !== undefined && Number(el.dataset.seg) === state.segments.indexOf(seg)));
+}
+
+function tick(now) {
+  if (!state.playing) return;
+  const step = 1000 / (state.fps * parseFloat($("speed").value));
+  if (now - state.last >= step) {
+    state.last = now;
+    if (state.frame + 1 >= state.frames) {
+      if ($("loop").checked) state.frame = 0; else { setPlaying(false); return; }
+    } else state.frame += 1;
+    draw();
+  }
+  requestAnimationFrame(tick);
+}
+function setPlaying(on) {
+  state.playing = on && state.frames > 0;
+  $("play").textContent = state.playing ? "멈춤" : "재생";
+  if (state.playing) { state.last = performance.now(); requestAnimationFrame(tick); }
+}
+
+function renderTimeline() {
+  const t = $("timeline");
+  t.querySelectorAll(".seg").forEach((el) => el.remove());
+  state.segments.forEach((v, i) => {
+    const el = document.createElement("div");
+    el.className = "seg";
+    el.style.left = `${(v.start / state.frames) * 100}%`;
+    el.style.width = `${((v.end - v.start) / state.frames) * 100}%`;
+    el.style.background = css(i % 2 ? "--seg-b" : "--seg-a");
+    el.textContent = v.gloss;
+    el.title = `${v.gloss} · ${v.start}–${v.end - 1}프레임`;
+    el.onclick = () => { state.frame = v.start; draw(); };
+    t.insertBefore(el, $("cursor"));
+  });
+}
+
+function renderChips(tr, gen) {
+  const gc = $("glossChips"), oc = $("otherChips");
+  gc.replaceChildren(); oc.replaceChildren();
+  const unknownLeft = [...gen.unknown];
+  const segLeft = gen.segments.map((v, i) => ({ ...v, i }));
+  tr.gloss.forEach((name, k) => {
+    const unit = tr.units[k];
+    const ui = unknownLeft.indexOf(name);
+    if (ui >= 0 && (!unit || !segLeft.some((v) => v.gloss === name))) {
+      unknownLeft.splice(ui, 1);
+      gc.appendChild(chip(name, "bad", unit ? unit + " · 생성 못함" : "표에 없음"));
+      return;
+    }
+    const si = segLeft.findIndex((v) => v.gloss === name);
+    const el = chip(name, "", unit || "");
+    if (si >= 0) { el.dataset.seg = segLeft[si].i; segLeft.splice(si, 1); }
+    if (tr.senses[k]) el.title = `뜻: ${tr.senses[k]}`;
+    gc.appendChild(el);
+  });
+  if (!tr.gloss.length) gc.appendChild(chip("글로스 없음", "bad"));
+  tr.unknown.forEach((w) => oc.appendChild(chip(w, "bad", "unknown")));
+  tr.dropped.forEach((w) => oc.appendChild(chip(w, "drop")));
+  if (!tr.unknown.length && !tr.dropped.length) oc.appendChild(Object.assign(document.createElement("span"),
+    { className: "muted", textContent: "없음" }));
+}
+
+function renderStats(rows) {
+  const body = $("stats").tBodies[0];
+  body.replaceChildren();
+  for (const [k, v] of rows) {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = k;
+    tr.insertCell().textContent = v;
+  }
+}
+const ms = (v) => v === null || v === undefined ? "–" : `${v.toFixed(0)} ms`;
+
+function remember(text, glossMode) {
+  const key = (glossMode ? "[글로스] " : "") + text;
+  const i = history.indexOf(key);
+  if (i >= 0) history.splice(i, 1);
+  history.unshift(key);
+  history.length = Math.min(history.length, 8);
+  const ol = $("history"); ol.replaceChildren();
+  for (const h of history) {
+    const li = document.createElement("li");
+    li.textContent = h;
+    li.onclick = () => {
+      const g = h.startsWith("[글로스] ");
+      $("glossMode").checked = g; $("text").value = g ? h.slice(6) : h; run();
+    };
+    ol.appendChild(li);
+  }
+}
+
+async function run(event) {
+  if (event) event.preventDefault();
+  const text = $("text").value.trim();
+  if (!text) { showError("문장을 입력한다."); return; }
+  showError("");
+  setPlaying(false);
+  $("run").disabled = true;
+  const glossMode = $("glossMode").checked;
+  const t0 = performance.now();
+  try {
+    let tr, trTime = null;
+    if (glossMode) {
+      const gloss = text.split(/\s+/).filter(Boolean);
+      tr = { gloss, units: gloss.map(() => null), senses: gloss.map(() => null), unknown: [], dropped: [],
+             translator: "직접 입력" };
+    } else {
+      const r = await post("/translate", { text });
+      tr = r.data; trTime = r;
+    }
+    if (!tr.gloss.length) {
+      state.motion = new Float32Array(0); state.frames = 0; state.segments = [];
+      renderChips(tr, { unknown: [], segments: [] }); renderTimeline(); draw();
+      renderStats([["번역기", tr.translator], ["번역", trTime ? `${ms(trTime.server)} (왕복 ${ms(trTime.total)})` : "–"]]);
+      throw new Error("번역 결과에 글로스가 없어 생성하지 않았다.");
+    }
+    const nonmanual = $("question").checked || /\?\s*$/.test(text) ? ["의문"] : [];
+    const g = await post("/generate", { gloss: tr.gloss, nonmanual });
+    const gen = g.data;
+    state.fps = gen.fps; state.frames = gen.frames; state.segments = gen.segments;
+    state.motion = gen.frames ? decode(gen.data, gen.frames) : new Float32Array(0);
+    state.box = fitBox(state.motion, state.frames); state.frame = 0;
+    const scrub = $("scrub"); scrub.max = Math.max(gen.frames - 1, 0); scrub.disabled = !gen.frames;
+    $("play").disabled = !gen.frames;
+    renderTimeline(); renderChips(tr, gen); draw();
+    const drawn = tr.gloss.length - gen.unknown.length;
+    renderStats([
+      ["번역기", tr.translator], ["생성 source", gen.source],
+      ["번역", trTime ? `${ms(trTime.server)} (왕복 ${ms(trTime.total)})` : "–"],
+      ["생성", `${ms(g.server)} (왕복 ${ms(g.total)})`],
+      ["전체", ms(performance.now() - t0)],
+      ["그린 글로스", `${drawn} / ${tr.gloss.length}`],
+      ["프레임", `${gen.frames} (${(gen.frames / gen.fps).toFixed(2)}초)`],
+      ["토큰", String(gen.tokens.length)], ["구간", String(gen.segments.length)],
+      ["nonmanual", nonmanual.join(", ") || "–"],
+    ]);
+    $("caption").textContent = gen.segments.length
+      ? "아래 막대: 단어 구간(빈 곳은 연결). 막대를 누르면 그 구간으로 간다."
+      : "구간 정보 없음(단어 모드이거나 segments 끔).";
+    remember(text, glossMode);
+    const freeze = Number(new URLSearchParams(location.search).get("frame"));  // 화면 확인용: ?frame=N에서 멈춤
+    if (gen.frames && freeze > 0) { state.frame = Math.min(freeze, gen.frames - 1); draw(); }
+    else if (gen.frames) setPlaying(true);
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    $("run").disabled = false;
+  }
+}
+
+$("form").addEventListener("submit", run);
+$("play").onclick = () => setPlaying(!state.playing);
+$("scrub").oninput = (e) => { setPlaying(false); state.frame = Number(e.target.value); draw(); };
+$("showFace").onchange = draw;
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { renderTimeline(); draw(); });
+const preset = new URLSearchParams(location.search).get("text");
+if (preset) { $("text").value = preset; run(); } else draw();
+</script>
+</body>
+</html>

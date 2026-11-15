@@ -61,6 +61,57 @@ does not represent sign-language motion. It accepts nonmanual tags but does not
 generate expressions. Tag forwarding does not establish model support; E5's face
 is an average face, and expression generation has not been validated.
 
+## 문장 경로와 검증 화면 (P4, 2026-11-14)
+
+한국어 문장 → 번역기 → 글로스 열 → 글로스 표 v2 → 동작 단위 열 → 문장 생성기 → 응답 ⑤.
+`/generate` 요청과 응답 ⑤ 형식은 그대로다. 새 경로만 더했다.
+
+| 경로 | 하는 일 |
+|---|---|
+| `POST /translate` | `{"text": "..."}` → `{"gloss", "units", "senses", "unknown", "dropped", "translator"}` (번역기 공유 인터페이스 dict + 번역기 이름). 빈 글·너무 긴 글 422, 번역기 없음 503 |
+| `POST /generate` (문장 모드) | 받은 글로스 이름을 표로 단위로 바꿔 문장 생성기를 부른다. 표에 없거나 생성기가 구간을 주지 않은 이름은 `unknown` |
+| `GET /verify` | 검증 화면 HTML 한 장. 문장 입력 → `/translate` → `/generate` → 2D 정면 재생, 글로스·구간 막대, unknown·dropped, 응답 시간. 외부 CDN 없음. `?text=...&frame=N`으로 바로 실행·멈춤 |
+
+두 POST 응답에는 서버 처리 시간이 `Server-Timing` 헤더(`tr;dur=`, `gen;dur=` ms)로 붙는다. JSON 본문은 바뀌지 않는다.
+
+문장 모드에서 `segments`는 `[{"gloss": 글로스 이름, "start": 첫 프레임, "end": 끝 프레임 다음}]`(시간 순, 연결 구간 제외)이다.
+단어 모드(기본)는 예전처럼 항상 `[]`다. Spring(2026-11-14~)은 segments를 검증한 뒤 앱에 그대로 전달한다.
+
+| 환경 변수 | 기본값 | 뜻 |
+|---|---|---|
+| `SIGN_MODE` | `word` | `word` = 예전 단어 Generator(`SIGN_RUN_DIR`), `sentence` = 문장 경로 |
+| `SIGN_GLOSS_TABLE` | – | 글로스 표 v2 JSON. 문장 모드와 stub 번역기에 필요 |
+| `SIGN_TRANSLATOR` | `stub` | `stub` 또는 `module:function`(예: `gen.translate:load_translator`) |
+| `SIGN_TRANSLATOR_PATH` | – | 실제 번역기의 학습 결과 JSON (load 함수에 그대로 넘김) |
+| `SIGN_SENTENCE_GENERATOR` | `synthetic` | `synthetic`(가짜 동작) · `word`(`SIGN_RUN_DIR`의 단어 Generator를 단위마다 불러 잇기) · `module:function`(`load_sentence_generator(run_dir, device=)`) |
+| `SIGN_SENTENCE_RUN_DIR` | – | 실제 문장 생성기 run 폴더 |
+| `SIGN_SENTENCE_SIGNER` | – | 문장 생성기에 넘길 화자 조건 |
+| `SIGN_SEGMENTS` | `1` | 문장 모드에서 segments를 채울지 |
+| `SIGN_VERIFY_PAGE` | `1` | `0`이면 `/verify`가 404 |
+
+번역기를 설정하지 않은 단어 모드 배포(`SIGN_GLOSS_TABLE` 없음, `SIGN_TRANSLATOR=stub`)에서는 `/translate`가 503이다.
+
+로컬 확인 (`ml/`에서, GPU·데이터 없이):
+
+```powershell
+$env:SIGN_MODE = 'sentence'
+$env:SIGN_GLOSS_TABLE = '<글로스 표 v2 JSON>'   # stub 번역기 + 가짜 동작
+python -m uvicorn serve.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+# 브라우저: http://127.0.0.1:8000/verify
+```
+
+표 없이 보려면 `python -m uvicorn serve.demo:create_sentence_demo_app --factory ...`(지어낸 7단어 표).
+가짜 동작(`synthetic`)은 단위 이름 해시로 손 위치를 정한 것이라 수어가 아니다. 화면·연결 확인용이다.
+
+실제 부품으로 바꾸기 (①②가 끝난 뒤, 서버에서):
+
+```bash
+SIGN_MODE=sentence SIGN_GLOSS_TABLE=<표> \
+SIGN_TRANSLATOR=gen.translate:load_translator SIGN_TRANSLATOR_PATH=<번역기 JSON> \
+SIGN_SENTENCE_GENERATOR=<모듈>:load_sentence_generator SIGN_SENTENCE_RUN_DIR=/data/runs/sent_gpt_<태그> \
+SIGN_DEVICE=cuda python -m uvicorn serve.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+```
+
 ## Limits and scheduling
 
 Python environment variables:
@@ -98,7 +149,7 @@ Spring environment variables (configured URL is never taken from request input):
 
 Timeouts are ISO-8601 durations. Response timeout bounds the full HTTP exchange,
 including reading the body. Response size is bounded; redirects and retries are
-disabled. Spring validates required keys, integer fields, source, empty segments,
+disabled. Spring validates required keys, integer fields, source, segments,
 canonical base64, exact byte count, finite float coordinates, and unknown entries
 before returning the coordinate response. Align the two frame limits when deploying.
 Only `metadata.question` is forwarded, as `nonmanual=["의문"]`.
