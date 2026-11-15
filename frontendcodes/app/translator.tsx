@@ -1146,7 +1146,7 @@ export default function TranslatorScreen() {
           {followOpen && motion ? (
             /* 따라 하기: 친구 시범과 내 카메라를 나란히 두고 점수를 낸다. 닫으면 카메라도 꺼진다 */
             <RoughBox seed={31} radius={18} style={styles.followBox}>
-              <FollowAlong reference={motion} title={`「${(result?.input || inputText).trim()}」 따라 하기`} />
+              <FollowAlong reference={motion} title={`「${(result?.input || inputText).trim()}」 따라 하기`} devGen={params.gen} />
             </RoughBox>
           ) : (
             <>

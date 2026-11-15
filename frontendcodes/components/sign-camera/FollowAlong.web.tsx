@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Avatar3D } from '@/components/paint/avatar-3d';
 import type { Motion } from '@/lib/api/generate';
+import { requestReading, type ReadCandidate } from '@/lib/api/recognize';
 
 import { toBodyFrame, type BodyCapture } from './body-frame';
 import { scoreFollow, verdict, type FollowScore, type ScoreMotion } from './body-score';
@@ -27,6 +28,11 @@ const COUNTDOWN_S = 3;
 
 type Phase = 'idle' | 'countdown' | 'recording' | 'done';
 type Outcome = { kind: 'score'; score: FollowScore } | { kind: 'none' };
+/** 읽는 모델이 읽은 결과. 낱말 구간마다 친구 동작과 내 동작을 따로 읽는다 */
+type ReadRow = { gloss: string | null; friend: ReadCandidate[]; mine: ReadCandidate[] };
+type ReadState = { kind: 'loading' } | { kind: 'rows'; rows: ReadRow[]; classes: number } | { kind: 'error'; message: string };
+const readName = (c: ReadCandidate) => c.name ?? c.item;
+const percent = (p: number) => `${Math.round(p * 100)}%`;
 
 /** 친구 동작 길이에 여유를 더한 담는 시간: 사람은 친구보다 조금 늦게 시작하고 조금 느리다 */
 function recordMs(reference: Motion) {
@@ -68,7 +74,21 @@ function Bar({ label, score, note }: { label: string; score: number; note: strin
   );
 }
 
-export default function FollowAlong({ reference, title }: { reference: Motion; title?: string }) {
+/** 읽는 모델이 읽은 결과 한 칸: 1등 단어와 확률, 그 아래 2 · 3등 */
+function ReadCell({ top, gloss }: { top: ReadCandidate[]; gloss: string | null }) {
+  if (top.length === 0) return <span style={{ color: SOFT }}>읽지 못함</span>;
+  const hit = gloss !== null && top[0].name === gloss;
+  return (
+    <>
+      <b>{readName(top[0])}</b> {percent(top[0].prob)}
+      {hit ? ' ✓' : ''}
+      <div style={{ color: SOFT, fontSize: 12 }}>{top.slice(1, 3).map((c) => `${readName(c)} ${percent(c.prob)}`).join(' · ')}</div>
+    </>
+  );
+}
+
+/** devGen 은 개발용 주소 바꾸기(?gen=…). 읽는 모델 주소도 여기서 따라 나온다 */
+export default function FollowAlong({ reference, title, devGen }: { reference: Motion; title?: string; devGen?: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const session = useRef<CameraSession | null>(null);
   const sequence = useRef<BodySequence | null>(null);
@@ -85,6 +105,8 @@ export default function FollowAlong({ reference, title }: { reference: Motion; t
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [friendKey, setFriendKey] = useState(0);
   const [friend3d, setFriend3d] = useState(true);
+  const [read, setRead] = useState<ReadState | null>(null);
+  const readRun = useRef(0);
   const duration = useMemo(() => recordMs(reference), [reference]);
   const friend: ScoreMotion = useMemo(() => ({ frames: reference.frames, fps: reference.fps || 30, data: reference.data, stride: 375 }), [reference]);
 
@@ -135,6 +157,8 @@ export default function FollowAlong({ reference, title }: { reference: Motion; t
     stopTimer();
     sequence.current = null;
     setOutcome(null);
+    setRead(null);
+    readRun.current++;
     setPhase('idle');
     setFriendKey((k) => k + 1);
   }, [reference]);
@@ -163,15 +187,38 @@ export default function FollowAlong({ reference, title }: { reference: Motion; t
     if (capture && sequence.current) sequence.current.add(body, capture.timestampMs);
   }, []);
 
-  const finish = (seq: BodySequence) => {
-    const mine = resampleBody(seq.frames);
-    const score = mine ? scoreFollow({ frames: mine.frames, fps: mine.fps, data: mine.data, stride: 165, leftHand: mine.leftHand, rightHand: mine.rightHand }, friend, reference.segments) : null;
+  /** 읽는 모델에게 물어본다: 낱말 구간마다 친구 동작과 내 동작이 어떤 단어로 읽히는지. 주소를 정해 두지 않았으면 아무것도 하지 않는다 */
+  const askReading = async (mine: ScoreMotion, score: FollowScore) => {
+    const run = ++readRun.current;
+    const parts: { gloss: string | null; friend: [number, number]; mine: [number, number] }[] =
+      score.aligned.length > 0 ? score.aligned : [{ gloss: null, friend: score.active.friend, mine: score.active.mine }];
+    setRead({ kind: 'loading' });
+    // 추론 서버는 한 번에 한 요청만 받으므로 차례로 묻는다
+    const friendRead = await requestReading({ frames: reference.frames, joints: 125, data: reference.data }, parts.map((p) => p.friend), { devGenEndpoint: devGen });
+    if (run !== readRun.current) return;
+    if (friendRead.kind === 'off') return setRead(null);
+    if (friendRead.kind === 'error') return setRead({ kind: 'error', message: friendRead.message });
+    const mineRead = await requestReading({ frames: mine.frames, joints: 55, data: mine.data }, parts.map((p) => p.mine), { devGenEndpoint: devGen });
+    if (run !== readRun.current) return;
+    if (mineRead.kind !== 'ok') return setRead({ kind: 'error', message: mineRead.kind === 'error' ? mineRead.message : '읽는 모델에 물어보지 못했어요.' });
+    setRead({ kind: 'rows', classes: friendRead.classes, rows: parts.map((p, i) => ({ gloss: p.gloss, friend: friendRead.results[i]?.top ?? [], mine: mineRead.results[i]?.top ?? [] })) });
+  };
+  const judge = (mine: ScoreMotion | null) => {
+    const score = mine ? scoreFollow(mine, friend, reference.segments) : null;
     setOutcome(score ? { kind: 'score', score } : { kind: 'none' });
     setPhase('done');
+    if (mine && score) void askReading(mine, score);
+    else setRead(null);
+  };
+  const finish = (seq: BodySequence) => {
+    const mine = resampleBody(seq.frames);
+    judge(mine ? { frames: mine.frames, fps: mine.fps, data: mine.data, stride: 165, leftHand: mine.leftHand, rightHand: mine.rightHand } : null);
   };
   const follow = () => {
     if (!stream || phase === 'countdown' || phase === 'recording') return;
     setOutcome(null);
+    setRead(null);
+    readRun.current++;
     setPhase('countdown');
     setClock(COUNTDOWN_S);
     const started = performance.now();
@@ -198,11 +245,7 @@ export default function FollowAlong({ reference, title }: { reference: Motion; t
       }, 100);
     }, 100);
   };
-  const selfCheck = () => {
-    const score = scoreFollow(shakenCopy(reference), friend, reference.segments);
-    setOutcome(score ? { kind: 'score', score } : { kind: 'none' });
-    setPhase('done');
-  };
+  const selfCheck = () => judge(shakenCopy(reference));
 
   const busy = phase === 'countdown' || phase === 'recording';
   const score = outcome?.kind === 'score' ? outcome.score : null;
@@ -286,6 +329,40 @@ export default function FollowAlong({ reference, title }: { reference: Motion; t
             </ul>
           ) : (
             <p style={{ margin: '12px 0 0' }}>고칠 곳이 보이지 않아요.</p>
+          )}
+          {read && (
+            <div style={{ marginTop: 14, borderTop: `1.5px dashed ${INK}`, paddingTop: 12 }}>
+              <div style={{ fontWeight: 700 }}>읽는 모델이 읽은 단어</div>
+              {read.kind === 'loading' && <p role="status" style={{ margin: '6px 0 0', color: SOFT }}>읽는 모델에게 물어보는 중…</p>}
+              {read.kind === 'error' && <p role="status" style={{ margin: '6px 0 0', color: SOFT }}>읽는 모델에 물어보지 못했어요. {read.message}</p>}
+              {read.kind === 'rows' && (
+                <>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 6, fontSize: 14 }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', color: SOFT, fontSize: 12.5 }}>
+                          <th style={{ padding: '4px 10px 4px 0', fontWeight: 400 }}>낱말</th>
+                          <th style={{ padding: '4px 10px 4px 0', fontWeight: 400 }}>친구 동작은 이렇게 읽힘</th>
+                          <th style={{ padding: '4px 0', fontWeight: 400 }}>내 동작은 이렇게 읽힘</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {read.rows.map((row, i) => (
+                          <tr key={i} style={{ borderTop: '1px solid rgba(46,38,32,.18)', verticalAlign: 'top' }}>
+                            <td style={{ padding: '6px 10px 6px 0', whiteSpace: 'nowrap' }}>{row.gloss ?? '동작 전체'}</td>
+                            <td style={{ padding: '6px 10px 6px 0' }}><ReadCell top={row.friend} gloss={row.gloss} /></td>
+                            <td style={{ padding: '6px 0' }}><ReadCell top={row.mine} gloss={row.gloss} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p style={{ margin: '8px 0 0', color: SOFT, fontSize: 12.5 }}>
+                    읽는 모델은 스튜디오에서 찍은 단어 {read.classes.toLocaleString()}개로 배웠습니다. 문장 속 낱말이나 웹캠으로 받은 좌표는 잘 못 읽을 수 있어서, 위 점수에는 넣지 않고 읽힌 결과만 보여 줍니다. ✓ 는 1등으로 읽힌 단어가 그 낱말과 같다는 뜻입니다.
+                  </p>
+                </>
+              )}
+            </div>
           )}
           <p style={{ margin: '10px 0 0', color: SOFT, fontSize: 12.5 }}>
             친구 동작과 내 동작의 손 자리 · 손가락 모양을 시간을 맞춰 견준 점수입니다. 장 {score.compared.mine}개와 {score.compared.friend}개를 견줬어요. 기준선은 아직 임시값이고, 수어의 뜻이 맞는지를 판정한 것은 아닙니다.

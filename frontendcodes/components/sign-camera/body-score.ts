@@ -41,6 +41,10 @@ export type FollowScore = {
   mirrored: boolean;
   /** 앞뒤를 잘라 내고 실제로 비교한 장 수 */
   compared: { mine: number; friend: number };
+  /** 잘라 내고 남은 구간 [시작, 끝 다음). 원래 동작의 장 번호 */
+  active: { mine: [number, number]; friend: [number, number] };
+  /** 낱말마다, 시간을 맞춘 결과로 본 "내 동작의 어느 구간이 그 낱말인가". 읽는 모델에 낱말별로 물어볼 때 쓴다 */
+  aligned: { gloss: string; friend: [number, number]; mine: [number, number] }[];
 };
 
 const R_ELBOW = 3, R_WRIST = 4, L_ELBOW = 6, L_WRIST = 7;
@@ -176,6 +180,7 @@ type Pass = {
   mine: Frame[];
   friend: Frame[];
   friendStart: number;
+  mineStart: number;
   friendUses: { right: boolean[]; left: boolean[] };
   unseen: { right: number; left: number };
 };
@@ -255,6 +260,7 @@ function pass(mineMotion: ScoreMotion, friendMotion: ScoreMotion, mirror: boolea
     mine,
     friend,
     friendStart: ft.start,
+    mineStart: mt.start,
     friendUses: { right: usesRight, left: usesLeft },
     unseen: { right: unseenRatio('right', usesRight), left: unseenRatio('left', usesLeft) },
   };
@@ -311,6 +317,18 @@ export function scoreFollow(mine: ScoreMotion, friend: ScoreMotion, segments: Sc
     })
     .filter((w): w is { gloss: string; score: number } => w !== null);
 
+  const aligned = segments
+    .map((segment) => {
+      const frames = straight.path
+        .filter(([, j]) => j + straight.friendStart >= segment.start && j + straight.friendStart < segment.end)
+        .map(([i]) => i + straight.mineStart);
+      if (frames.length < 2) return null;
+      const mine: [number, number] = [Math.min(...frames), Math.max(...frames) + 1];
+      const friend: [number, number] = [segment.start, segment.end];
+      return { gloss: segment.gloss, friend, mine };
+    })
+    .filter((a): a is { gloss: string; friend: [number, number]; mine: [number, number] } => a !== null);
+
   return {
     score: straight.score,
     position: { distance: straight.position, score: toScore(straight.position, POSITION_RANGE) },
@@ -320,6 +338,11 @@ export function scoreFollow(mine: ScoreMotion, friend: ScoreMotion, segments: Sc
     hints: hintsFor(straight, words, mirrored),
     mirrored,
     compared: { mine: straight.mine.length, friend: straight.friend.length },
+    active: {
+      mine: [straight.mineStart, straight.mineStart + straight.mine.length],
+      friend: [straight.friendStart, straight.friendStart + straight.friend.length],
+    },
+    aligned,
   };
 }
 

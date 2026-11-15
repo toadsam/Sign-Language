@@ -5,10 +5,13 @@ import copy
 import json
 import re
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
+RECOGNIZE_URL = None  # --recognize-url 로 주면 읽기 요청을 그 주소(진짜 추론 서버의 /recognize)로 넘긴다
 SAMPLE = json.loads((ROOT / 'components/sign-player/demo-motion.json').read_text(encoding='utf-8'))  # 윈도우 기본 인코딩(cp949)에서도 읽히게
 
 
@@ -51,8 +54,48 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.respond(404, {'error': 'not found'})
 
+    def recognize(self):
+        """읽기 주소 흉내 (2026-11-15 재훈). 넘길 곳이 있으면 진짜 읽는 모델의 답을 그대로 전하고,
+        없으면 구간마다 '점검 단어'를 돌려준다. 가짜 답은 좌표를 보지 않는다."""
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 < size <= 12_000_000:
+                raise ValueError()
+            raw = self.rfile.read(size)
+            body = json.loads(raw)
+            frames, joints = body['frames'], body['joints']
+            if type(frames) is not int or joints not in (55, 125) or frames < 4 or type(body['data']) is not str:
+                raise ValueError()
+            if len(body['data']) != (frames * joints * 12 + 2) // 3 * 4:
+                raise ValueError()
+            spans = body.get('spans') or [[0, frames]]
+            if any(len(s) != 2 or not 0 <= s[0] < s[1] <= frames for s in spans):
+                raise ValueError()
+        except (ValueError, KeyError, TypeError, UnicodeError):
+            self.respond(400, {'error': {'code': 'INVALID_REQUEST', 'message': '동작 좌표가 올바르지 않습니다.', 'retryable': False}})
+            return
+        if RECOGNIZE_URL:
+            try:
+                forward = urllib.request.Request(RECOGNIZE_URL, data=raw, headers={'Content-Type': 'application/json'})
+                with urllib.request.urlopen(forward, timeout=15) as answer:
+                    self.respond(200, json.loads(answer.read()))
+            except urllib.error.HTTPError as error:
+                status = 503 if error.code in (429, 503) else 400 if error.code in (400, 413, 422) else 502
+                code = {503: 'RECOGNITION_UNAVAILABLE', 400: 'INVALID_REQUEST', 502: 'RECOGNITION_FAILED'}[status]
+                self.respond(status, {'error': {'code': code, 'message': '읽는 모델이 답하지 못했습니다.', 'retryable': status != 400}})
+            except (urllib.error.URLError, OSError, ValueError):
+                self.respond(503, {'error': {'code': 'RECOGNITION_UNAVAILABLE', 'message': '읽는 모델을 쓸 수 없습니다. 잠시 후 다시 시도해 주세요.', 'retryable': True}})
+            return
+        results = [{'start': s[0], 'end': s[1], 'top': [
+            {'item': f'MOCK{i * 3 + k + 1:04d}', 'name': f'점검 단어 {i * 3 + k + 1}', 'prob': p}
+            for k, p in enumerate((0.62, 0.21, 0.08))]} for i, s in enumerate(spans)]
+        self.respond(200, {'classes': 3000, 'results': results})
+
     def do_POST(self):
         request = urlsplit(self.path)
+        if request.path == '/api/sign/recognize':
+            self.recognize()
+            return
         if request.path != '/api/sign/generate':
             self.respond(404, {'error': 'not found'})
             return
@@ -121,7 +164,13 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8085)
+    parser.add_argument('--recognize-url', default=None, help='읽기 요청을 넘길 진짜 추론 서버 주소 (예: http://127.0.0.1:8000/recognize). localhost 만')
     args = parser.parse_args()
+    if args.recognize_url:
+        if not args.recognize_url.startswith(('http://127.0.0.1:', 'http://localhost:')):
+            parser.error('--recognize-url 은 localhost 주소만 받습니다')
+        RECOGNIZE_URL = args.recognize_url
+        print(f'Recognize requests are forwarded to {RECOGNIZE_URL}', flush=True)
     print(f'Synthetic API only: http://127.0.0.1:{args.port}/api/sign/generate', flush=True)
     print('All text returns synthetic test data. No sign recognition or text storage.', flush=True)
     try:

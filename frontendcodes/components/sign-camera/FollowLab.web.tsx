@@ -60,7 +60,7 @@ export default function FollowLab({ genEndpoint }: { genEndpoint?: string }) {
         지금 친구 동작: <b>{reference.label}</b> · {seconds}초 · 낱말 구간 {reference.motion.segments.length}개
         {note ? <span style={{ color: '#9E2E1C' }}> · {note}</span> : null}
       </p>
-      <FollowAlong reference={reference.motion} />
+      <FollowAlong reference={reference.motion} devGen={genEndpoint} />
     </section>
   );
 }

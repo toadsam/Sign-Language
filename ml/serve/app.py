@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from . import recognize as reading
 from . import sentence
 from .models import GenerateRequest, MotionResponse, TranslateRequest, TranslateResponse
 from .serialization import InvalidMotion, serialize
@@ -26,6 +27,10 @@ class Generator(Protocol):
 
 class Translator(Protocol):
     def translate(self, text: str) -> dict: ...
+
+
+class Recognizer(Protocol):
+    def score(self, motion, active=None) -> dict: ...
 
 
 def load_word_generator(settings: Settings) -> Generator:
@@ -60,11 +65,21 @@ def load_translator(settings: Settings) -> Translator | None:
     return sentence.load_object(settings.translator, settings.translator_path)
 
 
+def load_recognizer(settings: Settings) -> Recognizer | None:
+    if not settings.recog_run_dir:
+        return None  # 읽는 모델을 설정하지 않은 배포: /recognize 는 503
+    # 승현의 읽는 모델(계약 ④)을 그대로 쓴다. 배포할 때만 불러온다.
+    from recog.infer import Recognizer as DeployedRecognizer
+    return DeployedRecognizer(settings.recog_run_dir, device=settings.device)
+
+
 def create_app(settings: Settings | None = None,
                generator_factory: Callable[[], Generator] | None = None,
-               translator_factory: Callable[[], Translator] | None = None) -> FastAPI:
+               translator_factory: Callable[[], Translator] | None = None,
+               recognizer_factory: Callable[[], Recognizer | None] | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     inference_lock = threading.Lock()
+    recognize_lock = threading.Lock()
     translate_lock = threading.Lock()
     translator_name = "injected" if translator_factory is not None else settings.translator
 
@@ -87,13 +102,27 @@ def create_app(settings: Settings | None = None,
                 app.state.translator = None
         except Exception:
             logger.error("Translator initialization failed")
+        app.state.recognizer = None
+        app.state.item_names = {}
+        try:
+            app.state.recognizer = await run_in_threadpool(
+                recognizer_factory or (lambda: load_recognizer(settings)))
+            if not callable(getattr(app.state.recognizer, "score", None)):
+                app.state.recognizer = None
+            table = sentence.load_gloss_table(settings.gloss_table) if settings.gloss_table else None
+            app.state.item_names = reading.item_names(table, app.state.generator)
+        except Exception:
+            logger.error("Recognizer initialization failed")
         yield
         app.state.generator = None
         app.state.translator = None
+        app.state.recognizer = None
 
     app = FastAPI(title="Sign motion generation", lifespan=lifespan)
     app.state.generator = None
     app.state.translator = None
+    app.state.recognizer = None
+    app.state.item_names = {}
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request, _error):
@@ -155,6 +184,31 @@ def create_app(settings: Settings | None = None,
         response.headers["Server-Timing"] = f"tr;dur={(time.perf_counter() - started) * 1000:.1f}"
         name = getattr(app.state.translator, "name", None)
         return TranslateResponse(**result, translator=name if type(name) is str and name else translator_name)
+
+    @app.post("/recognize", response_model=reading.RecognizeResponse)
+    async def recognize(request: reading.RecognizeRequest, response: Response):
+        """동작 좌표를 읽는 모델에 넣어 어떤 단어로 읽히는지 돌려준다 (serve/recognize.py)."""
+        try:
+            motion, spans = reading.decode(request, settings.max_frames)
+        except reading.InvalidRecognition as error:
+            raise HTTPException(422, str(error)) from None
+        recognizer = app.state.recognizer
+        if recognizer is None:
+            raise HTTPException(503, "Recognizer unavailable")
+        if request.joints == 55 and reading.uses_face(recognizer):
+            raise HTTPException(422, "this recognizer needs face joints")
+        if not recognize_lock.acquire(blocking=False):
+            raise HTTPException(503, "Recognizer busy", headers={"Retry-After": "1"})
+        try:
+            started = time.perf_counter()
+            body = await run_in_threadpool(reading.read, recognizer, motion, spans, app.state.item_names)
+            response.headers["Server-Timing"] = f"rec;dur={(time.perf_counter() - started) * 1000:.1f}"
+            return body
+        except Exception:
+            logger.error("Recognizer execution failed")
+            raise HTTPException(500, "Recognition failed") from None
+        finally:
+            recognize_lock.release()
 
     @app.get("/verify", response_class=HTMLResponse)
     async def verify():

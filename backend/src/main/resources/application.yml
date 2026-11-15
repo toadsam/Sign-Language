@@ -17,6 +17,9 @@ sign:
       enabled: ${SIGN_SYNONYM_ENABLED:true}
       cache-path: ${SIGN_SYNONYM_CACHE_PATH:}
       candidates: ${SIGN_SYNONYM_CANDIDATES:10}
+  # 읽는 모델(POST /api/sign/recognize). 비워 두면 generation.url 의 /generate 를 /recognize 로 바꿔 쓴다
+  recognition:
+    url: ${SIGN_RECOGNITION_URL:}
 
 spring:
   application:

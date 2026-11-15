@@ -22,6 +22,7 @@ public class SecurityConfig {
             .requestMatchers(
                 "/translate",
                 "/api/sign/generate",
+                "/api/sign/recognize",
                 "/api/health",
                 "/api/auth/**",
                 "/api/quiz/**",

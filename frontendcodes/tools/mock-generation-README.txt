@@ -71,3 +71,9 @@ node tools/check-generation-api.cjs
 http://localhost:8081/translator?gen=http://localhost:8085/api/sign/generate?scenario=sentence
 ?gen= 은 개발 중 localhost 에서만 받습니다. 오류 안내는 ?scenario=error 로 봅니다.
 윈도우에서 목업이 켜지지 않던 문제(cp949 로 JSON 을 읽음)를 고쳤습니다.
+
+읽기 주소 흉내 (2026-11-15 재훈 추가)
+POST /api/sign/recognize 는 구간마다 '점검 단어 n'을 돌려줍니다. 좌표를 보지 않는 가짜 답입니다.
+진짜 읽는 모델의 답을 보려면 추론 서버를 로컬에서 켜고 목업에 넘길 주소를 줍니다:
+python tools/mock-generation-server.py --recognize-url http://127.0.0.1:8000/recognize
+목업은 브라우저의 CORS 를 대신 받아 주는 통로 역할만 하고, 읽기는 그 서버가 합니다.

@@ -319,3 +319,28 @@ Installation requires approval; CPU-only model requirements are separate in
 environment requirements, genuine inference versus fault injection, and cleanup.
 All model weights and input data in these tests are synthetic, not actual E5 or a
 validated sign-language model. The public response policies remain unchanged.
+
+## 읽기 경로 `/recognize` (2026-11-15, 재훈이 기능 합치기 브랜치 jjh-sum 에서 추가)
+
+앱의 따라 하기가 끝나면 "친구 동작과 내 동작이 읽는 모델(승현, 계약 ④)에게 어떤 단어로 읽히는지"를 보여 주려고 만든 주소다.
+읽는 모델 코드(`ml/recog`)와 계약 ④ `Recognizer.score(motion, active)`는 고치지 않고 그대로 부른다.
+
+```
+POST /recognize
+{"joints": 125 | 55, "frames": T, "data": "base64(float32 little-endian [T x joints x 3])",
+ "spans": [[start, end], ...]}          # 생략하면 동작 전체를 한 번 읽는다. end 는 끝 프레임 다음
+-> {"classes": 3000,
+    "results": [{"start": 0, "end": T, "top": [{"item": "WORD0773", "name": "병원", "prob": 0.82}, ...]}]}
+```
+
+- 좌표는 계약 ①과 같다(목 원점, 어깨너비 1). `joints: 55` 는 앞 55점(상체 13 · 왼손 21 · 오른손 21)만 보낸 것이고 얼굴 70점은 0으로 채워 읽는다. 웹캠으로 받은 내 동작이 55점이다.
+- `top` 은 확률이 높은 순서로 5개. `name` 은 단어 번호의 한국어 이름이고 글로스 표나 단어 생성기의 단어표에서 찾는다. 못 찾으면 `null`.
+- 켜는 법: 환경 변수 `SIGN_RECOG_RUN_DIR` 에 읽는 모델 run 폴더(`model.pt` 가 든 곳)를 적는다. 비워 두면 서버는 그대로 켜지고 `/recognize` 만 503 이다. 기존 `/generate` · `/translate` · `/verify` 동작은 바뀌지 않는다.
+- 답: 요청이 틀리면 422(얼굴 좌표까지 쓰는 읽는 모델에 55점을 보낸 경우도 422), 읽는 모델이 없거나 다른 읽기 요청을 처리 중이면 503(`Retry-After: 1`), 읽다가 실패하면 500. 한 번에 한 요청만 읽는다.
+- Spring 은 `POST /api/sign/recognize` 로 이 주소에 전달한다. 주소는 `SIGN_RECOGNITION_URL`, 비워 두면 `SIGN_GENERATION_URL` 의 끝 `/generate` 를 `/recognize` 로 바꿔 쓴다.
+
+한계: 읽는 모델은 스튜디오에서 찍은 **단어 클립**으로 배웠다. 문장 모델이 만든 동작의 낱말 구간(S 단위가 많다)이나 웹캠 좌표(깊이 z 가 부정확하다)는 잘 못 읽을 수 있다.
+그래서 이 주소는 읽은 결과만 전하고 맞다 · 틀리다를 판정하지 않으며, 앱도 따라 하기 점수에 넣지 않는다.
+
+확인: `python -m pytest ml/serve/tests/test_recognize_service.py` (가짜 읽는 모델 6개 검사). 로컬 표본 모델(`runs/recog_sample`, 20단어)로는 단어 클립 3개가 125점 · 55점 모두 제 단어로 읽혔다.
+VM 의 정식 읽는 모델(3,000단어)로는 아직 켜 보지 않았다.

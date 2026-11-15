@@ -121,6 +121,12 @@ assert.equal(half.words.length, 2);
 assert.ok(half.words[0].score >= 85 && half.words[1].score < half.words[0].score - 30, '뒤 낱말만 낮다: ' + JSON.stringify(Array.from(half.words)));
 assert.ok(Array.from(half.hints).some((h) => h.includes('「가다」')));
 const both = scoreFollow(friend2, friend2, segments);
+// 낱말 구간이 내 동작의 어느 장인지: 똑같이 했으면 친구 구간과 같고, 느리게 했으면 그만큼 늘어난다
+assert.deepEqual(Array.from(both.aligned).map((x) => [x.gloss, ...x.friend, ...x.mine]), [['학교', 4, 56, 4, 56], ['가다', 64, 116, 64, 116]]);
+const slow2 = scoreFollow(motion({ frames: 180, right: two(second), open: 1, idleBefore: 30 }), friend2, segments);
+assert.ok(slow2.aligned[0].mine[0] >= 30 && slow2.aligned[1].mine[1] <= 210 && slow2.aligned[0].mine[1] <= slow2.aligned[1].mine[0] + 12, '느리게 한 내 동작에서도 낱말 구간이 순서대로 잡힌다: ' + JSON.stringify(Array.from(slow2.aligned)));
+assert.ok(slow2.aligned[0].mine[1] - slow2.aligned[0].mine[0] > 60, '1.5배 느리면 구간도 길다');
+assert.deepEqual(Array.from(same.active.friend).length, 2);
 assert.deepEqual(Array.from(both.words).map((w) => w.score), [100, 100]);
 
 // 9. 친구 동작이 125점이어도 같은 결과

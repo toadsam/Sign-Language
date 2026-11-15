@@ -21,6 +21,8 @@ class Settings:
     sentence_signer: str | None = None
     segments: bool = True                    # 문장 모드에서 응답 segments를 채울지
     verify_page: bool = True                 # GET /verify
+    # 읽기 경로 (2026-11-15). 비워 두면 POST /recognize 는 503 이다.
+    recog_run_dir: str | None = None         # 읽는 모델 run 폴더 (model.pt 가 든 곳)
 
     def __post_init__(self):
         for name in ("max_words", "max_word_chars", "max_input_chars", "max_nonmanual", "max_frames"):
@@ -41,4 +43,5 @@ class Settings:
                    sentence_generator=env("SIGN_SENTENCE_GENERATOR", "synthetic"),
                    sentence_run_dir=env("SIGN_SENTENCE_RUN_DIR"), sentence_signer=env("SIGN_SENTENCE_SIGNER"),
                    segments=flag("SIGN_SEGMENTS", True), verify_page=flag("SIGN_VERIFY_PAGE", True),
+                   recog_run_dir=env("SIGN_RECOG_RUN_DIR"),
                    **limits)
