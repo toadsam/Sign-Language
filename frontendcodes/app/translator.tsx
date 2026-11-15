@@ -1499,7 +1499,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 28 },
   inputBox: { marginHorizontal: 20, marginTop: 10, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
-  input: { minHeight: 52, color: Paint.ink, fontFamily: Font.body, fontSize: Size.lead, lineHeight: Size.lead * 1.45, paddingVertical: 6, textAlignVertical: 'top' },
+  // 웹: 글 칸에 position 이 없으면 RoughBox 의 바탕 그림(absolute SVG)이 글 칸을 덮어 안 보이고 눌리지도 않는다
+  input: { position: 'relative', minHeight: 52, color: Paint.ink, fontFamily: Font.body, fontSize: Size.lead, lineHeight: Size.lead * 1.45, paddingVertical: 6, textAlignVertical: 'top' },
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   presetChip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
   goButton: { marginHorizontal: 20, marginTop: 12 },
@@ -1542,7 +1543,7 @@ const styles = StyleSheet.create({
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   searchBox: { marginBottom: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
-  searchInput: { color: Paint.ink, fontFamily: Font.body, fontSize: Size.small, paddingVertical: 8 },
+  searchInput: { position: 'relative', color: Paint.ink, fontFamily: Font.body, fontSize: Size.small, paddingVertical: 8 },
   sheetList: { flex: 1 },
   sheetListContent: { gap: 8, paddingBottom: 4 },
   sheetEmpty: { textAlign: 'center', marginTop: 12 },

@@ -179,7 +179,7 @@ export default function BookmarkScreen() {
 const styles = StyleSheet.create({
   searchOuter: { paddingHorizontal: 20, marginTop: 10, marginBottom: 8 },
   search: { height: 50, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
-  searchInput: { flex: 1, height: 46, fontFamily: Font.body, fontSize: Size.body, color: Paint.ink },
+  searchInput: { position: 'relative', flex: 1, height: 46, fontFamily: Font.body, fontSize: Size.body, color: Paint.ink },
   list: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 28, gap: 10 },
   toast: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 6 },
   notice: { padding: 14 },
