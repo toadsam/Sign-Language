@@ -1,0 +1,19 @@
+{
+  "name": "수어링고",
+  "short_name": "수어링고",
+  "description": "문장을 쓰면 AI 친구가 수어로 보여 주고, 카메라로 따라 하며 배우는 수어 학습 앱",
+  "lang": "ko",
+  "dir": "ltr",
+  "id": ".",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#FBF5E6",
+  "theme_color": "#FBF5E6",
+  "categories": ["education"],
+  "icons": [
+    { "src": "pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "pwa/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
