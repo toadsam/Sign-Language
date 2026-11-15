@@ -55,23 +55,6 @@ function saveAttempts(list: Attempt[]) {
 }
 const attemptLine = (a: Attempt, i: number) =>
   `${i + 1}\t${a.kind}\t점수 ${a.score}\t자리 ${a.position.toFixed(3)}\t모양 ${a.shape === null ? '없음' : a.shape.toFixed(3)}${a.mirrored ? '\t반대 손' : ''}${a.words ? `\t${a.words}` : ''}`;
-/** 진단 기록 (개발 때만). 패널이 다시 만들어져도 남도록 부품 밖에 둔다. "점수가 나왔다가 사라진다"의 원인을 찾으려는 것 */
-const trace: string[] = [];
-function mark(text: string) {
-  if (!__DEV__) return;
-  const line = `${new Date().toTimeString().slice(0, 8)} ${text}`;
-  trace.push(line);
-  if (trace.length > 40) trace.shift();
-  console.info('[따라 하기]', line);
-}
-/** 가장 가까운, 실제로 스크롤되는 부모 */
-function scrollParent(from: HTMLElement | null): HTMLElement | null {
-  for (let e = from?.parentElement ?? null; e; e = e.parentElement) {
-    const overflow = getComputedStyle(e).overflowY;
-    if ((overflow === 'auto' || overflow === 'scroll') && e.scrollHeight > e.clientHeight + 4) return e;
-  }
-  return null;
-}
 /**
  * 카메라에 너무 가까운가. 목에서 어깨너비만큼 아래(가슴 아래쪽)가 화면 밖이면 손이 화면 아래로 나가 잡히지 않는다.
  * 실제로 얼굴만 크게 잡힌 채 따라 해서 "손 0개"로 점수가 낮게 나온 일이 있었다 (2026-11-15)
@@ -166,21 +149,11 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   const result = useRef<HTMLDivElement>(null);
   const shownAt = useRef(0);
   useEffect(() => {
-    if (!outcome) return;
-    result.current?.scrollIntoView({ block: 'start' });
-    if (!__DEV__) return;
-    // 진단: 결과로 내려간 뒤 화면이 저절로 다른 데로 움직이는지 본다
-    const box = scrollParent(result.current);
-    const at = box ? box.scrollTop : window.scrollY;
-    mark(`결과로 내려감 (위치 ${Math.round(at)}${box ? '' : ', 창 스크롤'})`);
-    const timers = [300, 1000, 2500, 5000].map((ms) =>
-      setTimeout(() => {
-        const now = box ? box.scrollTop : window.scrollY;
-        if (Math.abs(now - at) > 40) mark(`화면이 움직임: ${Math.round(at)} → ${Math.round(now)} (${ms}ms 뒤)`);
-      }, ms)
-    );
-    return () => timers.forEach(clearTimeout);
+    if (outcome) result.current?.scrollIntoView({ block: 'start' });
   }, [outcome]);
+  // 개발용 칸(가짜 입력 점검, 기준선 맞추기 기록, 거리 숫자)은 개발 서버에서 주소에 calib 를 붙였을 때만 보인다.
+  // 개발 서버로 시연할 때 사용자 화면에 섞이지 않게 하려는 것이다 (예: /translator?calib=1)
+  const tools = useMemo(() => __DEV__ && new URLSearchParams(window.location.search).has('calib'), []);
   const [attempts, setAttempts] = useState<Attempt[]>(() => (__DEV__ ? loadAttempts() : []));
   const [attemptKind, setAttemptKind] = useState(ATTEMPT_KINDS[0]);
   const duration = useMemo(() => recordMs(reference), [reference]);
@@ -209,16 +182,11 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
 
   useEffect(() => {
     mounted.current = true;
-    mark('패널이 화면에 올라옴');
     const hidden = () => {
-      if (document.hidden) {
-        mark('창이 가려져서 카메라를 끔');
-        stopCamera();
-      }
+      if (document.hidden) stopCamera();
     };
     document.addEventListener('visibilitychange', hidden);
     return () => {
-      mark('패널이 화면에서 내려감 (닫히거나 다시 만들어짐)');
       mounted.current = false;
       stopTimer();
       session.current?.stop();
@@ -237,7 +205,6 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   }, [stream]);
   // 친구 동작이 바뀌면 처음부터
   useEffect(() => {
-    mark(`친구 동작이 정해짐/바뀜 (${reference.frames}장) → 점수 지우고 처음부터`);
     stopTimer();
     sequence.current = null;
     setOutcome(null);
@@ -298,8 +265,7 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
     setOutcome(score ? { kind: 'score', score } : { kind: 'none' });
     setPhase('done');
     shownAt.current = performance.now();
-    mark(score ? `점수 ${score.score} 나옴${record ? '' : ' (가짜 입력)'}` : '점수를 내지 못함');
-    if (__DEV__ && record && score) {
+    if (tools && record && score) {
       const attempt: Attempt = { kind: attemptKind, score: score.score, position: score.position.distance, shape: score.shape ? score.shape.distance : null, mirrored: score.mirrored, words: score.words.map((w) => `${w.gloss} ${w.score}`).join(', ') };
       setAttempts((list) => {
         const next = [...list, attempt];
@@ -317,11 +283,7 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   const follow = () => {
     if (!stream || phase === 'countdown' || phase === 'recording') return;
     // 결과가 막 나온 직후의 누름은 받지 않는다. 화면이 버벅일 때 밀려 있던 누름이 뒤늦게 들어와 점수를 지우고 다시 시작하는 일을 막는다
-    if (performance.now() - shownAt.current < 1200) {
-      mark('따라 하기 누름을 무시함 (결과 직후)');
-      return;
-    }
-    mark('따라 하기 누름 → 점수 지우고 3초 세기');
+    if (performance.now() - shownAt.current < 1200) return;
     setOutcome(null);
     setRead(null);
     readRun.current++;
@@ -406,7 +368,7 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
             <progress value={clock} max={duration} aria-label="담는 중" style={{ width: 200 }} />
           </>
         )}
-        {__DEV__ && (
+        {tools && (
           <button style={{ ...button, borderStyle: 'dashed', color: SOFT }} disabled={busy} onClick={selfCheck} title="카메라 없이 채점 흐름을 본다. 친구 동작을 조금 느리게 흔든 가짜 입력을 넣는다">
             점검: 가짜 입력으로 채점
           </button>
@@ -429,8 +391,8 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
             </div>
             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{verdict(score.score)}</div>
-              <Bar label="손의 자리" score={score.position.score} note={`거리 ${score.position.distance.toFixed(2)}`} />
-              {score.shape ? <Bar label="손가락 모양" score={score.shape.score} note={`거리 ${score.shape.distance.toFixed(2)}`} /> : <div style={{ color: SOFT, fontSize: 13 }}>손가락 모양은 견줄 장면이 없었어요.</div>}
+              <Bar label="손의 자리" score={score.position.score} note={tools ? `거리 ${score.position.distance.toFixed(2)}` : ''} />
+              {score.shape ? <Bar label="손가락 모양" score={score.shape.score} note={tools ? `거리 ${score.shape.distance.toFixed(2)}` : ''} /> : <div style={{ color: SOFT, fontSize: 13 }}>손가락 모양은 견줄 장면이 없었어요.</div>}
             </div>
           </div>
           {score.words.length > 0 && (
@@ -452,8 +414,8 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
             <p style={{ margin: '12px 0 0' }}>고칠 곳이 보이지 않아요.</p>
           )}
           {read && (
-            <div style={{ marginTop: 14, borderTop: `1.5px dashed ${INK}`, paddingTop: 12 }}>
-              <div style={{ fontWeight: 700 }}>읽는 모델이 읽은 단어</div>
+            <details style={{ marginTop: 14, borderTop: `1.5px dashed ${INK}`, paddingTop: 12 }}>
+              <summary style={{ fontWeight: 700, cursor: 'pointer' }}>읽는 모델이 읽은 단어 (실험)</summary>
               {read.kind === 'loading' && <p role="status" style={{ margin: '6px 0 0', color: SOFT }}>읽는 모델에게 물어보는 중…</p>}
               {read.kind === 'error' && <p role="status" style={{ margin: '6px 0 0', color: SOFT }}>읽는 모델에 물어보지 못했어요. {read.message}</p>}
               {read.kind === 'rows' && (
@@ -483,14 +445,14 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
                   </p>
                 </>
               )}
-            </div>
+            </details>
           )}
           <p style={{ margin: '10px 0 0', color: SOFT, fontSize: 12.5 }}>
-            친구 동작과 내 동작의 손 자리 · 손가락 모양을 시간을 맞춰 견준 점수입니다. 장 {score.compared.mine}개와 {score.compared.friend}개를 견줬어요. 기준선은 아직 임시값이고, 수어의 뜻이 맞는지를 판정한 것은 아닙니다.
+            친구 동작과 내 동작의 손 자리 · 손가락 모양을 시간을 맞춰 견준 점수예요. 수어의 뜻이 맞는지를 판정한 것은 아니에요.{tools ? ` (장 ${score.compared.mine}개와 ${score.compared.friend}개를 견줌)` : ''}
           </p>
         </div>
       )}
-      {__DEV__ && (
+      {tools && (
         <div style={{ marginTop: 14, borderTop: `1.5px dashed ${INK}`, paddingTop: 10, fontSize: 13.5 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
             <b>기준선 맞추기 기록 (개발용)</b>
@@ -515,7 +477,6 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
             </button>
           </div>
           <p style={{ margin: '6px 0', color: SOFT }}>따라 하기 전에 어떻게 할지 고르고, 카메라로 따라 하면 한 줄씩 쌓입니다. 가짜 입력 점검은 쌓이지 않아요. ({attempts.length}번)</p>
-          <textarea readOnly aria-label="진단 기록" value={trace.join('\n')} rows={Math.min(14, Math.max(3, trace.length))} style={{ width: '100%', boxSizing: 'border-box', font: '12px ui-monospace, monospace', border: `1.5px dashed ${INK}`, borderRadius: 8, background: CARD, padding: 8, marginBottom: 8 }} />
           {attempts.length > 0 && <textarea readOnly aria-label="따라 한 기록" value={attempts.map(attemptLine).join('\n')} rows={Math.min(12, attempts.length + 1)} style={{ width: '100%', boxSizing: 'border-box', font: '12.5px ui-monospace, monospace', border: `1.5px solid ${INK}`, borderRadius: 8, background: CARD, padding: 8 }} />}
         </div>
       )}

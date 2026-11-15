@@ -36,7 +36,8 @@ const SWITCH_READY_SECONDS = 0.18;
 // AI 동작이 곧 올 것 같으면 이만큼은 기다린다. 영상이 먼저 떴다가 3D로 바뀌는 깜빡임을 줄이려는 것
 const MOTION_GRACE_MS = 2500;
 // 눌러서 바로 해 보는 예문
-const PRESETS = ['카페에서 커피 주세요', '화장실이 어디예요?', '고마워요'];
+// 2026-11-15: '고마워요'는 AI 문장 모델이 그리지 못해(표에 '고맙다'가 없다) '배가 아파요'로 바꿨다
+const PRESETS = ['카페에서 커피 주세요', '화장실이 어디예요?', '배가 아파요'];
 
 export default function TranslatorScreen() {
   const router = useRouter();
@@ -1138,7 +1139,7 @@ export default function TranslatorScreen() {
                 runKey={chainRunKey}
                 onPick={motion ? undefined : (index) => setCurrentClipIndex(index)}
                 doneNote={motion && !followOpen ? '다시 보려면 「다시 보기」를 눌러요' : undefined}
-                sentence={result.simplifiedSentence || undefined}
+                sentence={(motion && motion.segments.length > 0 ? motionGloss.join(' ') : result.simplifiedSentence) || undefined}
               />
             </View>
           ) : null}
