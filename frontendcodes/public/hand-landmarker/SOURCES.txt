@@ -4,3 +4,7 @@ Model: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_land
 Test image: https://storage.googleapis.com/mediapipe-assets/right_hands.jpg
 Guide: https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js
 Assets downloaded for local prototype testing. No user camera frames are transmitted to these sources.
+Pose model (2026-11-15, BodyTracker): not stored in the repository. Loaded at run time from
+https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task
+unless public/pose-landmarker/pose_landmarker_lite.task exists (place the same file there for offline use).
+Only the model file is downloaded. No camera frames are transmitted.

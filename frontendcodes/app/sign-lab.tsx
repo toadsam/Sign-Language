@@ -8,6 +8,7 @@ const screens=[
   {route:'/sign-codebook',title:'코드북 살펴보기',state:'E5 atlas HTML · 코드북 JSON 가져오기',description:'E5 2D 토큰 격자와 3D 코드북을 불러와 검색하고 재생합니다. 기본 목록은 모의 코드북입니다.'},
   {route:'/sign-generate',title:'단어 입력과 동작 생성',state:'단어 모델 · Spring 기본 연결 확인',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
   {route:'/sign-camera',title:'손 좌표 수집',state:'PC 웹 · 단어 모델 연결 대기',description:'카메라, 내 영상 또는 공개 시험 영상에서 손 관절을 추출하고 5초 좌표를 수집합니다.'},
+  {route:'/sign-body',title:'내 움직임 좌표 받기',state:'PC 웹 · 상체 + 양손 55점',description:'카메라나 내 영상에서 상체와 손을 같이 뽑아 AI 동작과 같은 좌표로 바꾸고, 5초를 담아 3D 친구에게 입혀 봅니다. 채점의 앞 단계입니다.'},
   {route:'/sign-hand-review',title:'손 좌표 재생·품질 점검',state:'PC 웹 · 수집 JSON 불러오기',description:'수집 결과를 재생하고 미감지·추출 간격을 점검합니다. 품질 보고서도 저장할 수 있습니다.'},
 ];
 export default function SignLab(){return <ScrollView style={styles.root} contentContainerStyle={styles.content}>
