@@ -1,12 +1,15 @@
 /**
  * 퀴즈 화면 (색칠 마을).
  * 만화 칸 속 수어 영상을 보고 보기 4개 중 뜻을 고른다.
+ * 2026-11-15 재훈: 웹에서는 문제 단어를 AI 서버에 보내, 그릴 수 있으면 3D 친구로 먼저 보여 준다.
+ * AI 동작이 정답 수어와 같은지는 확인되지 않았다(퀴즈 20단어 중 읽는 모델이 그 단어로 읽은 것은 3개).
+ * 그래서 "AI가 그린 손짓"이라고 밝히고, 정답 영상으로 바꿔 볼 수 있게 했다. 못 그리면 처음부터 영상이다.
  * 맞으면 칸에 노란 물감이 번지고, 틀리면 카드가 흔들린다. 마지막 문제 뒤에는 결과를 보여 준다.
  */
 import { useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -18,6 +21,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { Avatar3D } from '@/components/paint/avatar-3d';
 import { Bee } from '@/components/paint/bee';
 import { PaintConfetti } from '@/components/paint/effects';
 import { PenLoader } from '@/components/paint/pen-loader';
@@ -37,6 +41,7 @@ import { usePaintNav } from '@/components/paint/transition';
 import { VideoFrame } from '@/components/paint/video-frame';
 import { Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
+import { requestMotion, type Motion } from '@/lib/api/generate';
 import {
   ChoiceId,
   QuizAnswerResponse,
@@ -219,6 +224,33 @@ export default function QuizScreen() {
     videoPlayer.loop = true;
     videoPlayer.play();
   });
+
+  // 문제 단어의 AI 동작 (웹에서만). 받는 동안은 잠깐 그리는 중 표시, 못 받으면 영상 그대로
+  const [aiMotion, setAiMotion] = useState<Motion | null>(null);
+  const [aiPending, setAiPending] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const [friendOk, setFriendOk] = useState(true);
+  const [friendKey, setFriendKey] = useState(0);
+  const questionId = currentQuestion?.quizId ?? null;
+  useEffect(() => {
+    setAiMotion(null);
+    setShowVideo(false);
+    if (Platform.OS !== 'web' || !questionId || !currentWord) {
+      setAiPending(false);
+      return;
+    }
+    const abort = new AbortController();
+    setAiPending(true);
+    void requestMotion(currentWord, { signal: abort.signal, timeoutMs: 2500 }).then((m) => {
+      if (abort.signal.aborted) return;
+      // 그 단어 하나로, 빠진 것 없이 그렸을 때만 쓴다 (알려주다 → 알려받다, 서울역 → 서울 · 지하철처럼 바뀐 것은 영상으로)
+      const exact = m.kind === 'motion' && m.unknown.length === 0 && m.motion.segments.length === 1 && m.motion.segments[0].gloss === currentWord;
+      setAiMotion(exact && m.kind === 'motion' ? m.motion : null);
+      setAiPending(false);
+    });
+    return () => abort.abort();
+  }, [questionId, currentWord]);
+  const showFriend = !!aiMotion && !showVideo && friendOk;
 
   const isAnswered = answerResult !== null;
   const isCorrect = answerResult?.isCorrect ?? false;
@@ -412,12 +444,17 @@ export default function QuizScreen() {
   useEffect(() => {
     if (!currentQuestion) return;
     try {
-      player.replay();
-      player.play();
+      // 3D 친구를 보여 주거나 AI 동작을 기다리는 동안에는 영상을 멈춰 둔다 (화면에 없는 영상을 틀면 재생 오류가 난다)
+      if (showFriend || aiPending) {
+        player.pause();
+      } else {
+        player.replay();
+        player.play();
+      }
     } catch {
       // 자동 재생이 막혀도 '다시' 버튼으로 볼 수 있다
     }
-  }, [currentQuestion, player]);
+  }, [currentQuestion, player, showFriend, aiPending]);
 
   // 전체 정답률 숫자가 0부터 올라간다 (움직임 줄이기면 바로 보여 준다)
   useEffect(() => {
@@ -663,20 +700,44 @@ export default function QuizScreen() {
             <BodyText soft size={Size.caption}>표본이 적어 통계가 달라질 수 있습니다.</BodyText>
           ) : null}
 
-          {/* 액자 속 수어 영상 */}
-          <VideoFrame
-            player={currentQuestion.videoUrl ? player : null}
-            onReplay={handleReplayVideo}
-            seed={currentIndex + 3}
-            glow={isAnswered && isCorrect}
-            style={styles.panel}
-            fallback={
-              <>
-                <Bee size={60} still />
-                <BodyText soft style={{ textAlign: 'center' }}>이 단어의 수어 영상이 아직 준비되지 않았습니다.</BodyText>
-              </>
-            }
-          />
+          {/* 3D 친구(AI가 그린 손짓) 또는 액자 속 수어 영상 */}
+          {showFriend && aiMotion ? (
+            <>
+              <RoughBox seed={currentIndex + 3} radius={18} style={[styles.panel, styles.friendBox]}>
+                <Avatar3D key={friendKey} motion={aiMotion} playing loop onError={() => setFriendOk(false)} style={styles.friend} />
+              </RoughBox>
+              <View style={styles.friendRow}>
+                <BodyText soft size={Size.small}>AI가 그린 손짓이에요</BodyText>
+                <PaintButton label="다시 보기" variant="text" onPress={() => setFriendKey((k) => k + 1)} />
+                <PaintButton label="영상으로 보기" variant="text" onPress={() => setShowVideo(true)} accessibilityLabel="정답 영상으로 바꿔 보기" />
+              </View>
+            </>
+          ) : aiPending ? (
+            <RoughBox seed={currentIndex + 3} radius={18} style={[styles.panel, styles.friendBox, styles.friendWait]}>
+              <PenLoader label="손짓을 그리는 중이에요" size={90} />
+            </RoughBox>
+          ) : (
+            <>
+              <VideoFrame
+                player={currentQuestion.videoUrl ? player : null}
+                onReplay={handleReplayVideo}
+                seed={currentIndex + 3}
+                glow={isAnswered && isCorrect}
+                style={styles.panel}
+                fallback={
+                  <>
+                    <Bee size={60} still />
+                    <BodyText soft style={{ textAlign: 'center' }}>이 단어의 수어 영상이 아직 준비되지 않았습니다.</BodyText>
+                  </>
+                }
+              />
+              {aiMotion && friendOk ? (
+                <View style={styles.friendRow}>
+                  <PaintButton label="3D 친구로 보기" variant="text" onPress={() => setShowVideo(false)} />
+                </View>
+              ) : null}
+            </>
+          )}
 
           {/* 보기 4개 */}
           <View style={{ marginTop: 16 }}>
@@ -780,6 +841,11 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, marginTop: 6 },
 
   panel: { marginTop: 14 },
+  // 영상 액자(VideoFrame)와 같은 높이. 3D 와 영상을 오갈 때 아래 보기들이 움직이지 않게
+  friendBox: { width: '100%', height: 362, overflow: 'hidden' },
+  friendWait: { alignItems: 'center', justifyContent: 'center' },
+  friend: { width: '100%', height: '100%' },
+  friendRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 4 },
 
   errorText: { marginTop: 12, textAlign: 'center' },
 
