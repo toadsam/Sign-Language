@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>수어링고 3D 캐릭터</title>
+<style>
+  /* 배경은 투명: 앱의 종이 위에 캐릭터만 얹힌다 */
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; -webkit-tap-highlight-color: transparent; touch-action: none }
+  #stage { position: fixed; inset: 0 }
+  #stage canvas { display: block }
+  /* 데모 때만 보이는 단어 이름 */
+  #label { position: fixed; left: 10px; bottom: 8px; font: 700 15px 'Gowun Batang', serif; color: #6B5D4F }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="label"></div>
+<script type="module" src="player.js"></script>
+</body>
+</html>
