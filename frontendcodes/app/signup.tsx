@@ -137,6 +137,6 @@ const styles = StyleSheet.create({
   field: { gap: 6 },
   label: { fontFamily: Font.story },
   inputBox: { height: 52, justifyContent: 'center', paddingHorizontal: 14 },
-  input: { fontFamily: Font.body, fontSize: Size.lead, color: Paint.ink, outlineStyle: 'none' } as never,
+  input: { position: 'relative', fontFamily: Font.body, fontSize: Size.lead, color: Paint.ink, outlineStyle: 'none' } as never,
   error: { color: '#B5462F', textAlign: 'center' },
 });
