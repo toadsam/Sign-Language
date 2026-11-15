@@ -18,6 +18,8 @@ VQ 디코더로 한 번에 복원한다. signer=None이면 학습 화자 전부 
   그래서 이 선택지를 켜면 문장은 지금처럼 모델이 통째로 만들고, W: 단위 구간만 baseline.npz의 대표 동작으로 바꿔 끼운다.
   S: 단위와 휴지 · 얼굴은 모델이 만든 그대로다. 끼운 자리 앞뒤는 손목이 움직일 거리에 맞춘 길이로 직선 보간한다.
   이때 motion 길이는 tokens × down 과 달라진다(tokens 는 모델이 쓴 것 그대로 돌려준다). 기본값 "model"은 예전과 똑같다.
+  word_trim 기본값 0.1 은 재서 고른 값이다: 문장 안 W 구간이 읽힌 비율이 0 → 95%, 0.1 → 93%, 0.2 → 77% 였고,
+  구간 길이는 73 → 62 → 58 프레임이었다. 0.1 이 거의 그대로 읽히면서 손이 쉬는 시간을 줄인다.
 """
 import json
 from pathlib import Path
@@ -116,7 +118,7 @@ def splice_exemplars(motion, segs, clips, trim=0.0):
 class SentenceGenerator:
     def __init__(self, model, vocab, signers, context, stats, decoder, device="cpu", baseline=None,
                  mode="model", top_k=10, temperature=1.0, guidance=1.0, per_signer=1, down=4,
-                 word_source="model", word_trim=0.2):
+                 word_source="model", word_trim=0.1):
         if mode not in ("model", "baseline"):
             raise ValueError("mode must be model or baseline")
         if word_source not in ("model", "exemplar"):
@@ -239,7 +241,7 @@ def save_baseline(path, table, rest, gap):
 def load_sentence_generator(run_dir, device="cpu", mode="model", vq_path=None, **sampling):
     """run 폴더 → SentenceGenerator. vq_path를 주면 generator.json의 경로 대신 쓴다(해시는 그대로 확인).
 
-    sampling: top_k(10), temperature(1.0), guidance(1.0), per_signer(1), word_source("model"), word_trim(0.2).
+    sampling: top_k(10), temperature(1.0), guidance(1.0), per_signer(1), word_source("model"), word_trim(0.1).
     generator.json에 "sampling"이 있으면 그것을 기본으로 쓰고, 인자로 준 값이 우선한다(서버는 인자를 못 넘김)."""
     from vq.model import load_vqvae
     run = Path(run_dir)
