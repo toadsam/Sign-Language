@@ -392,11 +392,11 @@ export function PaintIcon({ name, size = 26, color = Paint.ink, fill = 'none', b
   );
 }
 
-/* ── 아래 메뉴: 마을 · 표현 · 통역 · 기록 ── */
+/* ── 아래 메뉴: 마을 · 메뉴 · 통역 · 기록 ── */
 export type TabKey = 'home' | 'learn' | 'translator' | 'mypage';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'home', label: '마을' },
-  { key: 'learn', label: '표현' },
+  { key: 'learn', label: '메뉴' },
   { key: 'translator', label: '통역' },
   { key: 'mypage', label: '기록' },
 ];

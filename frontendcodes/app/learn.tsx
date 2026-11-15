@@ -101,7 +101,7 @@ export default function LearnScreen() {
     <PaperScreen>
       <View style={{ flex: 1 }}>
         <Animated.View entering={FadeInDown.duration(320)}>
-          <LearnHeader title="표현 모음" sub={`오늘 퀴즈 ${solvedToday}/${DAILY_GOAL_TARGET}개 · 목표 ${goalPercent}%`} />
+          <LearnHeader title="메뉴" sub={`오늘 퀴즈 ${solvedToday}/${DAILY_GOAL_TARGET}개 · 목표 ${goalPercent}%`} />
         </Animated.View>
         <Animated.View entering={FadeInDown.delay(70).duration(320)} style={{ marginTop: 10 }}>
           <LearnChips items={FILTERS} value={filter} onChange={setFilter} label="과정 고르기" />
