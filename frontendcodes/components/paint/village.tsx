@@ -309,7 +309,17 @@ export function Village({ titles, completed, paintIndex = null, height = 290, ho
   const ground = useMemo(() => jitterPath(`M0 302 L${X0 + titles.length * GAP} 302`, 50 + boil, 1), [titles.length, boil]);
 
   const press = (e: GestureResponderEvent) => {
-    const { locationX, locationY, pageX, pageY } = e.nativeEvent;
+    const { pageX, pageY } = e.nativeEvent;
+    let { locationX, locationY } = e.nativeEvent;
+    if (!Number.isFinite(locationX) || !Number.isFinite(locationY)) {
+      // 웹: 누르기가 click 이벤트로 와서 locationX · locationY 가 없다. 그림의 자리와 누른 자리로 직접 잰다.
+      // 이걸 안 하면 건물을 못 찾고, 숫자가 아닌 자리에 물감 방울을 그리려다 오류만 난다
+      const at = e.nativeEvent as unknown as { clientX?: number; clientY?: number };
+      const box = (e.currentTarget as unknown as { getBoundingClientRect?: () => { left: number; top: number } } | null)?.getBoundingClientRect?.();
+      if (!box || typeof at.clientX !== 'number' || typeof at.clientY !== 'number') return;
+      locationX = at.clientX - box.left;
+      locationY = at.clientY - box.top;
+    }
     const sx = locationX / scale, sy = locationY / scale + TOP;
     tx.value = sx;
     ty.value = Math.min(sy - 40, 200);
