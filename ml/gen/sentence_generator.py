@@ -12,6 +12,12 @@
 VQ 디코더로 한 번에 복원한다. signer=None이면 학습 화자 전부 × per_signer개를 만들어 서로 가장 비슷한 것
 (medoid, 55점 프레임 거리)을 고른다. 정답은 보지 않는다. 화자 이름을 주면 그 화자 조건으로 하나 만든다.
 기준선 A(mode="baseline"): run 폴더 baseline.npz의 단위 대표 동작을 이어 붙이고 사이를 직선 보간한다.
+
+2026-11-16 재훈 (통합, 브랜치 jjh-accuracy): word_source="exemplar" 선택지.
+  낱말 데이터에서 온 단위(W:)를 모델이 만들면 읽는 모델이 1%만 원래 낱말로 읽었다(대표 동작은 86%, docs/ai-log/jaehun.md 11-16).
+  그래서 이 선택지를 켜면 문장은 지금처럼 모델이 통째로 만들고, W: 단위 구간만 baseline.npz의 대표 동작으로 바꿔 끼운다.
+  S: 단위와 휴지 · 얼굴은 모델이 만든 그대로다. 끼운 자리 앞뒤는 손목이 움직일 거리에 맞춘 길이로 직선 보간한다.
+  이때 motion 길이는 tokens × down 과 달라진다(tokens 는 모델이 쓴 것 그대로 돌려준다). 기본값 "model"은 예전과 똑같다.
 """
 import json
 from pathlib import Path
@@ -21,20 +27,109 @@ import torch
 
 from gen.sentence_data import encode_condition, make_schedule, sha256_path
 from gen.sentence_gpt import SentenceGPT
-from gen.sentence_motion import BODY_HANDS, concat_with_interp
+from gen.sentence_motion import BODY_HANDS, WRISTS, concat_with_interp
+
+# 끼운 자리 앞뒤를 잇는 직선 보간 길이: 손목이 어깨너비 1만큼 움직이면 8프레임, 3~14프레임 사이
+BRIDGE_PER_UNIT, BRIDGE_MIN, BRIDGE_MAX = 8.0, 3, 14
+MIN_ACTIVE = 8
+
+
+def active_span(clip, trim):
+    """대표 동작 [t, 55, 3]에서 손이 쉬는 자리에 머무는 앞뒤를 뺀 구간 (start, end_exclusive).
+
+    낱말 데이터의 클립은 손을 내린 자세에서 시작해 내린 자세로 끝난다. 문장 속에 그대로 끼우면 낱말마다 손이
+    내려갔다 올라온다. 앞은 첫 프레임, 뒤는 끝 프레임의 손목 자리를 "쉬는 자리"로 보고, 가장 멀리 간 거리의
+    trim 배보다 가까운 앞뒤를 뺀다. trim 이 0 이면 통째로 쓴다."""
+    clip = np.asarray(clip, dtype=np.float32)
+    n = len(clip)
+    if trim <= 0 or n < MIN_ACTIVE:
+        return 0, n
+    wrists = clip[:, list(WRISTS)]
+    lead = np.linalg.norm(wrists - wrists[0], axis=-1).max(-1)
+    tail = np.linalg.norm(wrists - wrists[-1], axis=-1).max(-1)
+    reach = float(max(lead.max(), tail.max()))
+    if reach < 1e-6:
+        return 0, n
+    start = int(np.argmax(lead > trim * reach))
+    end = n - int(np.argmax(tail[::-1] > trim * reach))
+    return (start, end) if end - start >= MIN_ACTIVE else (0, n)
+
+
+def splice_exemplars(motion, segs, clips, trim=0.0):
+    """모델이 만든 문장 motion [T, 125, 3]에서 clips {구간 번호: 대표 동작 [t, 55, 3]}의 구간만 바꿔 끼운다.
+
+    → (새 motion, 새 segments). 바꾼 구간의 얼굴은 모델이 만든 그 구간의 얼굴을 길이에 맞춰 쓴다.
+    끼운 조각의 앞뒤에는 직선 보간 프레임이 들어가고, 그 프레임은 어느 구간에도 들지 않는다."""
+    motion = np.asarray(motion, dtype=np.float32)
+    pieces, out, cursor, prev_end, pending = [], [], 0, 0, False
+    wrists = list(WRISTS)
+
+    def push(x):
+        nonlocal cursor
+        if len(x):
+            pieces.append(np.asarray(x, dtype=np.float32))
+            cursor += len(x)
+
+    def bridge(target):
+        if not pieces:
+            return
+        last = pieces[-1][-1]
+        dist = float(np.linalg.norm(target[wrists] - last[wrists], axis=-1).max())
+        n = int(np.clip(np.ceil(dist * BRIDGE_PER_UNIT), BRIDGE_MIN, BRIDGE_MAX))
+        w = np.linspace(0, 1, n + 2, dtype=np.float32)[1:-1, None, None]
+        push(last[None] * (1 - w) + target[None] * w)
+
+    for i, seg in enumerate(segs):
+        a, b = int(seg["start"]), int(seg["end"])
+        if i not in clips:
+            part = motion[prev_end:b]
+            if pending and len(part):
+                bridge(part[0])
+            push(part)
+            out.append({"unit": seg["unit"], "start": cursor - (b - a), "end": cursor})
+            pending = False
+        else:
+            head = motion[prev_end:a]
+            if len(head):
+                if pending:
+                    bridge(head[0])
+                push(head)
+            clip = np.asarray(clips[i], dtype=np.float32)
+            s, e = active_span(clip, trim)
+            body = clip[s:e]
+            piece = motion[np.linspace(a, b - 1, len(body)).round().astype(int)].copy()
+            piece[:, BODY_HANDS] = body
+            bridge(piece[0])
+            start = cursor
+            push(piece)
+            out.append({"unit": seg["unit"], "start": start, "end": cursor})
+            pending = True
+        prev_end = b
+    tail = motion[prev_end:]
+    if len(tail):
+        if pending:
+            bridge(tail[0])
+        push(tail)
+    return np.concatenate(pieces, 0).astype(np.float32), out
 
 
 class SentenceGenerator:
     def __init__(self, model, vocab, signers, context, stats, decoder, device="cpu", baseline=None,
-                 mode="model", top_k=10, temperature=1.0, guidance=1.0, per_signer=1, down=4):
+                 mode="model", top_k=10, temperature=1.0, guidance=1.0, per_signer=1, down=4,
+                 word_source="model", word_trim=0.2):
         if mode not in ("model", "baseline"):
             raise ValueError("mode must be model or baseline")
+        if word_source not in ("model", "exemplar"):
+            raise ValueError("word_source must be model or exemplar")
+        if word_source == "exemplar" and baseline is None:
+            raise ValueError("word_source exemplar needs baseline.npz")
         if mode == "baseline" and baseline is None:
             raise ValueError("baseline mode needs baseline.npz")
         self.model, self.vocab, self.signers, self.context = model, vocab, signers, context
         self.stats, self.decoder, self.device, self.baseline = stats, decoder, torch.device(device), baseline
         self.mode, self.top_k, self.temperature, self.guidance = mode, top_k, temperature, guidance
         self.per_signer, self.down = per_signer, down
+        self.word_source, self.word_trim = word_source, float(word_trim)
 
     def known(self, units):
         if self.mode == "baseline":
@@ -105,7 +200,14 @@ class SentenceGenerator:
             x = torch.from_numpy(np.stack(motions)[:, :, BODY_HANDS])
             pick = int((x[:, None] - x[None]).norm(dim=-1).mean(dim=(2, 3)).sum(1).argmin())
         segs = [{"unit": u, "start": t0 * self.down, "end": t1 * self.down} for u, t0, t1 in schedule[2]]
-        return {"fps": 30, "motion": motions[pick].astype(np.float32), "tokens": seqs[pick], "segments": segs,
+        motion = motions[pick].astype(np.float32)
+        if self.word_source == "exemplar":
+            # 낱말 데이터에서 온 단위만 대표 동작으로 바꿔 끼운다 (대표 동작이 없는 단위는 모델 것 그대로)
+            clips = {i: self.baseline["motions"][s["unit"]] for i, s in enumerate(segs)
+                     if s["unit"].startswith("W:") and s["unit"] in self.baseline["motions"]}
+            if clips:
+                motion, segs = splice_exemplars(motion, segs, clips, self.word_trim)
+        return {"fps": 30, "motion": motion, "tokens": seqs[pick], "segments": segs,
                 "source": "model", "unknown_units": unknown}
 
 
@@ -137,7 +239,7 @@ def save_baseline(path, table, rest, gap):
 def load_sentence_generator(run_dir, device="cpu", mode="model", vq_path=None, **sampling):
     """run 폴더 → SentenceGenerator. vq_path를 주면 generator.json의 경로 대신 쓴다(해시는 그대로 확인).
 
-    sampling: top_k(10), temperature(1.0), guidance(1.0), per_signer(1).
+    sampling: top_k(10), temperature(1.0), guidance(1.0), per_signer(1), word_source("model"), word_trim(0.2).
     generator.json에 "sampling"이 있으면 그것을 기본으로 쓰고, 인자로 준 값이 우선한다(서버는 인자를 못 넘김)."""
     from vq.model import load_vqvae
     run = Path(run_dir)

@@ -9,7 +9,7 @@ import torch
 
 from gen.sentence_data import select
 from gen.sentence_eval import run_eval
-from gen.sentence_generator import load_sentence_generator, save_baseline
+from gen.sentence_generator import active_span, load_sentence_generator, save_baseline, splice_exemplars
 from gen.sentence_gpt import SentenceGPT
 from gen.sentence_motion import (boundary_jerk, build_baseline, compare, concat_with_interp, dtw_distance,
                                  medoid_of, wrist_jerk)
@@ -98,6 +98,33 @@ class MotionToolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare(motion, [("x", 0, 5)], motion, [("y", 0, 5)])
 
+    def test_active_span_and_splice(self):
+        # 손목이 쉬는 자리(0)에서 올라갔다(1) 내려오는 클립: 앞뒤의 쉬는 프레임이 빠진다
+        clip = np.zeros((40, 55, 3), np.float32)
+        height = np.concatenate([np.zeros(10), np.linspace(0, 1, 5), np.ones(10), np.linspace(1, 0, 5), np.zeros(10)])
+        clip[:, 13, 1] = height
+        clip[:, 34, 1] = height
+        self.assertEqual(active_span(clip, 0.0), (0, 40))
+        start, end = active_span(clip, 0.2)
+        self.assertTrue(10 <= start <= 12 and 28 <= end <= 30, (start, end))
+        self.assertEqual(active_span(np.zeros((40, 55, 3), np.float32), 0.2), (0, 40))  # 움직임이 없으면 통째로
+        self.assertEqual(active_span(clip[:5], 0.2), (0, 5))  # 너무 짧으면 통째로
+
+        motion = np.zeros((60, 125, 3), np.float32)
+        motion[:, 60, 0] = np.arange(60)  # 얼굴 점 하나에 프레임 번호를 적어 둔다
+        segs = [{"unit": "S:가", "start": 10, "end": 20}, {"unit": "W:WORD1", "start": 24, "end": 44}]
+        out, new = splice_exemplars(motion, segs, {1: clip}, trim=0.2)
+        self.assertEqual([s["unit"] for s in new], ["S:가", "W:WORD1"])
+        self.assertEqual((new[0]["start"], new[0]["end"]), (10, 20))  # 앞의 모델 구간은 자리도 내용도 그대로
+        np.testing.assert_array_equal(out[:24], motion[:24])
+        a, b = new[1]["start"], new[1]["end"]
+        self.assertEqual(b - a, end - start)
+        np.testing.assert_allclose(out[a:b, :55], clip[start:end])
+        self.assertGreaterEqual(a - 24, 3)  # 끼운 조각 앞에 보간 프레임이 들어간다
+        self.assertTrue(24 <= out[a, 60, 0] <= 43)  # 얼굴은 모델이 만든 그 구간에서 온다
+        self.assertEqual(out.dtype, np.float32)
+        self.assertLess(np.abs(np.diff(out[:, 13, 1])).max(), 0.35)  # 손목이 한 프레임에 크게 튀지 않는다
+
     def test_medoid(self):
         base = np.zeros((8, 55, 3), np.float32)
         ms = [base + 0.1, base, base - 0.1, base + 5]
@@ -174,6 +201,29 @@ class TrainInferTests(unittest.TestCase):
                 self.assertTrue(0 <= s["start"] < s["end"] <= T)
         self.assertEqual([s["unit"] for s in pooled["segments"]], ["W:WORD1", "S:가"])
         self.assertEqual(b["segments"][1]["start"] - b["segments"][0]["end"], 2)
+
+        # word_source="exemplar": W 단위 구간만 대표 동작으로 바뀌고, S 단위 구간은 모델이 만든 그대로다
+        ex = load_sentence_generator(self.run_dir, "cpu", word_source="exemplar", word_trim=0.0)
+        e = ex.generate(["W:WORD1", "S:가"], seed=1)
+        self.assertEqual(e["source"], "model")
+        self.assertEqual(e["tokens"], pooled["tokens"])
+        self.assertEqual([s["unit"] for s in e["segments"]], ["W:WORD1", "S:가"])
+        self.assertEqual(e["motion"].dtype, np.float32)
+        self.assertTrue(np.isfinite(e["motion"]).all())
+        w, s = e["segments"]
+        np.testing.assert_allclose(e["motion"][w["start"]:w["end"], :55], table["W:WORD1"][0], atol=1e-6)
+        ps = pooled["segments"][1]
+        np.testing.assert_allclose(e["motion"][s["start"]:s["end"]], pooled["motion"][ps["start"]:ps["end"]], atol=1e-6)
+        for seg in e["segments"]:
+            self.assertIs(type(seg["start"]), int)
+            self.assertIs(type(seg["end"]), int)
+            self.assertTrue(0 <= seg["start"] < seg["end"] <= len(e["motion"]))
+        self.assertLessEqual(w["end"], s["start"])
+        only_s = ex.generate(["S:가", "S:나"], signer="A", seed=3)  # W 단위가 없으면 예전과 똑같다
+        np.testing.assert_array_equal(only_s["motion"], out["motion"])
+        self.assertEqual(len(only_s["motion"]), 4 * len(only_s["tokens"]))
+        with self.assertRaises(ValueError):
+            load_sentence_generator(self.run_dir, "cpu", word_source="other")
 
         gen = load_sentence_generator(self.run_dir, "cpu")
         report = run_eval(gen, self.sel["test"], "test", gen.decode, log=lambda *_: None)
