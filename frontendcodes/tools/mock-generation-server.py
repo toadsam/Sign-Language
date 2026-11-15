@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
-SAMPLE = json.loads((ROOT / 'components/sign-player/demo-motion.json').read_text())
+SAMPLE = json.loads((ROOT / 'components/sign-player/demo-motion.json').read_text(encoding='utf-8'))  # 윈도우 기본 인코딩(cp949)에서도 읽히게
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -94,6 +94,23 @@ class Handler(BaseHTTPRequestHandler):
             return
         if scenario == 'video':
             self.respond(200, {'source': 'video', 'videoUrl': '/sample-video.mp4', 'unknown': [], 'demo': True})
+            return
+        if scenario == 'sentence':
+            # 문장 모드 흉내 (2026-11-15 재훈): 띄어 쓴 낱말마다 구간을 하나씩 만들고 낱말 사이는 6프레임 비운다.
+            # '집'으로 시작하는 낱말은 못 그린 것으로 친다. 번역도 생성도 하지 않는다. 동작은 늘 같은 합성 120프레임이다.
+            words = [w.strip('.,?!~') for w in text.split()][:6]
+            words = [w for w in words if w]
+            known = [w for w in words if not w.startswith('집')]
+            missing = [w for w in words if w.startswith('집')]
+            if not known:
+                self.respond(200, {'source': 'baseline', 'fps': 30, 'joints': 125, 'units': 'shoulder', 'frames': 0, 'data': '', 'tokens': [], 'segments': [], 'unknown': missing or [text.strip()], 'demo': True})
+                return
+            result = copy.deepcopy(SAMPLE)
+            gap = 6
+            span = (result['frames'] - gap * (len(known) - 1)) // len(known)
+            result.update({'demo': True, 'source': 'model', 'unknown': missing,
+                           'segments': [{'gloss': w, 'start': i * (span + gap), 'end': i * (span + gap) + span} for i, w in enumerate(known)]})
+            self.respond(200, result)
             return
         result = copy.deepcopy(SAMPLE)
         result['demo'] = True

@@ -24,7 +24,7 @@ import { TalkChain } from '@/components/paint/talk-chain';
 import { usePaintNav } from '@/components/paint/transition';
 import { Font, Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
-import { generateMotion, type Motion } from '@/lib/api/generate';
+import { motionEndpoint, requestMotion, type Motion, type MotionResult } from '@/lib/api/generate';
 import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
 import { TranslateClip, TranslatePlaybackItem, TranslateResponse, translateText } from '@/lib/api/translate';
 
@@ -32,6 +32,8 @@ const BOOKMARKS_KEY = 'translator.bookmarks.sentences.v2';
 const MAX_BOOKMARKS = 20;
 const PRELOAD_NEXT_SECONDS = 1.1;
 const SWITCH_READY_SECONDS = 0.18;
+// AI 동작이 곧 올 것 같으면 이만큼은 기다린다. 영상이 먼저 떴다가 3D로 바뀌는 깜빡임을 줄이려는 것
+const MOTION_GRACE_MS = 2500;
 // 눌러서 바로 해 보는 예문
 const PRESETS = ['카페에서 커피 주세요', '화장실이 어디예요?', '고마워요'];
 
@@ -67,10 +69,13 @@ export default function TranslatorScreen() {
   const [motionSeg, setMotionSeg] = useState(-1);
   const [motionDone, setMotionDone] = useState(false);
   const [motionPlayKey, setMotionPlayKey] = useState(0);
+  // AI 동작에 대해 한 줄로 알려 줄 것 (AI가 그렸다 · 못 그린 낱말 · 영상으로 보여 주는 까닭)
+  const [motionNote, setMotionNote] = useState<string | null>(null);
   const motionRunRef = useRef(0);
   const motionSegRef = useRef(-1);
   // 3D 캐릭터(발표 영상과 같은 캐릭터)로 보여 준다. 3D를 못 띄우면 2D 펜 아바타로 돌아간다. ?avatar=2d 로 2D 고정
-  const params = useLocalSearchParams<{ demo?: string; clip?: string; avatar?: string }>();
+  // ?gen= 은 개발용: AI 동작을 물어볼 주소를 바꾼다 (localhost 에서만 받는다. 예: 가짜 서버 http://localhost:8085/api/sign/generate)
+  const params = useLocalSearchParams<{ demo?: string; clip?: string; avatar?: string; gen?: string }>();
   const [use3d, setUse3d] = useState(params.avatar !== '2d');
   // 낱말 줄을 처음부터 다시 보여 줄 때 바꾸는 값
   const [chainRunKey, setChainRunKey] = useState(0);
@@ -682,7 +687,20 @@ export default function TranslatorScreen() {
       motionSegRef.current = -1;
       setMotionSeg(-1);
       setMotionDone(false);
-      const next = await translateText(text);
+      setMotionNote(null);
+      // AI 동작과 영상 번역을 같이 물어본다. 서로 기다리지 않는다
+      const motionAsk = requestMotion(text, { devEndpoint: params.gen });
+      let next: TranslateResponse;
+      let early: MotionResult | null = null;
+      try {
+        next = await translateText(text);
+        early = await Promise.race([motionAsk, new Promise<null>((resolve) => setTimeout(() => resolve(null), MOTION_GRACE_MS))]);
+      } catch (translateError) {
+        // 영상 번역이 안 돼도 AI 동작이 오면 그것으로 보여 준다
+        early = await motionAsk;
+        if (early.kind !== 'motion') throw translateError;
+        next = motionOnlyResult(text, early.motion);
+      }
       if (isWeb) {
         webPendingSlotRef.current = null;
         webLastQueuedTokenRef.current = null;
@@ -707,10 +725,15 @@ export default function TranslatorScreen() {
       setCurrentClipIndex(0);
       lastAutoAdvancedIndexRef.current = -1;
       setChainRunKey((k) => k + 1);
-      // AI 동작을 물어본다. 없으면(null) 영상 그대로
-      void generateMotion(next.normalizedTokens ?? []).then((m) => {
-        if (m && motionRun === motionRunRef.current) setMotion(m);
-      });
+      // AI 동작이 왔으면 3D 친구로, 못 받았으면 영상 그대로 두고 까닭을 한 줄로 알린다
+      const explicit = motionEndpoint(params.gen)?.explicit ?? false;
+      const applyMotion = (m: MotionResult) => {
+        if (motionRun !== motionRunRef.current) return;
+        if (m.kind === 'motion') setMotion(m.motion);
+        setMotionNote(motionNoteFor(m, explicit));
+      };
+      if (early) applyMotion(early);
+      else void motionAsk.then(applyMotion);
     } catch (error) {
       if (isWeb) {
         webPendingSlotRef.current = null;
@@ -1156,6 +1179,11 @@ export default function TranslatorScreen() {
             <View style={styles.progressTrack}>
               <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
             </View>
+            {motionNote ? (
+              <BodyText soft size={Size.caption} style={styles.motionNote} accessibilityLiveRegion="polite">
+                {motionNote}
+              </BodyText>
+            ) : null}
           </View>
 
           {/* 재생 조절 · 저장 · 북마크 · 자세히 */}
@@ -1341,6 +1369,29 @@ function IconAction({
   );
 }
 
+/** 영상 번역(/translate)은 실패했지만 AI 동작은 온 경우: 동작의 낱말 구간으로 화면에 필요한 최소 결과를 만든다 */
+function motionOnlyResult(text: string, motion: Motion): TranslateResponse {
+  return {
+    input: text,
+    simplifiedSentence: '',
+    normalizedTokens: motion.segments.map((s) => s.gloss),
+    appliedRules: [],
+    metadata: { question: /[?？]\s*$/.test(text), negative: false, tense: '' },
+    clips: [],
+    items: [],
+    unknown: [],
+    noVideoWords: [],
+  };
+}
+
+/** AI 동작 결과를 화면 한 줄로. explicit 이 아니면(주소를 따로 정해 두지 않은 앱) 실패는 조용히 넘긴다 */
+function motionNoteFor(m: MotionResult, explicit: boolean): string | null {
+  if (m.kind === 'motion') return m.unknown.length > 0 ? `AI가 그린 손짓이에요 · 못 그린 낱말: ${m.unknown.join(', ')}` : 'AI가 그린 손짓이에요';
+  if (m.kind === 'empty') return `AI가 그릴 수 있는 낱말이 없어서 영상으로 보여 줘요${m.unknown.length > 0 ? ` (${m.unknown.join(', ')})` : ''}`;
+  if (m.kind === 'error') return explicit ? `AI 손짓을 받지 못해 영상으로 보여 줘요 · ${m.message}` : null;
+  return null;
+}
+
 function buildPlaybackUrlMap(sourceUrls: string[]): Record<string, string> {
   const uniqueUrls = Array.from(new Set(sourceUrls.filter((url) => !!url)));
   return Object.fromEntries(uniqueUrls.map((url) => [url, url]));
@@ -1452,6 +1503,7 @@ const styles = StyleSheet.create({
   captionWrap: { alignItems: 'center', marginTop: 12, minHeight: 64 },
   captionPill: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center' },
   counter: { marginTop: 6 },
+  motionNote: { marginTop: 8, textAlign: 'center' },
   progressTrack: { marginTop: 6, width: '54%', height: 6, borderRadius: 3, borderWidth: 1, borderColor: Paint.line, backgroundColor: Paint.paperDeep, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: Paint.sky },
   actionRow: { marginTop: 18, marginHorizontal: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },

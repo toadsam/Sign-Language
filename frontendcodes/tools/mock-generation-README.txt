@@ -63,3 +63,11 @@ node tools/check-generation-api.cjs
 빈 영상 목록, 중간 영상 파일 오류 응답도 로컬 목업에서 선택할 수 있습니다.
 오류 시 자동으로 성공 처리하지 않으며 '영상 다시 불러오기' 또는 다음 항목 선택으로 복구합니다.
 이 화면의 목록 전환 구현과 실제 팀 서버·기존 번역 화면 통합은 별도입니다.
+
+문장 모드 흉내와 통역 화면 확인 (2026-11-15 재훈 추가)
+?scenario=sentence 는 띄어 쓴 낱말마다 자막 구간(segments)을 하나씩 만들고 낱말 사이를 6프레임 비웁니다.
+'집'으로 시작하는 낱말은 못 그린 낱말(unknown)로 돌려줍니다. 번역도 생성도 하지 않으며 동작은 늘 같은 합성 120프레임입니다.
+통역 화면에서 확인: 앱을 localhost 개발 서버로 띄우고
+http://localhost:8081/translator?gen=http://localhost:8085/api/sign/generate?scenario=sentence
+?gen= 은 개발 중 localhost 에서만 받습니다. 오류 안내는 ?scenario=error 로 봅니다.
+윈도우에서 목업이 켜지지 않던 문제(cp949 로 JSON 을 읽음)를 고쳤습니다.
