@@ -31,6 +31,59 @@ type Outcome = { kind: 'score'; score: FollowScore } | { kind: 'none' };
 /** 읽는 모델이 읽은 결과. 낱말 구간마다 친구 동작과 내 동작을 따로 읽는다 */
 type ReadRow = { gloss: string | null; friend: ReadCandidate[]; mine: ReadCandidate[] };
 type ReadState = { kind: 'loading' } | { kind: 'rows'; rows: ReadRow[]; classes: number } | { kind: 'error'; message: string };
+/**
+ * 기준선 맞추기용 기록 (개발 때만 보인다). 카메라로 실제로 따라 한 시도의 점수와 거리를 쌓아 두고 복사한다.
+ * 점수 기준선(body-score.ts 의 POSITION_RANGE · SHAPE_RANGE)을 실제 시도 숫자로 다시 정하려는 것이다.
+ */
+type Attempt = { kind: string; score: number; position: number; shape: number | null; mirrored: boolean; words: string };
+const ATTEMPT_KINDS = ['잘 따라 함', '대충 따라 함', '다른 동작'];
+const ATTEMPT_KEY = 'signlingo-follow-attempts';
+function loadAttempts(): Attempt[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ATTEMPT_KEY) ?? '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+function saveAttempts(list: Attempt[]) {
+  try {
+    localStorage.setItem(ATTEMPT_KEY, JSON.stringify(list));
+  } catch {
+    // 저장이 막혀 있으면 화면에만 남는다
+  }
+}
+const attemptLine = (a: Attempt, i: number) =>
+  `${i + 1}\t${a.kind}\t점수 ${a.score}\t자리 ${a.position.toFixed(3)}\t모양 ${a.shape === null ? '없음' : a.shape.toFixed(3)}${a.mirrored ? '\t반대 손' : ''}${a.words ? `\t${a.words}` : ''}`;
+/** 진단 기록 (개발 때만). 패널이 다시 만들어져도 남도록 부품 밖에 둔다. "점수가 나왔다가 사라진다"의 원인을 찾으려는 것 */
+const trace: string[] = [];
+function mark(text: string) {
+  if (!__DEV__) return;
+  const line = `${new Date().toTimeString().slice(0, 8)} ${text}`;
+  trace.push(line);
+  if (trace.length > 40) trace.shift();
+  console.info('[따라 하기]', line);
+}
+/** 가장 가까운, 실제로 스크롤되는 부모 */
+function scrollParent(from: HTMLElement | null): HTMLElement | null {
+  for (let e = from?.parentElement ?? null; e; e = e.parentElement) {
+    const overflow = getComputedStyle(e).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && e.scrollHeight > e.clientHeight + 4) return e;
+  }
+  return null;
+}
+/**
+ * 카메라에 너무 가까운가. 목에서 어깨너비만큼 아래(가슴 아래쪽)가 화면 밖이면 손이 화면 아래로 나가 잡히지 않는다.
+ * 실제로 얼굴만 크게 잡힌 채 따라 해서 "손 0개"로 점수가 낮게 나온 일이 있었다 (2026-11-15)
+ */
+function tooClose(capture: BodyCapture): boolean {
+  const l = capture.pose?.[11];
+  const r = capture.pose?.[12];
+  if (!l || !r || !(capture.width > 0) || !(capture.height > 0)) return false;
+  const shoulder = Math.hypot((l.x - r.x) * capture.width, (l.y - r.y) * capture.height);
+  const chestY = ((l.y + r.y) / 2) * capture.height + shoulder;
+  return chestY > capture.height * 1.05;
+}
 const readName = (c: ReadCandidate) => c.name ?? c.item;
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
@@ -100,6 +153,8 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [bodySeen, setBodySeen] = useState(false);
+  const [close, setClose] = useState(false);
+  const closeRun = useRef(0);
   const [phase, setPhase] = useState<Phase>('idle');
   const [clock, setClock] = useState(0);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -107,6 +162,27 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   const [friend3d, setFriend3d] = useState(true);
   const [read, setRead] = useState<ReadState | null>(null);
   const readRun = useRef(0);
+  // 좁은 화면에서는 점수가 상자 아래 화면 밖에 나오므로, 결과가 나오면 그 자리로 내려 보낸다
+  const result = useRef<HTMLDivElement>(null);
+  const shownAt = useRef(0);
+  useEffect(() => {
+    if (!outcome) return;
+    result.current?.scrollIntoView({ block: 'start' });
+    if (!__DEV__) return;
+    // 진단: 결과로 내려간 뒤 화면이 저절로 다른 데로 움직이는지 본다
+    const box = scrollParent(result.current);
+    const at = box ? box.scrollTop : window.scrollY;
+    mark(`결과로 내려감 (위치 ${Math.round(at)}${box ? '' : ', 창 스크롤'})`);
+    const timers = [300, 1000, 2500, 5000].map((ms) =>
+      setTimeout(() => {
+        const now = box ? box.scrollTop : window.scrollY;
+        if (Math.abs(now - at) > 40) mark(`화면이 움직임: ${Math.round(at)} → ${Math.round(now)} (${ms}ms 뒤)`);
+      }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [outcome]);
+  const [attempts, setAttempts] = useState<Attempt[]>(() => (__DEV__ ? loadAttempts() : []));
+  const [attemptKind, setAttemptKind] = useState(ATTEMPT_KINDS[0]);
   const duration = useMemo(() => recordMs(reference), [reference]);
   const friend: ScoreMotion = useMemo(() => ({ frames: reference.frames, fps: reference.fps || 30, data: reference.data, stride: 375 }), [reference]);
 
@@ -126,16 +202,23 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
     setStream(null);
     setPending(false);
     setBodySeen(false);
+    setClose(false);
+    closeRun.current = 0;
     setPhase((p) => (p === 'done' ? p : 'idle'));
   }, []);
 
   useEffect(() => {
     mounted.current = true;
+    mark('패널이 화면에 올라옴');
     const hidden = () => {
-      if (document.hidden) stopCamera();
+      if (document.hidden) {
+        mark('창이 가려져서 카메라를 끔');
+        stopCamera();
+      }
     };
     document.addEventListener('visibilitychange', hidden);
     return () => {
+      mark('패널이 화면에서 내려감 (닫히거나 다시 만들어짐)');
       mounted.current = false;
       stopTimer();
       session.current?.stop();
@@ -154,6 +237,7 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   }, [stream]);
   // 친구 동작이 바뀌면 처음부터
   useEffect(() => {
+    mark(`친구 동작이 정해짐/바뀜 (${reference.frames}장) → 점수 지우고 처음부터`);
     stopTimer();
     sequence.current = null;
     setOutcome(null);
@@ -184,6 +268,11 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   const onCapture = useCallback((capture: BodyCapture | null) => {
     const body = capture ? toBodyFrame(capture) : null;
     setBodySeen(!!body);
+    // 몇 장 이어서 같은 판정이 나와야 안내를 바꾼다 (경계에서 깜빡이지 않게)
+    const near = !!capture && !!body && tooClose(capture);
+    closeRun.current = near ? Math.max(1, closeRun.current + 1) : Math.min(-1, closeRun.current - 1);
+    if (closeRun.current >= 5) setClose(true);
+    else if (closeRun.current <= -5) setClose(false);
     if (capture && sequence.current) sequence.current.add(body, capture.timestampMs);
   }, []);
 
@@ -203,19 +292,36 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
     if (mineRead.kind !== 'ok') return setRead({ kind: 'error', message: mineRead.kind === 'error' ? mineRead.message : '읽는 모델에 물어보지 못했어요.' });
     setRead({ kind: 'rows', classes: friendRead.classes, rows: parts.map((p, i) => ({ gloss: p.gloss, friend: friendRead.results[i]?.top ?? [], mine: mineRead.results[i]?.top ?? [] })) });
   };
-  const judge = (mine: ScoreMotion | null) => {
+  /** record 는 카메라로 실제로 따라 한 시도일 때만 true (가짜 입력 점검은 기록하지 않는다) */
+  const judge = (mine: ScoreMotion | null, record = false) => {
     const score = mine ? scoreFollow(mine, friend, reference.segments) : null;
     setOutcome(score ? { kind: 'score', score } : { kind: 'none' });
     setPhase('done');
+    shownAt.current = performance.now();
+    mark(score ? `점수 ${score.score} 나옴${record ? '' : ' (가짜 입력)'}` : '점수를 내지 못함');
+    if (__DEV__ && record && score) {
+      const attempt: Attempt = { kind: attemptKind, score: score.score, position: score.position.distance, shape: score.shape ? score.shape.distance : null, mirrored: score.mirrored, words: score.words.map((w) => `${w.gloss} ${w.score}`).join(', ') };
+      setAttempts((list) => {
+        const next = [...list, attempt];
+        saveAttempts(next);
+        return next;
+      });
+    }
     if (mine && score) void askReading(mine, score);
     else setRead(null);
   };
   const finish = (seq: BodySequence) => {
     const mine = resampleBody(seq.frames);
-    judge(mine ? { frames: mine.frames, fps: mine.fps, data: mine.data, stride: 165, leftHand: mine.leftHand, rightHand: mine.rightHand } : null);
+    judge(mine ? { frames: mine.frames, fps: mine.fps, data: mine.data, stride: 165, leftHand: mine.leftHand, rightHand: mine.rightHand } : null, true);
   };
   const follow = () => {
     if (!stream || phase === 'countdown' || phase === 'recording') return;
+    // 결과가 막 나온 직후의 누름은 받지 않는다. 화면이 버벅일 때 밀려 있던 누름이 뒤늦게 들어와 점수를 지우고 다시 시작하는 일을 막는다
+    if (performance.now() - shownAt.current < 1200) {
+      mark('따라 하기 누름을 무시함 (결과 직후)');
+      return;
+    }
+    mark('따라 하기 누름 → 점수 지우고 3초 세기');
     setOutcome(null);
     setRead(null);
     readRun.current++;
@@ -250,7 +356,9 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
   const busy = phase === 'countdown' || phase === 'recording';
   const score = outcome?.kind === 'score' ? outcome.score : null;
   return (
-    <section aria-label="따라 하기" style={{ fontFamily: 'GowunDodum_400Regular, system-ui, sans-serif', color: INK }}>
+    // position: relative 가 꼭 있어야 한다. 통역 화면은 이 패널을 RoughBox(바탕을 absolute SVG 로 칠한다) 안에 넣는데,
+    // 이 줄이 없으면 그 바탕이 제목 · 버튼 · 점수 카드를 덮어서 "점수가 나왔다가 사라지는" 것처럼 보였다 (2026-11-15)
+    <section aria-label="따라 하기" style={{ position: 'relative', fontFamily: 'GowunDodum_400Regular, system-ui, sans-serif', color: INK }}>
       {title ? <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>{title}</div> : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
         <div style={frame}>
@@ -265,9 +373,23 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
           <video ref={video} muted playsInline aria-label="내 카메라" style={{ display: stream ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'contain', transform: 'scaleX(-1)' }} />
           <BodyTracker input={video} enabled={!!stream} mirrored onStatus={setStatus} onCapture={onCapture} />
           {!stream && (
-            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#F3EADB', padding: 16, textAlign: 'center' }}>
-              {pending ? '카메라 권한을 기다리고 있어요…' : '카메라를 켜면 여기에 내 모습이 보여요'}
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', alignContent: 'center', gap: 14, color: '#F3EADB', padding: 16, textAlign: 'center' }}>
+              <div>{pending ? '카메라 권한을 기다리고 있어요…' : '카메라를 켜면 여기에 내 모습이 보여요'}</div>
+              {/* 좁은 화면에서는 상자 아래 버튼이 화면 밖으로 밀려서, 켜는 버튼을 상자 안에 둔다 */}
+              <button style={{ ...button, fontWeight: 700, fontSize: 16, padding: '10px 20px' }} disabled={pending} onClick={() => void startCamera()}>
+                카메라 켜기
+              </button>
             </div>
+          )}
+          {stream && close && (
+            <div role="status" style={{ position: 'absolute', left: '50%', top: 10, transform: 'translateX(-50%)', zIndex: 2, background: '#FFC83D', color: INK, border: `1.5px solid ${INK}`, borderRadius: 999, padding: '4px 14px', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>
+              조금 더 뒤로! 가슴과 손까지 보이게
+            </div>
+          )}
+          {stream && !busy && (
+            <button style={{ ...button, position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', zIndex: 2, background: RED, fontWeight: 700, fontSize: 16, padding: '10px 20px', whiteSpace: 'nowrap' }} onClick={follow}>
+              {outcome ? '다시 따라 하기' : '따라 하기 시작'}
+            </button>
           )}
           {phase === 'countdown' && (
             <div aria-live="assertive" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 96, fontWeight: 700, background: 'rgba(0,0,0,.3)' }}>{Math.ceil(clock)}</div>
@@ -277,15 +399,13 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 12 }}>
-        {!stream ? (
-          <button style={button} disabled={pending} onClick={() => void startCamera()}>카메라 켜기</button>
-        ) : (
-          <button style={button} disabled={busy} onClick={stopCamera}>카메라 끄기</button>
+        {stream && <button style={button} disabled={busy} onClick={stopCamera}>카메라 끄기</button>}
+        {phase === 'recording' && (
+          <>
+            <b>따라 하는 중…</b>
+            <progress value={clock} max={duration} aria-label="담는 중" style={{ width: 200 }} />
+          </>
         )}
-        <button style={{ ...button, background: RED, fontWeight: 700 }} disabled={!stream || busy} onClick={follow}>
-          {phase === 'recording' ? '따라 하는 중…' : outcome ? '다시 따라 하기' : '따라 하기 시작'}
-        </button>
-        {phase === 'recording' && <progress value={clock} max={duration} aria-label="담는 중" style={{ width: 200 }} />}
         {__DEV__ && (
           <button style={{ ...button, borderStyle: 'dashed', color: SOFT }} disabled={busy} onClick={selfCheck} title="카메라 없이 채점 흐름을 본다. 친구 동작을 조금 느리게 흔든 가짜 입력을 넣는다">
             점검: 가짜 입력으로 채점
@@ -297,6 +417,7 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
       </p>
       {error && <p role="alert" style={{ color: '#9E2E1C', margin: '6px 0 0' }}>{error}</p>}
 
+      <div ref={result} style={{ scrollMarginTop: 12 }} />
       {outcome?.kind === 'none' && (
         <p role="status" style={{ marginTop: 12, color: '#9E2E1C' }}>움직임이 잘 잡히지 않아서 점수를 내지 못했어요. 어깨와 손이 화면에 들어오게 서서 다시 해 보세요.</p>
       )}
@@ -367,6 +488,35 @@ export default function FollowAlong({ reference, title, devGen }: { reference: M
           <p style={{ margin: '10px 0 0', color: SOFT, fontSize: 12.5 }}>
             친구 동작과 내 동작의 손 자리 · 손가락 모양을 시간을 맞춰 견준 점수입니다. 장 {score.compared.mine}개와 {score.compared.friend}개를 견줬어요. 기준선은 아직 임시값이고, 수어의 뜻이 맞는지를 판정한 것은 아닙니다.
           </p>
+        </div>
+      )}
+      {__DEV__ && (
+        <div style={{ marginTop: 14, borderTop: `1.5px dashed ${INK}`, paddingTop: 10, fontSize: 13.5 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            <b>기준선 맞추기 기록 (개발용)</b>
+            <label htmlFor="attempt-kind">이번에는</label>
+            <select id="attempt-kind" value={attemptKind} onChange={(e) => setAttemptKind(e.target.value)} style={{ font: 'inherit', padding: '4px 6px', border: `1.5px solid ${INK}`, borderRadius: 8, background: CARD }}>
+              {ATTEMPT_KINDS.map((k) => (
+                <option key={k}>{k}</option>
+              ))}
+            </select>
+            <button style={{ ...button, padding: '4px 10px' }} disabled={attempts.length === 0} onClick={() => void navigator.clipboard?.writeText(attempts.map(attemptLine).join('\n'))}>
+              복사
+            </button>
+            <button
+              style={{ ...button, padding: '4px 10px', color: SOFT }}
+              disabled={attempts.length === 0}
+              onClick={() => {
+                setAttempts([]);
+                saveAttempts([]);
+              }}
+            >
+              지우기
+            </button>
+          </div>
+          <p style={{ margin: '6px 0', color: SOFT }}>따라 하기 전에 어떻게 할지 고르고, 카메라로 따라 하면 한 줄씩 쌓입니다. 가짜 입력 점검은 쌓이지 않아요. ({attempts.length}번)</p>
+          <textarea readOnly aria-label="진단 기록" value={trace.join('\n')} rows={Math.min(14, Math.max(3, trace.length))} style={{ width: '100%', boxSizing: 'border-box', font: '12px ui-monospace, monospace', border: `1.5px dashed ${INK}`, borderRadius: 8, background: CARD, padding: 8, marginBottom: 8 }} />
+          {attempts.length > 0 && <textarea readOnly aria-label="따라 한 기록" value={attempts.map(attemptLine).join('\n')} rows={Math.min(12, attempts.length + 1)} style={{ width: '100%', boxSizing: 'border-box', font: '12.5px ui-monospace, monospace', border: `1.5px solid ${INK}`, borderRadius: 8, background: CARD, padding: 8 }} />}
         </div>
       )}
     </section>

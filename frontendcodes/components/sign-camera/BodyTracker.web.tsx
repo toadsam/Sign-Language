@@ -57,6 +57,7 @@ export default function BodyTracker({ input, enabled, mirrored, onStatus, onCapt
     let id = 0;
     let lastTime = -1;
     let lastRun = 0;
+    let rest = 0;
     let lastStatus = 0;
     const clear = () => {
       const element = canvas.current;
@@ -75,18 +76,27 @@ export default function BodyTracker({ input, enabled, mirrored, onStatus, onCapt
         const files = await FilesetResolver.forVisionTasks(publicAssetPath('hand-landmarker/wasm'));
         const poseModel = await poseModelPath();
         if (cancelled) return;
-        const [createdHands, createdPose] = await Promise.all([
-          HandLandmarker.createFromOptions(files, {
-            baseOptions: { modelAssetPath: publicAssetPath('hand-landmarker/hand_landmarker.task'), delegate: 'CPU' },
-            runningMode: 'VIDEO',
-            numHands: 2,
-          }),
-          PoseLandmarker.createFromOptions(files, {
-            baseOptions: { modelAssetPath: poseModel, delegate: 'CPU' },
-            runningMode: 'VIDEO',
-            numPoses: 1,
-          }),
-        ]);
+        // 그래픽 카드로 먼저 켜 보고, 안 되면 CPU 로 켠다. CPU 로만 돌리면 두 모델이 화면 그리기와 같은 줄에서 돌아 화면이 심하게 버벅였다 (2026-11-15)
+        const create = (delegate: 'GPU' | 'CPU') =>
+          Promise.all([
+            HandLandmarker.createFromOptions(files, {
+              baseOptions: { modelAssetPath: publicAssetPath('hand-landmarker/hand_landmarker.task'), delegate },
+              runningMode: 'VIDEO',
+              numHands: 2,
+            }),
+            PoseLandmarker.createFromOptions(files, {
+              baseOptions: { modelAssetPath: poseModel, delegate },
+              runningMode: 'VIDEO',
+              numPoses: 1,
+            }),
+          ]);
+        let created: [HandLandmarker, PoseLandmarker];
+        try {
+          created = await create('GPU');
+        } catch {
+          created = await create('CPU');
+        }
+        const [createdHands, createdPose] = created;
         if (cancelled) {
           createdHands.close();
           createdPose.close();
@@ -107,10 +117,13 @@ export default function BodyTracker({ input, enabled, mirrored, onStatus, onCapt
           const frameTime = source.currentTime;
           const sw = source.videoWidth;
           const sh = source.videoHeight;
-          if (now - lastRun >= 1000 / RUNS_PER_SECOND && frameTime !== lastTime && sw && sh) {
+          if (now - lastRun >= Math.max(1000 / RUNS_PER_SECOND, rest) && frameTime !== lastTime && sw && sh) {
             try {
+              const began = performance.now();
               const handResult = hands!.detectForVideo(source, now);
               const poseResult = pose!.detectForVideo(source, now);
+              // 인식에 걸린 시간의 두 배만큼은 쉰다. 느린 컴퓨터에서도 화면이 절반은 숨을 쉬게
+              rest = (performance.now() - began) * 2;
               lastTime = frameTime;
               lastRun = now;
               const body = poseResult.landmarks[0] ?? null;
