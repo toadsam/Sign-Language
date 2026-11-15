@@ -15,8 +15,8 @@
       what: '퀴즈 묶음(기본 · 일상 · 오답 복습)을 고르는 화면.', files: ['app/learn.tsx', 'components/paint/sketchbook.tsx'], talks: 'GET /api/users/{uid}' },
     { id: 'a-quiz', x: 208, y: 232, w: 152, h: 52, t: '퀴즈', sub: '영상 보고 넷 중 하나', k: 'touch', sem: '1학기 · 2학기에 새 단장',
       what: '수어 영상을 보고 뜻을 고른다. 채점 결과와 오답이 기록된다.', files: ['app/quiz.tsx', 'lib/api/quiz.ts'], talks: 'GET /api/quiz/session · POST /api/quiz/answer · PATCH /api/users/{uid}/tryQuestion' },
-    { id: 'a-translator', x: 44, y: 294, w: 152, h: 52, t: '통역 (번역기)', sub: '문장 → 수어 영상', k: 'touch', sem: '1학기 · 2학기에 새 단장',
-      what: '문장을 넣으면 어순을 바꾸고 단어 영상을 차례로 재생한다. AI 동작으로 바꾸는 스위치(MOTION_API_ENABLED)는 아직 꺼져 있다.', files: ['app/translator.tsx', 'lib/api/translate.ts', 'lib/api/generate.ts'], talks: 'POST /translate' },
+    { id: 'a-translator', x: 44, y: 294, w: 152, h: 52, t: '통역 (번역기)', sub: '문장 → AI 친구 · 따라 하기', k: 'touch', sem: '1학기 · 2학기에 AI 연결',
+      what: '문장을 넣으면 AI가 만든 3D 친구가 수어를 한다. 카메라로 따라 하면 점수와 고칠 곳을 알려 준다. AI 동작을 못 받으면 1학기처럼 단어 영상을 차례로 재생한다.', files: ['app/translator.tsx', 'lib/api/generate.ts', 'lib/api/recognize.ts', 'components/sign-camera/FollowAlong.web.tsx'], talks: 'POST /translate · POST /api/sign/generate · POST /api/sign/recognize' },
     { id: 'a-mypage', x: 208, y: 294, w: 152, h: 52, t: '기록 (마이페이지)', sub: '도장 달력 · 스티커', k: 'touch', sem: '1학기 · 2학기에 새 단장',
       what: '푼 문제 수, 자주 틀린 단어, 도장 달력, 프로필 사진.', files: ['app/mypage.tsx', 'components/paint/stamp-calendar.tsx'], talks: 'GET /api/users/{uid} · /top-wrong-words' },
     { id: 'a-notes', x: 44, y: 356, w: 152, h: 52, t: '오답노트 · 북마크', sub: '다시 풀기', k: 'touch', sem: '1학기 · 2학기에 새 단장',
@@ -116,7 +116,7 @@
   SJ.view('map', {
     build(root, scope) {
       root.appendChild(h('div', { class: 'view-head' }, [
-        h('h1', { text: '한 장으로 보는 수어지교' }),
+        h('h1', { text: '한 장으로 보는 수어링고' }),
         h('p', { text: '앱, 서버, AI, 바깥 서비스까지 전부 그렸다. 빨갛게 칠한 곳이 이번 학기에 새로 만든 핵심이고, 누르면 그 자리로 확대해 들어간다.' }),
       ]));
       const seg = h('div', { class: 'seg', role: 'group', 'aria-label': '칠한 곳 고르기' });
@@ -131,7 +131,7 @@
         ]),
       ]));
 
-      const F = SJ.fig(W, H, { minw: 1080, file: 'suji-map-structure', label: '수어지교 전체 구조 지도. 앱, 서버, AI 세 동네와 바깥 서비스가 있고 이번 학기 핵심은 빨갛게 칠해져 있다.', caption: '동그란 숫자 ①~⑤는 팀이 정한 계약 다섯 개다. 점선은 마을 바깥으로 나가는 연결.' });
+      const F = SJ.fig(W, H, { minw: 1080, file: 'suji-map-structure', label: '수어링고 전체 구조 지도. 앱, 서버, AI 세 동네와 바깥 서비스가 있고 이번 학기 핵심은 빨갛게 칠해져 있다.', caption: '동그란 숫자 ①~⑤는 팀이 정한 계약 다섯 개다. 점선은 마을 바깥으로 나가는 연결.' });
       const svg = F.svg;
       const wrap = h('div', { id: 'map-wrap' }, F.figure);
       const note = h('aside', { class: 'note float-note', 'aria-live': 'polite', hidden: '' });
