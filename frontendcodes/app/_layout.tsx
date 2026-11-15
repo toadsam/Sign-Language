@@ -51,7 +51,7 @@ function AuthGate() {
     const currentPath = (segments[0] as string | undefined);
     const inLoginScreen = currentPath === 'login';
     const inSignupScreen = currentPath === 'signup';
-    const inPlayerLab = __DEV__ && (currentPath === 'sign-player' || currentPath === 'sign-compare' || currentPath === 'sign-codebook' || currentPath === 'sign-reconstruct' || currentPath === 'sign-generate' || currentPath === 'sign-camera' || currentPath === 'sign-body' || currentPath === 'sign-hand-review' || currentPath === 'sign-lab');
+    const inPlayerLab = __DEV__ && (currentPath === 'sign-player' || currentPath === 'sign-compare' || currentPath === 'sign-codebook' || currentPath === 'sign-reconstruct' || currentPath === 'sign-generate' || currentPath === 'sign-camera' || currentPath === 'sign-body' || currentPath === 'sign-follow' || currentPath === 'sign-hand-review' || currentPath === 'sign-lab');
     const canUseApp = Boolean(accessToken) || isGuest;
 
     console.log('AuthGate - currentPath:', currentPath, 'canUseApp:', canUseApp, 'inLoginScreen:', inLoginScreen, 'inSignupScreen:', inSignupScreen);

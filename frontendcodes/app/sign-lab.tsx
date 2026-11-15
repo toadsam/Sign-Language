@@ -9,6 +9,7 @@ const screens=[
   {route:'/sign-generate',title:'단어 입력과 동작 생성',state:'단어 모델 · Spring 기본 연결 확인',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
   {route:'/sign-camera',title:'손 좌표 수집',state:'PC 웹 · 단어 모델 연결 대기',description:'카메라, 내 영상 또는 공개 시험 영상에서 손 관절을 추출하고 5초 좌표를 수집합니다.'},
   {route:'/sign-body',title:'내 움직임 좌표 받기',state:'PC 웹 · 상체 + 양손 55점',description:'카메라나 내 영상에서 상체와 손을 같이 뽑아 AI 동작과 같은 좌표로 바꾸고, 5초를 담아 3D 친구에게 입혀 봅니다. 채점의 앞 단계입니다.'},
+  {route:'/sign-follow',title:'따라 하고 점수 받기',state:'PC 웹 · 친구 동작과 직접 비교',description:'친구(AI 동작)를 보며 카메라로 따라 하면 손의 자리와 손가락 모양을 견주어 점수와 고칠 곳을 알려 줍니다. 기준선은 임시값입니다.'},
   {route:'/sign-hand-review',title:'손 좌표 재생·품질 점검',state:'PC 웹 · 수집 JSON 불러오기',description:'수집 결과를 재생하고 미감지·추출 간격을 점검합니다. 품질 보고서도 저장할 수 있습니다.'},
 ];
 export default function SignLab(){return <ScrollView style={styles.root} contentContainerStyle={styles.content}>
