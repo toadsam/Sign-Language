@@ -1,0 +1,497 @@
+"""CPU training/recovery tests use only tiny invented data and model weights."""
+from dataclasses import replace
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+import random
+import subprocess
+import sys
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+
+from gen.artifacts import ArtifactValidationError
+from gen.tests.test_data import Fixture
+from gen.train_sentence import build_pairs, encode_src
+
+HAS_TORCH = importlib.util.find_spec("torch") is not None
+if HAS_TORCH:
+    import torch
+    from gen.training import (MotionSegments, Trainer, TrainingConfig, TrainingError,
+                              atomic_torch_save, capture_rng, load_trained_model,
+                              resolve_device, restore_rng, train)
+    from gen.train_word import load_generator
+    from gen.train_sentence import load_sentence_generator
+
+
+@unittest.skipUnless(HAS_TORCH, "Torch absent: actual CPU training/resume NOT verified")
+class TrainingTests(Fixture):
+    @classmethod
+    def setUpClass(cls):
+        cls.previous_threads = torch.get_num_threads()
+        torch.set_num_threads(1)
+
+    @classmethod
+    def tearDownClass(cls):
+        torch.set_num_threads(cls.previous_threads)
+
+    def config(self, **kwargs):
+        return replace(TrainingConfig(iters=4, batch=2, d=8, layers=1, length=8, seed=17,
+                                      device="cpu", eval_every=1, save_every=1, max_src=8), **kwargs)
+
+    def word_selection(self):
+        self.add("WORD_A")
+        self.add("WORD_B")
+        self.add("WORD_A", "V")
+        self.add("WORD_A", "E")
+        selection = self.select(mode="smoke")
+        (self.root / "npy").mkdir(exist_ok=True)
+        for row in selection.train + selection.partitions["val"]:
+            motion = np.arange(12 * 375, dtype=np.float32).reshape(12, 125, 3) / 4500
+            np.save(self.root / "npy" / f"{row['clip']}.npy", motion)
+        # No test npy: reading it during training would fail immediately.
+        return selection
+
+    def assert_state_equal(self, first, second):
+        if isinstance(first, torch.Tensor):
+            self.assertTrue(torch.equal(first, second))
+        elif isinstance(first, dict):
+            self.assertEqual(first.keys(), second.keys())
+            for key in first:
+                self.assert_state_equal(first[key], second[key])
+        elif isinstance(first, (tuple, list)):
+            self.assertEqual(len(first), len(second))
+            for a, b in zip(first, second):
+                self.assert_state_equal(a, b)
+        else:
+            self.assertEqual(first, second)
+
+    def read_checkpoint(self, run, name="latest.pt"):
+        return torch.load(self.root / run / name, map_location="cpu", weights_only=True)
+
+    def test_word_gpt_train_save_load_infer_without_npy(self):
+        selection = self.word_selection()
+        with patch("numpy.load", side_effect=AssertionError("token GPT opened npy")):
+            result = train(selection, self.root / "gpt", kind="gpt", config=self.config())
+        self.assertEqual(result["global_step"], 4)
+        self.assertIsNotNone(result["best_validation"])
+        model, ck = load_generator(self.root / "gpt/model.pt")
+        self.assertFalse(model.training)
+        self.assertEqual(ck["signers"], {"T": 0})
+        self.assertEqual(ck["generation_signer"], "T")
+        with torch.inference_mode():
+            out = model.generate(torch.tensor([0]), torch.tensor([0]), top_k=2)
+        self.assertTrue(out[0])
+        self.assertTrue(all(0 <= code < 8 for code in out[0]))
+        latest = self.read_checkpoint("gpt")
+        for field in ("optimizer", "scheduler", "global_step", "rng", "best_validation", "config", "artifact_manifest"):
+            self.assertIn(field, latest)
+        self.assertNotIn("optimizer", ck)
+
+    def test_regressor_batch_only_reads_and_inference(self):
+        selection = self.word_selection()
+        real_load, paths = np.load, []
+        def load(path, **kwargs):
+            self.assertEqual(kwargs, {"mmap_mode": "r", "allow_pickle": False})
+            paths.append(Path(path).stem)
+            return real_load(path, **kwargs)
+        with patch("numpy.load", side_effect=load):
+            result = train(selection, self.root / "reg", kind="regress", config=self.config(), data_dir=self.root)
+        self.assertIsNotNone(result["best_validation"])
+        self.assertTrue(paths)
+        self.assertLessEqual(set(paths), {r["clip"] for r in selection.train + selection.partitions["val"]})
+        model, _ = load_generator(self.root / "reg/model.pt")
+        with torch.inference_mode():
+            motion = model(torch.tensor([0]), torch.tensor([0]))
+        self.assertEqual(tuple(motion.shape), (1, 8, 375))
+        self.assertEqual(motion.dtype, torch.float32)
+        self.assertTrue(torch.isfinite(motion).all())
+
+    def test_uninterrupted_and_resumed_are_bitwise_equal_for_both_word_models(self):
+        selection = self.word_selection()
+        for kind in ("gpt", "regress"):
+            with self.subTest(kind=kind):
+                options = {"kind": kind, "config": self.config(eval_every=3, save_every=3), "data_dir": self.root}
+                train(selection, self.root / f"{kind}-full", **options)
+                train(selection, self.root / f"{kind}-resume", stop_after=2, **options)
+                # A new caller may have consumed unrelated global RNGs meanwhile.
+                random.random()
+                np.random.random()
+                torch.rand(7)
+                train(selection, self.root / f"{kind}-resume", resume=True, **options)
+                full = self.read_checkpoint(f"{kind}-full")
+                resumed = self.read_checkpoint(f"{kind}-resume")
+                for field in ("global_step", "model", "optimizer", "scheduler", "rng", "best_validation", "best_step"):
+                    self.assert_state_equal(full[field], resumed[field])
+                self.assert_state_equal(self.read_checkpoint(f"{kind}-full", "model.pt")["model"],
+                                        self.read_checkpoint(f"{kind}-resume", "model.pt")["model"])
+
+    def test_resume_rejects_changed_execution_settings(self):
+        selection = self.word_selection()
+        cfg = self.config()
+        train(selection, self.root / "resume", kind="gpt", config=cfg, stop_after=2)
+        for changes in ({"iters": 5}, {"d": 16}, {"batch": 1}, {"seed": 18}, {"lr": 1e-4},
+                        {"corrupt": 0.1}, {"eval_every": 2}, {"max_len": 30}):
+            with self.subTest(changes=changes), self.assertRaises(TrainingError) as ctx:
+                train(selection, self.root / "resume", kind="gpt", config=replace(cfg, **changes), resume=True)
+            self.assertEqual(ctx.exception.code, "resume_mismatch")
+
+    def test_resume_rejects_changed_token_or_metadata(self):
+        selection = self.word_selection()
+        train(selection, self.root / "resume", kind="gpt", config=self.config(), stop_after=2)
+        self.tokens["clips"]["WORD_A_T"]["tokens"][0] = 7
+        changed = self.select(mode="smoke")
+        with self.assertRaises(ArtifactValidationError) as ctx:
+            train(changed, self.root / "resume", kind="gpt", config=self.config(), resume=True)
+        self.assertEqual(ctx.exception.code, "selection_mismatch")
+
+    def test_resume_rejects_changed_decoder_bytes_and_version(self):
+        selection = self.word_selection()
+        from vq.model import MotionVQVAE
+        cfg = {"width": 8, "code_dim": 4, "nb_code": 8, "depth": 1, "parts": "body_hand"}
+        # Fixture tokens use down=2; use down=4 here to match the existing loader.
+        self.tokens["down"] = 4
+        for token in self.tokens["clips"].values():
+            token["tokens"] = token["tokens"][:3]
+        selection = self.select(mode="smoke")
+        decoder = self.root / "vq.pt"
+        vq = MotionVQVAE(width=8, code_dim=4, nb_code=8, depth=1, parts="body_hand")
+        torch.save({"config": cfg, "model": vq.state_dict()}, decoder)
+        original_decoder = decoder.read_bytes()
+        options = {"kind": "gpt", "config": self.config(), "vq_path": decoder, "vq_version": "fixture-v1"}
+        train(selection, self.root / "resume", stop_after=2, **options)
+        vq.rest.add_(1)
+        torch.save({"config": cfg, "model": vq.state_dict()}, decoder)
+        with self.assertRaises(TrainingError) as ctx:
+            train(selection, self.root / "resume", resume=True, **options)
+        self.assertEqual(ctx.exception.code, "resume_mismatch")
+        decoder.write_bytes(original_decoder)
+        with self.assertRaisesRegex(TrainingError, "resume_mismatch"):
+            train(selection, self.root / "resume", resume=True, **{**options, "vq_version": "fixture-v2"})
+        formal = self.select()
+        result = train(formal, self.root / "formal", **{**options, "config": self.config(iters=1)})
+        self.assertEqual(result["global_step"], 1)
+        self.assertEqual(self.read_checkpoint("formal", "model.pt")["artifact_manifest"]["data_mode"], "formal")
+
+    def test_resume_rejects_changed_coordinate_inventory(self):
+        selection = self.word_selection()
+        train(selection, self.root / "resume", kind="regress", config=self.config(), data_dir=self.root, stop_after=2)
+        path = self.root / "npy/WORD_A_T.npy"
+        np.save(path, np.zeros((12, 125, 3), dtype=np.float64))
+        with self.assertRaises(TrainingError) as ctx:
+            train(selection, self.root / "resume", kind="regress", config=self.config(), data_dir=self.root, resume=True)
+        self.assertEqual(ctx.exception.code, "resume_mismatch")
+
+    def test_validation_uses_train_signer_and_never_test_or_holdout(self):
+        selection = self.word_selection()
+        selection.partitions["test"] = [{"invalid": "must not be inspected"}]
+        selection.partitions["holdout_val"] = [{"invalid": "must not be inspected"}]
+        selection.partitions["holdout_test"] = [{"invalid": "must not be inspected"}]
+        trainer = Trainer(selection, "gpt", self.config())
+        with patch.object(trainer.model, "forward", wraps=trainer.model.forward) as forward:
+            self.assertTrue(math.isfinite(trainer.validate()))
+        signers = forward.call_args.args[2]
+        self.assertTrue(torch.equal(signers, torch.tensor([0])))
+        self.assertEqual(trainer.model.signer.num_embeddings, 1)
+
+    def test_generation_for_val_and_test_uses_learned_train_signer(self):
+        selection = self.word_selection()
+        train(selection, self.root / "generation", kind="gpt", config=self.config(iters=1))
+        model, ck = load_generator(self.root / "generation/model.pt")
+        for bucket in ("val", "test"):
+            reference = selection.partitions[bucket][0]
+            self.assertNotIn(reference["signer"], ck["signers"])
+            with torch.inference_mode():
+                generated = model.generate(torch.tensor([ck["classes"][reference["item"]]]),
+                    torch.tensor([ck["signers"][ck["generation_signer"]]]), top_k=2)
+            self.assertTrue(generated[0])
+
+    def test_best_model_comes_from_validation_not_latest_or_training_loss(self):
+        selection = self.word_selection()
+        with patch.object(Trainer, "validate", side_effect=[2.0, 1.0, 3.0, 4.0]):
+            result = train(selection, self.root / "best", kind="gpt", config=self.config())
+        best = self.read_checkpoint("best", "model.pt")
+        latest = self.read_checkpoint("best")
+        self.assertEqual((result["best_step"], best["global_step"], latest["global_step"]), (2, 2, 4))
+        self.assertEqual(best["best_validation"], 1.0)
+
+    def test_tiny_scheduler_totals_including_ten(self):
+        selection = self.word_selection()
+        for total in (1, 2, 3, 10, 20):
+            with self.subTest(total=total):
+                result = train(selection, self.root / f"steps-{total}", kind="gpt", config=self.config(iters=total))
+                self.assertEqual(result["global_step"], total)
+                self.assertTrue(math.isfinite(result["lr"]))
+
+    def test_invalid_configuration_and_empty_train_fail_before_outputs(self):
+        selection = self.word_selection()
+        for changes in ({"iters": 0}, {"batch": 0}, {"length": 1}, {"d": 7}, {"corrupt": -0.1},
+                        {"lr": float("nan")}, {"eval_every": 0}, {"save_every": 0}, {"max_src": 0}):
+            with self.subTest(changes=changes), self.assertRaises(TrainingError):
+                train(selection, self.root / "invalid", kind="gpt", config=self.config(**changes))
+            self.assertFalse((self.root / "invalid").exists())
+        selection.partitions["train"] = []
+        with self.assertRaisesRegex(TrainingError, "empty_train"):
+            train(selection, self.root / "empty", kind="gpt", config=self.config())
+
+    def test_explicit_cuda_never_silently_falls_back(self):
+        with patch("torch.cuda.is_available", return_value=False):
+            self.assertEqual(str(resolve_device("auto")), "cpu")
+            self.assertEqual(str(resolve_device("cpu")), "cpu")
+            with self.assertRaisesRegex(TrainingError, "cuda_unavailable"):
+                resolve_device("cuda")
+
+    def test_formal_requires_eligible_ordinary_validation(self):
+        selection = self.word_selection()
+        selection.report["data_mode"] = "formal"
+        selection.partitions["val"] = []
+        with self.assertRaisesRegex(TrainingError, "validation_required"):
+            Trainer(selection, "gpt", self.config())
+
+    def test_validation_oov_coverage_is_reported_and_not_trained(self):
+        selection = self.word_selection()
+        unknown = dict(selection.partitions["val"][0], item="WORD_OOV", clip="OOV_V")
+        selection.partitions["val"].append(unknown)
+        result = train(selection, self.root / "coverage", kind="gpt", config=self.config())
+        self.assertEqual(result["validation_skipped"], {"class_oov": 1})
+        self.assertNotIn("WORD_OOV", self.read_checkpoint("coverage", "model.pt")["classes"])
+
+    def test_synthetic_sentence_train_save_load_infer_and_resume(self):
+        self.word_selection()
+        _, pairs, vocab, selection = build_pairs(self.root / "tokens.json", None, True,
+            np.random.default_rng(0), n_synth=4, return_selection=True)
+        cfg = self.config()
+        train(selection, self.root / "sentence-full", kind="sentence", config=cfg)
+        train(selection, self.root / "sentence-resume", kind="sentence", config=cfg, stop_after=2)
+        train(selection, self.root / "sentence-resume", kind="sentence", config=cfg, resume=True)
+        full, resumed = self.read_checkpoint("sentence-full"), self.read_checkpoint("sentence-resume")
+        for field in ("model", "optimizer", "scheduler", "rng", "global_step"):
+            self.assert_state_equal(full[field], resumed[field])
+        model, ck = load_sentence_generator(self.root / "sentence-resume/model.pt")
+        self.assertEqual(ck["kind"], "sentence")
+        self.assertEqual(ck["selection_metric"], "smoke_unvalidated")
+        self.assertIsNone(ck["best_validation"])
+        src = torch.tensor([encode_src(pairs[0], vocab, cfg.max_src)])
+        with torch.inference_mode():
+            out = model.generate(src, torch.tensor([0]), top_k=2)
+        self.assertTrue(out[0])
+
+    def test_sentence_ordinary_validation_and_unknown_tags(self):
+        self.add("SEN_A", kind="SEN", gloss=["known"], tags=["question"])
+        self.add("SEN_A", "V", kind="SEN", gloss=["known"], tags=["question"])
+        self.add("SEN_B", "V", kind="SEN", gloss=["known"], tags=["eval_tag"])
+        self.add("SEN_C", "E", kind="SEN", gloss=["test_only"])
+        selection = self.select("SEN", mode="smoke")
+        result = train(selection, self.root / "sen-val", kind="sentence", config=self.config(iters=1))
+        self.assertEqual(result["validation_skipped"], {"source_oov": 1})
+        self.assertEqual(result["validation_clips"], 1)
+        _, ck = load_sentence_generator(self.root / "sen-val/model.pt")
+        self.assertEqual(ck["selection_metric"], "ordinary_val_loss")
+        self.assertNotIn("test_only", ck["vocab"])
+        self.assertNotIn("<eval_tag>", ck["vocab"])
+
+    def test_legacy_word_loader_and_recovery_rejection(self):
+        selection = self.word_selection()
+        train(selection, self.root / "model", kind="gpt", config=self.config())
+        ck = self.read_checkpoint("model", "model.pt")
+        for field in ("checkpoint_type", "checkpoint_schema_version", "artifact_manifest"):
+            ck.pop(field)
+        torch.save(ck, self.root / "legacy.pt")
+        _, loaded = load_generator(self.root / "legacy.pt")
+        self.assertEqual(loaded["kind"], "gpt")
+        with self.assertRaisesRegex(TrainingError, "inference_required"):
+            load_generator(self.root / "model/latest.pt")
+
+    def test_condition_options_off_keep_original_architecture_and_old_configs(self):
+        selection = self.word_selection()
+        train(selection, self.root / "plain", kind="gpt", config=self.config())
+        ck = self.read_checkpoint("plain", "model.pt")
+        self.assertEqual((ck["config"]["cond_every"], ck["config"]["cond_drop"]), (False, 0.0))
+        self.assertEqual(ck["model"]["cond.weight"].shape[0], len(ck["classes"]))
+        # A checkpoint written before these options existed has no such keys.
+        for field in ("cond_every", "cond_drop"):
+            ck["config"].pop(field)
+        torch.save(ck, self.root / "old.pt")
+        model, _ = load_generator(self.root / "old.pt")
+        self.assertFalse(model.cond_every)
+        self.assertIsNone(model.null)
+
+    def test_condition_options_train_resume_and_guide(self):
+        selection = self.word_selection()
+        options = {"kind": "gpt", "config": self.config(cond_every=True, cond_drop=0.5, eval_every=3, save_every=3)}
+        train(selection, self.root / "cond-full", **options)
+        train(selection, self.root / "cond-resume", stop_after=2, **options)
+        train(selection, self.root / "cond-resume", resume=True, **options)
+        for field in ("model", "optimizer", "rng", "best_validation"):
+            self.assert_state_equal(self.read_checkpoint("cond-full")[field], self.read_checkpoint("cond-resume")[field])
+        model, ck = load_generator(self.root / "cond-full/model.pt")
+        self.assertTrue(model.cond_every)
+        self.assertEqual(model.null, len(ck["classes"]))
+        self.assertEqual(ck["model"]["cond.weight"].shape[0], len(ck["classes"]) + 1)
+        with torch.inference_mode():
+            out = model.generate(torch.tensor([0, 1]), torch.tensor([0, 0]), top_k=2, guidance=2.0)
+        self.assertTrue(all(row and all(0 <= code < 8 for code in row) for row in out))
+
+    def test_condition_drop_swaps_only_training_conditions(self):
+        selection = self.word_selection()
+        trainer = Trainer(selection, "gpt", self.config(cond_drop=0.99))
+        seen = []
+        real_forward = trainer.model.forward
+        def forward(cond, tokens, signer=None):
+            seen.append(cond.tolist())
+            return real_forward(cond, tokens, signer)
+        trainer.model.forward = forward
+        rows = selection.train * 4
+        trainer.loss(rows, training=True)
+        trainer.loss(rows, training=False)
+        self.assertIn(trainer.model.null, seen[0])
+        self.assertNotIn(trainer.model.null, seen[1])
+
+    def test_signer_drop_adds_null_signer_trains_resumes_and_generates(self):
+        from gen.training import NULL_SIGNER
+        selection = self.word_selection()
+        options = {"kind": "gpt", "config": self.config(cond_drop=0.5, signer_drop=0.5, eval_every=3, save_every=3)}
+        train(selection, self.root / "sig-full", **options)
+        train(selection, self.root / "sig-resume", stop_after=2, **options)
+        train(selection, self.root / "sig-resume", resume=True, **options)
+        for field in ("model", "optimizer", "rng", "best_validation"):
+            self.assert_state_equal(self.read_checkpoint("sig-full")[field], self.read_checkpoint("sig-resume")[field])
+        model, ck = load_generator(self.root / "sig-full/model.pt")
+        self.assertEqual(ck["signers"], {**selection.signers, NULL_SIGNER: len(selection.signers)})
+        self.assertEqual(ck["generation_signer"], NULL_SIGNER)
+        self.assertEqual(ck["model"]["signer.weight"].shape[0], len(selection.signers) + 1)
+        with torch.inference_mode():
+            out = model.generate(torch.tensor([0, 1]), torch.tensor([ck["signers"][NULL_SIGNER]] * 2), top_k=2)
+        self.assertTrue(all(row and all(0 <= code < 8 for code in row) for row in out))
+        # A trained signer can still be named explicitly.
+        name = next(iter(selection.signers))
+        trainer = Trainer(selection, "gpt", self.config(signer_drop=0.5, generation_signer=name))
+        self.assertEqual(trainer.generation_signer, name)
+
+    def test_signer_drop_swaps_only_training_signers_and_off_keeps_dictionary(self):
+        from gen.training import NULL_SIGNER
+        selection = self.word_selection()
+        self.assertEqual(Trainer(selection, "gpt", self.config()).metadata["signers"], selection.signers)
+        trainer = Trainer(selection, "gpt", self.config(signer_drop=0.99, generation_signer=next(iter(selection.signers))))
+        null = trainer.signers[NULL_SIGNER]
+        seen = []
+        real_forward = trainer.model.forward
+        def forward(cond, tokens, signer=None):
+            seen.append(signer.tolist())
+            return real_forward(cond, tokens, signer)
+        trainer.model.forward = forward
+        rows = selection.train * 4
+        trainer.loss(rows, training=True)
+        trainer.loss(rows, training=False)
+        self.assertIn(null, seen[0])
+        self.assertNotIn(null, seen[1])
+
+    def test_condition_options_are_validated_and_gpt_only(self):
+        selection = self.word_selection()
+        for changes in ({"cond_every": 1}, {"cond_drop": -0.1}, {"cond_drop": 1.0}, {"cond_drop": float("nan")},
+                        {"signer_drop": -0.1}, {"signer_drop": 1.0}, {"signer_drop": "0.1"}):
+            with self.subTest(changes=changes), self.assertRaises(TrainingError):
+                train(selection, self.root / "invalid", kind="gpt", config=self.config(**changes))
+        for kind in ("regress", "sentence"):
+            with self.subTest(kind=kind), self.assertRaisesRegex(TrainingError, "gpt only"):
+                Trainer(selection, kind, self.config(cond_every=True), data_dir=self.root)
+            with self.subTest(kind=kind, option="signer_drop"), self.assertRaisesRegex(TrainingError, "gpt only"):
+                Trainer(selection, kind, self.config(signer_drop=0.1), data_dir=self.root)
+        self.assertFalse((self.root / "invalid").exists())
+
+    def decoder_selection(self):
+        """down=4 token fixture with a tiny saved decoder: (selection, decoder path)."""
+        from vq.model import MotionVQVAE
+        self.word_selection()
+        self.tokens["down"] = 4
+        for token in self.tokens["clips"].values():
+            token["tokens"] = token["tokens"][:3]
+        decoder = self.root / "vq.pt"
+        vq = MotionVQVAE(width=8, code_dim=4, nb_code=8, depth=1, parts="body_hand")
+        torch.save({"config": {"width": 8, "code_dim": 4, "nb_code": 8, "depth": 1, "parts": "body_hand"},
+                    "model": vq.state_dict()}, decoder)
+        return self.select(mode="smoke"), decoder
+
+    def test_motion_selection_keeps_the_closest_val_motion_step(self):
+        selection, decoder = self.decoder_selection()
+        options = {"kind": "gpt", "vq_path": decoder, "vq_version": "fixture-v1",
+                   "config": self.config(select_metric="val_motion")}
+        motions = [{"body": 0.5, "shape": s, "words": 1} for s in (0.3, 0.1, 0.2, 0.4)]
+        with patch("gen.training.MotionValidator.__call__", side_effect=motions), \
+                patch.object(Trainer, "validate", side_effect=[1.0, 2.0, 3.0, 0.5]):
+            result = train(selection, self.root / "motion", **options)
+        best = self.read_checkpoint("motion", "model.pt")
+        self.assertEqual((result["best_step"], best["global_step"], best["best_validation"]), (2, 2, 0.1))
+        self.assertEqual(best["selection_metric"], "val_motion_shape")
+        log = [json.loads(line) for line in (self.root / "motion/log.jsonl").read_text().splitlines()]
+        self.assertEqual([e["val_motion_shape"] for e in log], [0.3, 0.1, 0.2, 0.4])
+        self.assertEqual(log[3]["val_loss"], 0.5)
+
+    def test_motion_checks_do_not_change_training_and_resume_exactly(self):
+        selection, decoder = self.decoder_selection()
+        common = {"kind": "gpt", "vq_path": decoder, "vq_version": "fixture-v1"}
+        motion = self.config(select_metric="val_motion", eval_every=1, save_every=1)
+        train(selection, self.root / "loss", config=self.config(eval_every=1, save_every=1), **common)
+        train(selection, self.root / "full", config=motion, **common)
+        train(selection, self.root / "resume", config=motion, stop_after=2, **common)
+        train(selection, self.root / "resume", config=motion, resume=True, **common)
+        loss, full, resumed = (self.read_checkpoint(name) for name in ("loss", "full", "resume"))
+        self.assert_state_equal(loss["model"], full["model"])
+        for field in ("model", "optimizer", "rng", "best_validation", "best_step"):
+            self.assert_state_equal(full[field], resumed[field])
+        log = [json.loads(line) for line in (self.root / "full/log.jsonl").read_text().splitlines()]
+        self.assertTrue(all(math.isfinite(e["val_motion_shape"]) and math.isfinite(e["val_motion_body"]) for e in log))
+
+    def test_motion_selection_settings_are_validated(self):
+        selection, decoder = self.decoder_selection()
+        for changes in ({"select_metric": "val_top5"}, {"select_words": -1}, {"select_words": 1.5},
+                        {"select_guidance": 2.0}, {"select_guidance": 0}):
+            with self.subTest(changes=changes), self.assertRaises(TrainingError):
+                Trainer(selection, "gpt", self.config(**changes), vq_path=decoder)
+        with self.assertRaisesRegex(TrainingError, "requires vq_path"):
+            Trainer(selection, "gpt", self.config(select_metric="val_motion"))
+        with self.assertRaisesRegex(TrainingError, "gpt only"):
+            Trainer(selection, "regress", self.config(select_metric="val_motion"), data_dir=self.root,
+                    vq_path=decoder)
+        trainer = Trainer(selection, "gpt", self.config(select_metric="val_motion", cond_drop=0.1,
+                                                        select_guidance=2.0), vq_path=decoder)
+        self.assertEqual(trainer.motion_validator.guidance, 2.0)
+        self.assertEqual(set(trainer.motion_validator.truth), {"WORD_A"})
+
+    def test_checkpoint_atomic_failure_preserves_old_file(self):
+        target = self.root / "atomic.pt"
+        torch.save({"old": 1}, target)
+        with patch("gen.training.os.replace", side_effect=OSError("simulated interruption")):
+            with self.assertRaises(OSError):
+                atomic_torch_save({"new": 2}, target)
+        self.assertEqual(torch.load(target, weights_only=True), {"old": 1})
+        self.assertEqual(sorted(p.name for p in self.root.iterdir()), ["atomic.pt"])
+
+    def test_rng_roundtrip_including_numpy_generator(self):
+        rng = np.random.default_rng(3)
+        state = capture_rng(rng)
+        first = (random.random(), np.random.rand(), rng.random(), torch.rand(3))
+        restore_rng(state, rng)
+        second = (random.random(), np.random.rand(), rng.random(), torch.rand(3))
+        self.assert_state_equal(first, second)
+
+    def test_cli_word_and_synthetic_sentence_smoke(self):
+        self.word_selection()
+        common = ["--tokens", str(self.root / "tokens.json"), "--iters", "1", "--batch", "1",
+                  "--d", "8", "--layers", "1", "--device", "cpu", "--seed", "7"]
+        for module, extra in (("gen.train_word", ["--model", "gpt", "--data", str(self.root), "--data-mode", "smoke"]),
+                              ("gen.train_sentence", ["--synthetic"])):
+            with self.subTest(module=module):
+                result = subprocess.run([sys.executable, "-m", module, *common, *extra,
+                                         "--run", str(self.root / module)], capture_output=True, text=True,
+                                        cwd=Path(__file__).resolve().parents[2], timeout=60,
+                                        env={**os.environ, "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["global_step"], 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

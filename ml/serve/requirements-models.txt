@@ -1,0 +1,4 @@
+# Optional Windows CPU model-test environment, separate from HTTP-only requirements.
+# Obtain approval before installation. No CUDA/GPU packages are required.
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu

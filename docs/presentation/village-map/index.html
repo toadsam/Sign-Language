@@ -1,0 +1,49 @@
+<title>수어지교 마을 지도</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&family=IBM+Plex+Mono:wght@400;500&family=Nanum+Pen+Script&display=swap">
+<link rel="stylesheet" href="style.css">
+
+<svg id="sj-defs" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="wc" x="-8%" y="-14%" width="116%" height="128%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="7" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="1" seed="9" result="g"/>
+      <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.55 0 0 0 0.7" result="ga"/>
+      <feComposite in="d" in2="ga" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><b>수어지교 <i>마을 지도</i></b><span>빨간 곳이 이번 학기에 칠한 곳</span></div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="그림 고르기"></nav>
+    <div class="modes">
+      <button class="mode" type="button" data-mode="present" aria-pressed="false" title="방향키로 넘기는 발표용 화면">발표 모드</button>
+      <button class="mode" type="button" data-mode="report" aria-pressed="false" title="흰 바탕의 멈춘 그림. 그림마다 저장 버튼이 생긴다">보고서 모드</button>
+    </div>
+  </div>
+</header>
+
+<main id="stage"></main>
+<div id="room" class="room" hidden></div>
+<div id="bloom" class="bloom" aria-hidden="true"></div>
+<div class="pager" aria-label="발표 넘기기">
+  <button type="button" id="pager-prev" aria-label="이전 그림">‹</button>
+  <span id="pager-n">1 / 1</span>
+  <button type="button" id="pager-next" aria-label="다음 그림">›</button>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/pose.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/map.js"></script>
+<script src="js/rooms-flow.js"></script>
+<script src="js/rooms-models.js"></script>
+<script src="js/rooms-serve.js"></script>
+<script src="js/views-data.js"></script>
+<script src="js/views-story.js"></script>
+<script src="js/main.js"></script>

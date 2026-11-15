@@ -1,0 +1,13 @@
+{
+  "fps": 30,
+  "joints": 125,
+  "frames": 0,
+  "units": "shoulder",
+  "data": "",
+  "tokens": [],
+  "segments": [],
+  "unknown": [
+    "미등록예시"
+  ],
+  "source": "baseline"
+}

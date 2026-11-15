@@ -40,3 +40,13 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// Builds the synonym embedding cache (calls OpenAI; needs OPENAI_API_KEY). The output must not be committed.
+tasks.register('buildSynonymCache', JavaExec) {
+    group = 'application'
+    description = 'Embeds every word-vocabulary mapping word for the generation synonym step.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.wow.signlanguage.generation.SynonymCacheBuilder'
+    args = [findProperty('vocab') ?: '', findProperty('out') ?: '', findProperty('model') ?: '',
+            findProperty('dimensions') ?: '']
+}

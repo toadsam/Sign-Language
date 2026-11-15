@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>손짓의 알파벳 · 자모표</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&display=swap">
+<style>
+  /* 색칠 마을 시안(proto-paint)과 같은 종이 · 먹 · 물감 */
+  :root {
+    --paper: #FBF5E6;
+    --card: #FFFDF6;
+    --ink: #2E2620;
+    --ink-soft: #6B5D4F;
+    --yellow: #FFC83D;
+    --yellow-soft: #FFE08A;
+    --coral: #F2937A;
+    --leaf: #93C47D;
+    --sky: #A9CFEA;
+    --mint: #7CC6A4;
+    --story: 'Gowun Batang', 'Batang', serif;
+    --body: 'Gowun Dodum', 'Malgun Gothic', sans-serif;
+    --hand-r: 255px 18px 225px 18px / 18px 225px 18px 255px;
+    --shadow: 0 14px 28px -16px rgba(46, 38, 32, .55);
+  }
+  * { box-sizing: border-box }
+  html, body { height: 100%; margin: 0; overflow: hidden; color: var(--ink); font-family: var(--body); background: var(--paper); -webkit-font-smoothing: antialiased }
+  button { font: inherit; color: inherit }
+  #bg { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; pointer-events: none; transition: opacity 1.2s }
+  #stage { position: fixed; inset: 0; z-index: 1 }
+  #stage canvas { display: block; cursor: grab }
+  #stage canvas.point { cursor: pointer }
+  /* 종이 결: 모든 것 위에 곱하기로 */
+  #grain { position: fixed; inset: 0; z-index: 7; pointer-events: none; opacity: .38; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .47  0 0 0 0 .36  0 0 0 .35 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>") }
+
+  /* 여백의 낙서 (선이 떨린다) */
+  #doodles { position: fixed; inset: 0; z-index: 0; pointer-events: none }
+  #doodles svg { position: absolute; overflow: visible }
+  .wig { transform-box: fill-box; transform-origin: 50% 100%; animation: wig .9s ease-in-out infinite alternate }
+  .wig.b { animation-delay: .45s }
+  @keyframes wig { from { transform: rotate(-7deg) } to { transform: rotate(7deg) } }
+
+  .hud { position: fixed; inset: 0; z-index: 3; pointer-events: none; transition: opacity .4s }
+  header { position: absolute; left: 40px; right: 40px; top: 26px; display: flex; justify-content: space-between; align-items: center }
+  .brand { font-family: var(--story); font-weight: 700; font-size: 19px; display: flex; align-items: center; gap: 12px; white-space: nowrap }
+  .brand b { font-weight: 700; background: linear-gradient(transparent 55%, var(--yellow-soft) 55%, var(--yellow-soft) 90%, transparent 90%); padding: 0 2px }
+  .brand .logo { height: 38px; min-width: 64px; display: grid; place-items: center; padding: 0 12px; border: 1.5px dashed rgba(46,38,32,.35); border-radius: var(--hand-r); font-size: 13px; color: var(--ink-soft); font-weight: 400 }
+  .brand .who { font-family: var(--body); font-weight: 400; color: var(--ink-soft); font-size: 15px }
+  .dots { display: flex; gap: 9px; pointer-events: auto }
+  .dots button { width: 16px; height: 16px; border-radius: 50%; border: 1.8px solid var(--ink); padding: 0; background: transparent; cursor: pointer; transition: background .4s }
+  .dots button.done { background: var(--yellow) }
+  .dots button.on { background: var(--yellow-soft); animation: pulse 1.4s ease-in-out infinite }
+  .dots button:focus-visible { outline: 2px dashed var(--ink); outline-offset: 4px }
+  @keyframes pulse { 50% { transform: scale(1.25) } }
+
+  /* 장면 제목 (표지) */
+  .title { position: absolute; left: 64px; bottom: 172px; max-width: 46vw }
+  .title .kicker { font-family: var(--body); font-size: 17px; color: var(--ink-soft); margin-bottom: 12px; animation: rise .8s .1s both }
+  .title h1 { font-family: var(--story); font-weight: 700; font-size: clamp(54px, 7vw, 118px); line-height: 1.08; margin: 0 0 20px; letter-spacing: -.02em }
+  .title h1 .ch { display: inline-block; animation: write .5s ease-out both }
+  .title h1 .accent { background: linear-gradient(var(--yellow-soft), var(--yellow-soft)) no-repeat 0 82% / 0% 34%; animation: marker .9s 1.3s cubic-bezier(.3,.9,.4,1) forwards; padding: 0 4px }
+  .title p { font-size: clamp(17px, 1.3vw, 22px); line-height: 1.7; color: var(--ink-soft); margin: 0; max-width: 32em; animation: rise .8s .7s both }
+  .title .num { font-family: var(--story); color: var(--ink); font-weight: 700 }
+  .title.hidden { display: none }
+
+  /* 자막: 테이프로 붙인 쪽지 */
+  .caption { position: absolute; left: 50%; top: 88px; transform: translateX(-50%) rotate(-.6deg); max-width: min(980px, 76vw);
+    background: var(--card); border: 2px solid var(--ink); border-radius: var(--hand-r); padding: 16px 30px; box-shadow: var(--shadow);
+    font-family: var(--story); font-weight: 700; font-size: clamp(18px, 1.45vw, 26px); line-height: 1.55; text-align: center;
+    transition: opacity .3s, transform .5s cubic-bezier(.3,1.4,.5,1) }
+  .caption::before, .caption::after { content: ''; position: absolute; top: -11px; width: 52px; height: 19px; background: rgba(255,224,138,.85); transform: rotate(-8deg) }
+  .caption::before { left: 22px } .caption::after { right: 22px; transform: rotate(7deg) }
+  .caption.hide { opacity: 0; transform: translateX(-50%) translateY(-14px) rotate(-2deg) }
+  .caption em { font-style: normal; background: linear-gradient(transparent 55%, var(--yellow-soft) 55%, var(--yellow-soft) 92%, transparent 92%); padding: 0 2px }
+  .caption code { font-family: var(--story); font-size: 1em; color: #C2553A }
+  .caption .ch { display: inline-block; animation: write .38s ease-out both; white-space: pre }
+
+  /* 큰 숫자 카드: 숫자 뒤에 물감 한 번 */
+  .figure { position: absolute; right: 52px; top: 50%; transform: translateY(-50%) rotate(1.2deg) scale(.85); opacity: 0; transition: opacity .3s, transform .55s cubic-bezier(.3,1.4,.5,1);
+    background: var(--card); border: 2px solid var(--ink); border-radius: var(--hand-r); padding: 22px 30px 18px; box-shadow: var(--shadow); text-align: right; min-width: 230px; isolation: isolate }
+  .figure::before { content: ''; position: absolute; right: 18px; top: 16px; width: 70%; height: 62%; border-radius: 46% 54% 42% 58% / 55% 45% 55% 45%; background: var(--yellow-soft); z-index: -1; filter: url(#wash); opacity: .9;
+    transform: scale(0); transform-origin: 80% 50%; transition: transform .7s .15s cubic-bezier(.3,1.3,.5,1) }
+  .figure.show { opacity: 1; transform: translateY(-50%) rotate(1.2deg) scale(1) }
+  .figure.show::before { transform: scale(1) }
+  .figure.bump { animation: wobble .5s }
+  .figure .big { font-family: var(--story); font-weight: 700; font-size: clamp(52px, 5.6vw, 98px); line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums }
+  .figure .big small { font-size: .34em; color: var(--ink-soft); font-weight: 400; margin-left: .15em; font-family: var(--body) }
+  .figure .lab { font-family: var(--body); font-size: 16px; color: var(--ink-soft); margin-top: 10px }
+
+  /* 아래 조작 띠 */
+  footer { position: absolute; left: 40px; right: 40px; bottom: 24px; display: flex; align-items: center; gap: 16px; pointer-events: auto }
+  .btn { font-family: var(--story); font-weight: 700; font-size: 16px; background: var(--card); border: 2px solid var(--ink); border-radius: var(--hand-r); padding: 9px 18px; cursor: pointer; transition: transform .12s; white-space: nowrap }
+  .btn:hover { transform: translateY(-2px) rotate(-.8deg) }
+  .btn:active { transform: translateY(2px) rotate(.5deg) }
+  .btn:focus-visible { outline: 2px dashed var(--ink); outline-offset: 4px }
+  .bar { position: relative; flex: 1; height: 24px; cursor: pointer }
+  .bar::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px dashed rgba(46,38,32,.35) }
+  .bar i { position: absolute; left: 0; top: 5px; bottom: 5px; width: 0; background: var(--yellow); border-radius: 40% 30% 45% 35% / 50% 40% 55% 45%; filter: url(#wash) }
+  .bar b { position: absolute; top: 50%; width: 20px; height: 20px; border-radius: 50%; background: var(--card); border: 2px solid var(--ink); transform: translate(-50%, -50%) }
+  .bar s { position: absolute; top: 50%; width: 2px; height: 12px; background: var(--ink); transform: translate(-50%, -50%) rotate(8deg); opacity: .55; border-radius: 2px }
+  .keys { font-size: 14px; color: var(--ink-soft); white-space: nowrap }
+  .keys kbd { font-family: var(--story); font-weight: 700; background: var(--card); border: 1.5px solid var(--ink); border-radius: 8px 4px 9px 5px; padding: 1px 7px; margin: 0 2px; color: var(--ink) }
+
+  /* 장면 안 행동 버튼 (예: 귀 고쳐 주기): 시안의 노란 물감 버튼 */
+  .action { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%) scale(.6); opacity: 0; pointer-events: none; isolation: isolate; overflow: hidden;
+    font-family: var(--story); font-weight: 700; font-size: 23px; background: transparent; border: 2.2px solid var(--ink); border-radius: var(--hand-r); padding: 16px 38px; cursor: pointer;
+    transition: opacity .3s, transform .45s cubic-bezier(.3,1.4,.5,1) }
+  .action::before { content: ''; position: absolute; inset: 4px 6px; background: var(--yellow); border-radius: 40% 30% 45% 35% / 50% 40% 55% 45%; z-index: -1; filter: url(#wash) }
+  .action.show { opacity: 1; transform: translateX(-50%) scale(1); pointer-events: auto; animation: wiggle 1.8s 1s ease-in-out infinite }
+  .action:active { transform: translateX(-50%) translateY(3px) rotate(-.6deg) }
+  .action:focus-visible { outline: 2px dashed var(--ink); outline-offset: 5px }
+
+  /* 단어 찾기 */
+  .search { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%) translateY(20px) rotate(.6deg); opacity: 0; pointer-events: none; display: flex; align-items: center; gap: 14px;
+    background: var(--card); border: 2px solid var(--ink); border-radius: var(--hand-r); padding: 8px 14px 8px 22px; box-shadow: var(--shadow); transition: opacity .3s, transform .45s cubic-bezier(.3,1.4,.5,1) }
+  .search.show { opacity: 1; transform: translateX(-50%) rotate(.6deg); pointer-events: auto }
+  .search label { font-family: var(--story); font-weight: 700; font-size: 18px; white-space: nowrap; flex: none }
+  .search input { font-family: var(--story); font-weight: 700; font-size: 22px; border: 0; border-bottom: 2px dashed var(--ink-soft); outline: 0; background: transparent; padding: 6px 6px; width: 170px; color: var(--ink) }
+  .search input:focus { border-bottom: 2px solid var(--ink); background: linear-gradient(transparent 60%, rgba(255,224,138,.6) 60%) }
+  .search output { font-family: var(--story); font-weight: 700; font-size: 18px; min-width: 90px; flex: none }
+
+  /* 토큰 카드: 테이프 붙인 쪽지 */
+  .card { position: absolute; width: 300px; background: var(--card); border: 2px solid var(--ink); border-radius: var(--hand-r); padding: 18px 20px 20px; box-shadow: 0 24px 44px -20px rgba(46,38,32,.6); pointer-events: auto;
+    transform-origin: 50% 100%; animation: cardin .5s cubic-bezier(.3,1.4,.5,1) both; rotate: -1deg }
+  .card::before { content: ''; position: absolute; top: -11px; left: 50%; width: 64px; height: 20px; margin-left: -32px; background: rgba(255,224,138,.85); transform: rotate(-4deg) }
+  .card[hidden] { display: none }
+  .card .top { display: flex; justify-content: space-between; align-items: center }
+  .card .no { font-family: var(--story); font-weight: 700; font-size: 30px }
+  .card .x { border: 1.8px solid var(--ink); background: transparent; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer }
+  .card canvas { display: block; width: 100%; height: auto; background: var(--paper); border: 1.5px solid rgba(46,38,32,.25); border-radius: 18px 8px 20px 10px; margin: 10px 0 12px }
+  .card .use { font-size: 15px; color: var(--ink-soft); margin-bottom: 8px }
+  .card .use b { font-family: var(--story); color: var(--ink); font-weight: 700 }
+  .card .w { display: grid; grid-template-columns: 88px 1fr 42px; align-items: center; gap: 8px; font-size: 16px; margin: 6px 0 }
+  .card .w b { font-family: var(--story); font-weight: 700 }
+  .card .w span { height: 14px; position: relative; border-bottom: 1.5px dashed rgba(46,38,32,.3) }
+  .card .w span i { position: absolute; inset: 1px auto 1px 0; background: var(--yellow); border-radius: 40% 30% 45% 35% / 50% 40% 55% 45%; transform-origin: left; animation: grow .7s cubic-bezier(.3,1.3,.5,1) both; filter: url(#wash) }
+  .card .w em { font-style: normal; font-size: 14px; color: var(--ink-soft); text-align: right }
+  .card .rest { font-size: 15px; color: var(--ink-soft); border: 1.5px dashed rgba(46,38,32,.35); border-radius: 14px 6px 16px 8px; padding: 8px 12px }
+
+  /* 장면 전환: 큰 노란 붓이 세 번 지나간다 (시안의 brush) */
+  #wipe { position: fixed; inset: 0; z-index: 6; pointer-events: none }
+  #wipe svg { position: absolute; inset: 0; width: 100%; height: 100% }
+  #wipe .label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); opacity: 0; font-family: var(--story); font-weight: 700; font-size: clamp(40px, 5vw, 78px); text-align: center; white-space: nowrap }
+  #wipe .label small { display: block; font-family: var(--body); font-weight: 400; font-size: .32em; color: var(--ink-soft); margin-bottom: 10px; letter-spacing: .08em }
+
+  #loading { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; align-content: center; gap: 12px; background: var(--paper); font-family: var(--story); font-weight: 700; font-size: 24px; transition: opacity .7s }
+  #loading svg { width: 120px; height: 140px }
+  #loading .hp { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: draw 1.6s ease-in-out infinite alternate }
+  #loading.done { opacity: 0; pointer-events: none }
+
+  /* 정리 장면: 눌러서 뒤집는 카드 */
+  .cards { position: absolute; left: 50%; top: 168px; transform: translateX(-50%); display: flex; gap: 28px; pointer-events: auto; width: max-content; max-width: 94vw; flex-wrap: wrap; justify-content: center }
+  .cards[hidden] { display: none }
+  .fc { width: 290px; height: 214px; perspective: 1000px; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; animation: cardin .8s cubic-bezier(.3,1.4,.5,1) both }
+  .fc:nth-child(1) { rotate: -1.5deg } .fc:nth-child(2) { rotate: 1deg } .fc:nth-child(3) { rotate: -.6deg }
+  .fc:focus-visible { outline: 2px dashed var(--ink); outline-offset: 8px }
+  .fc .in { position: relative; width: 100%; height: 100%; transition: transform .8s cubic-bezier(.3,1.3,.5,1); transform-style: preserve-3d }
+  .fc:hover .in { transform: translateY(-6px) rotate(-1deg) }
+  .fc.flip .in { transform: rotateY(180deg) }
+  .fc .f, .fc .b { position: absolute; inset: 0; backface-visibility: hidden; border: 2px solid var(--ink); border-radius: var(--hand-r); box-shadow: var(--shadow); padding: 24px 26px; display: flex; flex-direction: column; justify-content: center; gap: 6px; isolation: isolate; overflow: hidden }
+  .fc .f { background: var(--card) }
+  .fc .f::after { content: ''; position: absolute; right: 14px; top: 14px; width: 92px; height: 92px; border-radius: 46% 54% 42% 58% / 55% 45% 55% 45%; background: var(--c); opacity: .75; z-index: -1; filter: url(#wash) }
+  .fc .f .n { font-family: var(--story); font-weight: 700; font-size: 54px; line-height: 1; letter-spacing: -.03em }
+  .fc .f .n.long { font-size: 40px }
+  .fc .f .n small { font-size: .36em; color: var(--ink-soft); margin-left: .15em; font-family: var(--body); font-weight: 400 }
+  .fc .f .l { font-family: var(--story); font-weight: 700; font-size: 21px }
+  .fc .f .hint { font-size: 14px; color: var(--ink-soft); margin-top: 10px }
+  .fc .b { background: var(--card); transform: rotateY(180deg); font-size: 17px; line-height: 1.6 }
+  .fc .b::before { content: ''; position: absolute; inset: 8px; border-radius: 40% 30% 45% 35% / 50% 40% 55% 45%; background: var(--c); opacity: .45; z-index: -1; filter: url(#wash) }
+
+  /* 알림 쪽지 */
+  #toast { position: fixed; left: 50%; bottom: 92px; z-index: 8; background: var(--card); border: 2px solid var(--ink); border-radius: var(--hand-r); font-family: var(--story); font-weight: 700; font-size: 17px; padding: 12px 22px;
+    transform: translateX(-50%) translateY(130px) rotate(-2deg); transition: transform .55s cubic-bezier(.3,1.4,.5,1); pointer-events: none; box-shadow: var(--shadow); white-space: nowrap }
+  #toast::before { content: ''; position: absolute; top: -10px; left: 18px; width: 46px; height: 18px; background: rgba(255,224,138,.85); transform: rotate(-8deg) }
+  #toast.show { transform: translateX(-50%) rotate(-1deg) }
+
+  body.nohud .hud { opacity: 0; pointer-events: none } body.nohud .hud * { pointer-events: none !important }
+  @media (max-width: 1200px) { .keys { display: none } }
+  @media (max-width: 760px) {
+    header { left: 16px; right: 16px; top: 16px } .brand { font-size: 15px } .brand .who { display: none } footer { left: 16px; right: 16px; bottom: 16px; gap: 10px }
+    .title { left: 20px; bottom: 150px; max-width: 80vw } .figure { right: 16px; top: auto; bottom: 150px; transform: scale(.8); min-width: 0 } .figure.show { transform: none }
+    .caption { top: 70px; max-width: 90vw; padding: 12px 18px } .search label { display: none }
+  }
+  @keyframes write { from { opacity: 0; filter: blur(3px); transform: translateY(3px) } to { opacity: 1; filter: none; transform: none } }
+  @keyframes marker { to { background-size: 100% 34% } }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+  @keyframes wobble { 25% { rotate: -2deg } 50% { rotate: 2deg } 75% { rotate: -1deg } }
+  @keyframes wiggle { 0%,100% { rotate: 0deg } 10% { rotate: -3deg } 20% { rotate: 3deg } 30% { rotate: 0deg } }
+  @keyframes cardin { from { opacity: 0; transform: translateY(18px) rotate(-4deg) scale(.8) } to { opacity: 1; transform: none } }
+  @keyframes grow { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+  @keyframes draw { to { stroke-dashoffset: 0 } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } .title h1 .accent { background-size: 100% 34% } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<!-- 손그림 필터: 선을 떨리게(rough), 물감을 번지게(wash) — 시안과 같은 값 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence id="roughNoise" type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="1"/>
+      <feDisplacementMap in="SourceGraphic" scale="3.2"/>
+    </filter>
+    <filter id="wash" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="3" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="12" result="d"/>
+      <feGaussianBlur in="d" stdDeviation=".8" result="b"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="1" seed="3" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.2 1.25" result="ga"/>
+      <feComposite in="b" in2="ga" operator="in"/>
+    </filter>
+    <!-- 전환용: 화면 전체에 쓰므로 가볍게 (번짐만, 알갱이 없음) -->
+    <filter id="brushEdge" x="-10%" y="-20%" width="120%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="5"/>
+      <feDisplacementMap in="SourceGraphic" scale="34"/>
+    </filter>
+    <path id="handShape" pathLength="1" d="M46 92 V34 q0 -8 7 -8 q7 0 7 8 V74 M60 74 V22 q0 -8 7 -8 q7 0 7 8 V74 M74 74 V28 q0 -8 7 -8 q7 0 7 8 V78 M88 78 V44 q0 -7 7 -7 q7 0 7 7 V100 q0 30 -30 34 q-24 2 -34 -16 L26 92 q-5 -8 2 -12 q7 -4 13 3 L46 98"/>
+  </defs>
+</svg>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div id="doodles" aria-hidden="true"></div>
+<div id="stage"></div>
+<div class="hud">
+  <header>
+    <div class="brand"><span class="logo">로고</span>손짓의 알파벳 · <b>자모표</b> <span class="who">정재훈</span></div>
+    <nav class="dots" id="dots" aria-label="장면"></nav>
+  </header>
+  <div class="title hidden" id="title"><div class="kicker">수어지교 · AI융합캡스톤디자인 2</div><h1 id="titleH"></h1><p id="titleP"></p></div>
+  <div class="caption hide" id="caption" aria-live="polite"></div>
+  <div class="figure" id="figure"><div class="big" id="figBig"></div><div class="lab" id="figLab"></div></div>
+  <button class="action" id="action" type="button"></button>
+  <div class="search" id="search"><label for="q">단어로 찾기</label><input id="q" placeholder="학교" autocomplete="off"><output id="qOut"></output></div>
+  <div class="card" id="card" hidden></div>
+  <div class="cards" id="cards" hidden></div>
+  <footer>
+    <button class="btn" id="prev" type="button" aria-label="이전 장면">◀</button>
+    <button class="btn" id="play" type="button" aria-label="재생 또는 일시정지">일시정지</button>
+    <button class="btn" id="next" type="button" aria-label="다음 장면">▶</button>
+    <div class="bar" id="bar" tabindex="0" role="slider" aria-label="장면 안에서 이동"><i id="barFill"></i><b id="barKnob"></b></div>
+    <div class="keys"><kbd>←</kbd><kbd>→</kbd> 장면 · <kbd>Space</kbd> 멈춤 · <kbd>F</kbd> 전체화면 · <kbd>H</kbd> 글자 숨김 · <kbd>A</kbd> 자동 넘김</div>
+  </footer>
+</div>
+<div id="wipe" aria-hidden="true"><svg id="wipeSvg"></svg><div class="label" id="wipeLabel"></div></div>
+<div id="grain" aria-hidden="true"></div>
+<div id="toast" role="status"></div>
+<div id="loading"><svg viewBox="0 0 130 150" fill="none" stroke="#2E2620" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#rough)"><use href="#handShape" class="hp"/></svg>물감을 푸는 중…</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

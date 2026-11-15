@@ -1,7 +1,15 @@
 frontend/node_modules
 frontend/dist
+frontendcodes/node_modules/
+frontendcodes/.expo/
+frontendcodes/dist/
+frontendcodes/.env
+frontendcodes/.env.*
 backend/target
 backend/.gradle
 backend/build
 .env
 backend/.env
+
+# Local-only Codex planning documents and session reports
+/docs/plans/

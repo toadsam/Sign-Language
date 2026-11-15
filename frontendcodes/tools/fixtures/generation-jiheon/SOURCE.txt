@@ -1,0 +1,5 @@
+Synthetic fixtures only, no AI Hub originals.
+Source: origin/feature/transformer-jiheon
+Commit: cfa2893da31bfbcd7910f08b75bf4a6c4e1a2588
+Paths: ml/serve/examples/{normal.json,unknown.json,video.json,README.md}
+video.json is a 503 error envelope, not playable video.

@@ -21,6 +21,8 @@ public class SecurityConfig {
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(
                 "/translate",
+                "/api/sign/generate",
+                "/api/sign/recognize",
                 "/api/health",
                 "/api/auth/**",
                 "/api/quiz/**",

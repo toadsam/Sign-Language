@@ -1,6 +1,26 @@
 server:
   port: 8080
 
+sign:
+  generation:
+    url: ${SIGN_GENERATION_URL:http://127.0.0.1:8000/generate}
+    connect-timeout: ${SIGN_GENERATION_CONNECT_TIMEOUT:PT1S}
+    response-timeout: ${SIGN_GENERATION_RESPONSE_TIMEOUT:PT10S}
+    max-text-chars: ${SIGN_GENERATION_MAX_TEXT_CHARS:4096}
+    max-frames: ${SIGN_GENERATION_MAX_FRAMES:1800}
+    # spring: GlossTranslator(OpenAI·ETRI·규칙) / serve: 추론 서버의 POST /translate (외부 API 없음)
+    translator: ${SIGN_GENERATION_TRANSLATOR:spring}
+    # 비우면 url의 끝 /generate를 /translate로 바꾼 주소
+    translate-url: ${SIGN_GENERATION_TRANSLATE_URL:}
+    word-vocab-path: ${SIGN_WORD_VOCAB_PATH:}
+    synonym:
+      enabled: ${SIGN_SYNONYM_ENABLED:true}
+      cache-path: ${SIGN_SYNONYM_CACHE_PATH:}
+      candidates: ${SIGN_SYNONYM_CANDIDATES:10}
+  # 읽는 모델(POST /api/sign/recognize). 비워 두면 generation.url 의 /generate 를 /recognize 로 바꿔 쓴다
+  recognition:
+    url: ${SIGN_RECOGNITION_URL:}
+
 spring:
   application:
     name: sign-language-backend
@@ -27,6 +47,7 @@ openai:
   morphology:
     enabled: ${OPENAI_MORPHOLOGY_ENABLED:true}
   chat-completions-url: ${OPENAI_CHAT_COMPLETIONS_URL:https://api.openai.com/v1/chat/completions}
+  embeddings-url: ${OPENAI_EMBEDDINGS_URL:https://api.openai.com/v1/embeddings}
 
 app:
   frontend-base-url: http://localhost:8081/home

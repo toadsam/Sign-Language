@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>재훈의 수어 자모표 — 처음부터 읽는 작업 교재</title><style>{{CSS}}</style></head>
+<body>
+<a class="skip" href="#reading">본문으로 건너뛰기</a>
+<header class="top"><a href="#start" class="brand">손짓을 숫자로, 숫자를 동작으로</a><div><button id="allMode" type="button" aria-pressed="false">전체 이어 읽기</button><button id="print" type="button">인쇄 / PDF 저장</button></div></header>
+<div class="layout"><aside><div class="side-title">정재훈의 작업 교재 <span>2026.10.27 · 초보자용</span></div><p class="side-help">목차 순서대로 읽으면 됩니다.<br>코드는 이해한 다음 펼쳐 보세요.</p><nav id="toc" aria-label="교재 목차"></nav><div class="progress-box"><label for="progress">읽고 설명할 수 있는 장 <output id="progressText">0 / 18</output></label><progress id="progress" max="18" value="0"></progress><p>완료 표시는 이 브라우저에만 저장됩니다.</p></div></aside>
+<main id="reading">
+
+<section class="lesson" id="start" data-title="읽는 법 · 내가 만든 것">
+<div class="eyebrow">시작하기</div><h1>내가 만든 것을<br><em>내 말로 설명하기.</em></h1>
+<p class="lead">코드가 많아진 속도와 이해가 쌓이는 속도는 다를 수 있습니다. 이 교재는 재훈이 만든 결과를 거꾸로 외우게 하지 않고, 작은 문제 하나를 푸는 데서 시작합니다.</p>
+<div class="thesis"><p>재훈이 만든 핵심은</p><strong>수어 동작을 번호로 요약하고,<br>그 번호를 다시 동작으로 바꾸는 장치입니다.</strong><p>그리고 그 장치가 배울 데이터를 준비하고, 얼마나 잘 복원하는지 검사했습니다.</p></div>
+<h2>먼저 세 가지 질문만 잡습니다</h2><ol><li><b>무엇이 들어오나?</b> 사람의 관절 위치를 시간순으로 적은 숫자입니다.</li><li><b>무엇을 만드나?</b> 동작의 특징을 대표하는 번호 목록과, 그 번호를 동작으로 풀어내는 모델입니다.</li><li><b>어떻게 잘됐는지 아나?</b> 배우지 않은 사람의 동작을 복원해 원본과의 차이를 재고, 화면으로 손모양을 확인합니다.</li></ol>
+<h2>공부 순서</h2><div class="study-plan"><div><b>첫째 날 · 0~3장</b><p>내 역할, Python 읽기, 좌표와 배열. “프레임 하나가 숫자 375개”를 설명하기.</p></div><div><b>둘째 날 · 4~7장</b><p>전처리·품질·라벨·분할. “모델보다 데이터를 먼저 확인한 이유”를 설명하기.</p></div><div><b>셋째 날 · 8~10장</b><p>인코더·코드북·디코더. “512개 토큰은 512개 단어가 아니다”를 설명하기.</p></div><div><b>넷째 날 · 11~14장</b><p>학습·토큰 파일·평가·실험. “왜 E5를 후보로 골랐나”를 숫자로 설명하기.</p></div><div><b>다섯째 날 · 15~17장</b><p>인수인계·실제 코드·복습. 자료 없이 3분간 자신의 작업 설명하기.</p></div></div>
+<p>시간은 정답이 아닙니다. 한 장에서 막히면 그 장의 작은 예시와 확인 문제만 다시 봐도 됩니다. 전체 코드를 한 번에 읽는 것은 마지막입니다.</p>
+<h2>이 교재에서 서로 다른 세 종류</h2><div class="key"><span>실제 코드</span><p><code>feature/ai-motion-vq</code>의 커밋 <code>2df9317</code>에서 가져온 원문입니다. 발췌에는 실제 줄 번호를 붙였습니다.</p><span>실제 기록</span><p>실험 로그·평가 JSON·개발 기록의 숫자입니다. 이번 교재 제작 때 재학습해 얻은 숫자는 아닙니다.</p><span>설명용 예시</span><p>이해를 돕기 위해 만든 좌표·작은 계산입니다. 실제 수어·실제 모델 출력이 아닙니다.</p></div>
+<p class="note">기준은 2026년 10월 18일의 브랜치 소스와 저장 결과입니다. 10월 27일에 교재를 작성했습니다. 모델 파일·실제 동작 데이터는 교재 안에 넣지 않았습니다. 이 교재는 인터넷 연결 없이 읽을 수 있습니다.</p>
+<details class="answer"><summary>첫 확인: 나는 한국어 문장 번역기 전체를 완성한 걸까?</summary><p>아직 아닙니다. 재훈의 핵심은 동작 데이터와 VQ-VAE 자모표입니다. 한국어 처리, 토큰 생성, 인식 채점, 화면 연결은 서로 다른 구성 요소이며 팀원들과 연결해야 전체 서비스가 됩니다.</p></details>
+</section>
+
+<section class="lesson" id="role" data-title="1 · 내 역할과 전체 흐름">
+<div class="eyebrow">1장 · 무엇을 만들었나</div><h1>큰 서비스 안에서<br>내 부분을 찾기</h1><p class="lead">자동차 전체와 엔진을 구분하듯, 서비스 전체와 자모표를 구분하면 코드의 역할이 선명해집니다.</p>
+<h2>사용자가 기대하는 최종 흐름</h2><div class="flow"><div><small>입력</small><b>한국어 문장</b><span>“화장실 있어요?”</span></div><i>→</i><div><small>기존 어순 변환</small><b>gloss 열</b><span>[화장실, 있다]</span></div><i>→</i><div><small>지헌 · 받아쓰기</small><b>토큰 열 생성</b><span>[47, 203, 88, …]</span></div><i>→</i><div class="focus"><small>재훈 · 디코더</small><b>3D 동작 복원</b><span>[T, 125, 3]</span></div><i>→</i><div><small>승혁 · 화면</small><b>동작 재생</b><span>관절 또는 인형</span></div></div><p class="caption">문장·번호는 흐름 설명용 예시입니다. 실제 생성 결과가 아닙니다.</p>
+<h2>재훈이 실제로 준비한 길은 두 개입니다</h2><p><b>데이터 준비의 길:</b> AI Hub 파일을 조사하고, 좌표를 읽어 고치고, 학습할 사람과 평가할 사람을 나눴습니다. 이 결과는 다른 팀원도 사용합니다.</p><p><b>모델의 길:</b> 동작 → 인코더 → 코드북 번호 → 디코더 → 복원 동작을 만들고 학습했습니다. 서비스에서는 이 중 디코더가 생성 모델의 토큰을 받아 동작을 만듭니다.</p>
+<div class="compare"><div><h3>복원</h3><p>원래 동작을 보여 주고 번호로 바꿨다가 되돌립니다.</p><code>동작 → 토큰 → 동작</code><p>재훈의 실험에서 주로 측정한 일입니다.</p></div><div><h3>생성</h3><p>원래 동작을 주지 않고 문장 조건으로 토큰을 예측합니다.</p><code>gloss → 새 토큰 열 → 동작</code><p>받아쓰기 모델과 디코더를 연결해야 합니다.</p></div></div>
+<h2>이름 때문에 생기는 오해</h2><p>“손짓의 알파벳”과 “자모표”는 프로젝트의 비유입니다. 실제 한국어 자음·모음 목록이나 수어 단어 사전이 아닙니다. 모델이 <b>동작의 짧은 특징</b>을 표현하기 위해 배우는 번호 체계입니다. 같은 토큰이 여러 단어에 등장할 수 있고, 한 단어에도 많은 토큰이 필요합니다.</p>
+<h2>네가 맡은 파일 묶음</h2><table><thead><tr><th>위치</th><th>해결하는 문제</th><th>결과</th></tr></thead><tbody><tr><td>ml/prep</td><td>어떤 데이터를 어떻게 먹일까?</td><td>정리된 좌표·라벨·분할표</td></tr><tr><td>ml/vq</td><td>동작을 번호로 표현할 수 있을까?</td><td>학습 모델·평가·그림</td></tr><tr><td>ml/common</td><td>모두 같은 관절·파일·지표를 쓸까?</td><td>공통 읽기·관절 정의·지표·뷰어</td></tr><tr><td>docs</td><td>왜 이렇게 결정했고 무엇을 넘길까?</td><td>실험 판단·계약·인수인계</td></tr></tbody></table>
+<details class="answer"><summary>확인: 복원 오차가 작으면 문장 생성도 잘된다는 뜻일까?</summary><p>아닙니다. 디코더가 좋은 번호를 받으면 잘 복원할 가능성을 보여줍니다. 받아쓰기 모델이 문장에 맞는 번호를 잘 고르는지는 따로 평가해야 합니다. 복원 품질은 토큰 표현의 한계를 살펴보는 기준이지, 전체 생성 정확도가 아닙니다.</p></details>
+</section>
+
+<section class="lesson" id="python" data-title="2 · 코드를 읽는 최소 문법">
+<div class="eyebrow">2장 · 문법부터 천천히</div><h1>코드를 한국어 문장으로<br>바꾸어 읽기</h1><p class="lead">모든 Python 문법을 먼저 외울 필요는 없습니다. 이 프로젝트에서 반복되는 모양부터 익힙니다.</p>
+<h2>변수·목록·사전</h2><pre class="toy"><code># 설명용 Python 예시
+frames = 80
+tokens = [12, 7, 7, 91]
+meta = {"clip": "예시_01", "frames": 80, "type": "WORD"}
+print(meta["frames"])  # 80</code></pre><p><code>=</code>는 “같다”라는 비교가 아니라 오른쪽 값을 왼쪽 이름에 담는 명령입니다. <code>tokens</code>는 순서가 있는 목록이고, <code>meta</code>는 이름표로 값을 찾는 사전입니다. <code>meta["frames"]</code>는 frames라는 이름표의 값을 꺼냅니다. 실제 동작 좌표는 보통 Python 목록보다 계산에 유리한 NumPy 배열이나 PyTorch 텐서에 담습니다.</p>
+<h2>반복과 조건</h2><pre class="toy"><code># 설명용 예시: WORD만 남기기
+words = []
+for m in metas:
+    if m["type"] == "WORD":
+        words.append(m)</code></pre><p>“메타 목록에서 하나를 꺼내 m이라고 부른다. 종류가 WORD이면 words에 추가한다.”라고 읽습니다. <code>==</code>는 값이 같은지 비교합니다. 들여쓰기는 어떤 명령이 반복문·조건문 안에 속하는지 나타냅니다.</p><pre class="toy"><code>words = [m for m in metas if m["type"] == "WORD"]</code></pre><p>위 한 줄은 방금 반복문을 압축해 쓴 <b>리스트 내포</b>입니다. 어려우면 항상 긴 반복문으로 풀어 읽으세요.</p>
+<h2>함수와 클래스</h2><pre class="toy"><code>def token_count(frames, down=4):
+    return frames // down
+
+n = token_count(80)  # 20</code></pre><p><code>def</code>는 입력을 받아 계산을 하는 함수의 정의입니다. <code>return</code>은 결과를 돌려줍니다. <code>//</code>는 정수 나눗셈입니다. <code>down=4</code>는 따로 주지 않았을 때의 기본값입니다.</p><p><code>class MotionVQVAE</code>는 모델의 구조와 행동을 묶은 설계도입니다. <code>model = MotionVQVAE(...)</code>는 그 설계도로 실제 객체를 만드는 일입니다. <code>self.encoder</code>는 “이 모델이 가지고 있는 인코더”입니다. PyTorch의 모델에서 <code>model(x)</code>는 내부 <code>forward</code> 계산으로 연결됩니다.</p>
+<h2>배열 문법에서 가장 자주 보는 것</h2><table><thead><tr><th>표현</th><th>읽는 법</th><th>실수하기 쉬운 점</th></tr></thead><tbody><tr><td>x[0]</td><td>첫 번째 항목</td><td>번호는 0부터 시작</td></tr><tr><td>x[4:8]</td><td>4, 5, 6, 7번 선택</td><td>끝 8은 포함하지 않음</td></tr><tr><td>x[:, :55, :]</td><td>모든 시간, 앞 55관절, 모든 좌표</td><td>쉼표마다 다른 축</td></tr><tr><td>x.shape</td><td>각 축의 길이</td><td>값 자체가 아니라 모양</td></tr><tr><td>x.reshape(-1, 375)</td><td>마지막 축을 375로, 나머지는 자동 계산</td><td>숫자 순서를 바꾸는 작업이 아님</td></tr><tr><td>x[None]</td><td>앞에 길이 1짜리 축 추가</td><td>배치 1개를 표현할 때 사용</td></tr><tr><td>x.permute(0, 2, 1)</td><td>첫 축 유지, 뒤의 두 축 교환</td><td>reshape와 다른 일</td></tr><tr><td>m.get("label")</td><td>label 값 가져오기</td><td>없으면 None. 정상이라는 뜻 아님</td></tr></tbody></table>
+<h2>파일과 실행의 차이</h2><p><code>import</code>는 다른 파일·라이브러리의 도구를 가져옵니다. <code>numpy</code>는 숫자 배열 계산, <code>torch</code>는 신경망 학습과 텐서 계산, <code>scipy.signal</code>은 평활화에 쓰였습니다. <code>if __name__ == "__main__": main()</code>은 해당 파일을 프로그램으로 실행했을 때 시작할 지점입니다.</p><p><code>python -m vq.train --parts body_hand</code>를 읽으면 “Python으로 vq 패키지의 train을 실행하고, parts 설정을 body_hand로 준다”입니다. 이것은 실제 학습 명령이므로 이 교재를 읽기 위해 실행할 필요는 없습니다.</p>
+<details class="answer"><summary>확인: x의 모양이 [80, 125, 3]이면 x[10:14]에는 몇 프레임이 있을까?</summary><p>10, 11, 12, 13번의 네 프레임입니다. 결과 모양은 [4, 125, 3]입니다. 14번은 포함하지 않습니다.</p></details>
+</section>
+
+<section class="lesson" id="arrays" data-title="3 · 사람의 움직임이 배열이 되는 법">
+<div class="eyebrow">3장 · 데이터의 모양</div><h1>움직임은<br>좌표 사진의 연속입니다</h1><p class="lead">영상 한 장마다 몸과 손의 위치를 숫자로 기록했다고 생각해 보세요. 그 숫자를 시간순으로 쌓으면 동작이 됩니다.</p>
+<h2>점 하나 → 자세 하나 → 동작 하나</h2><div class="shape-flow"><div><b>[3]</b><p>관절 하나<br>x, y, z</p></div><span>× 125점</span><div><b>[125, 3]</b><p>프레임 하나<br>숫자 375개</p></div><span>× T프레임</span><div><b>[T, 125, 3]</b><p>클립 하나<br>시간순 자세</p></div></div><p><b>T</b>는 클립의 프레임 수입니다. 30fps라면 30프레임이 약 1초이며 80프레임은 약 2.67초입니다. <b>클립</b>은 한 사람이 한 번 수행한 단어 또는 문장 동작을 뜻합니다. 같은 단어도 사람이 다르면 다른 클립입니다.</p>
+<div class="demo" id="frameDemo"><h3>직접 보기 · 프레임을 움직이면 자세가 바뀝니다</h3><label for="frameRange">프레임 <output id="frameValue">0</output> / 7</label><input id="frameRange" type="range" min="0" max="7" value="0" step="1"><svg id="frameSvg" viewBox="0 0 600 260" role="img" aria-label="시간에 따라 손목 좌표가 변하는 설명용 골격"></svg><p id="frameReadout" class="readout"></p><p class="caption">원리를 보여 주는 합성 골격입니다. 실제 수어·AI Hub 데이터·학습 모델 출력이 아닙니다.</p></div>
+<h2>왜 125점인가요?</h2><table><thead><tr><th>부위</th><th>점 개수</th><th>저장 배열의 번호</th></tr></thead><tbody><tr><td>상체</td><td>13</td><td>0~12</td></tr><tr><td>왼손</td><td>21</td><td>13~33</td></tr><tr><td>오른손</td><td>21</td><td>34~54</td></tr><tr><td>얼굴</td><td>70</td><td>55~124</td></tr></tbody></table><p>원본 몸 포즈 25점 중 하체 12점은 조사한 데이터에서 실제 동작 정보로 쓸 수 없는 값이어서 제외했습니다. 몸 13 + 손 42 + 얼굴 70 = 125점입니다. confidence 값도 조사한 데이터에서 모두 1이어서 특징에서 제외했습니다. 이는 이 데이터 조사 결과이며 모든 키포인트 데이터의 공통 성질은 아닙니다.</p>
+<h2>[T, 375]는 무엇이 달라진 건가요?</h2><p>125 × 3 = 375입니다. 같은 숫자를 한 프레임당 긴 줄 하나로 펼쳤을 뿐입니다. 데이터 파일에는 <code>[T,125,3]</code>으로 저장하고, <code>load_data</code>가 모델에 주기 편하도록 <code>[T,375]</code>로 읽습니다. 계산을 위해 여러 클립 조각을 묶으면 앞에 배치 B가 붙어 <code>[B,T,375]</code>가 됩니다.</p><pre class="toy"><code># 설명용 모양 예시
+파일에서 읽음:       [80, 125, 3]
+펼침:                [80, 375]
+배치 축 하나 추가:   [1, 80, 375]
+64프레임 창 32개:    [32, 64, 375]</code></pre><p><b>float32</b>는 소수 하나를 4바이트로 저장하는 형식입니다. 80프레임 한 클립의 좌표 값만 계산하면 80 × 125 × 3 × 4 = 120,000바이트입니다. 파일 헤더·메타데이터 용량은 별도입니다. 숫자를 펼쳐도 정보량은 줄지 않습니다. 시간 길이를 줄이는 것은 뒤에서 배울 인코더입니다.</p>
+{{code:ml/common/data.py|load_data}}
+<ol class="explain"><li>첫 줄의 목록 내포는 <code>meta.jsonl</code>을 한 줄씩 읽어 설명 사전으로 바꿉니다.</li><li><code>types</code>가 있으면 WORD/SEN 중 원하는 종류만 남깁니다.</li><li><code>per_signer</code>가 있으면 사람별 표본을 뽑습니다. 작은 코드 확인에 쓰는 옵션입니다.</li><li>각 메타의 <code>clip</code> 이름으로 npy 파일을 찾아 읽습니다.</li><li><code>reshape(-1, FEAT_DIM)</code>에서 FEAT_DIM은 375입니다. 이 동작 배열을 <code>m["x"]</code>로 붙여 돌려줍니다.</li></ol>
+<details class="answer"><summary>확인: [32, 64, 375]의 32는 관절 수일까?</summary><p>아닙니다. 한 번에 계산하는 동작 조각의 수, 배치 크기입니다. 각 조각은 64프레임이고 프레임마다 좌표 숫자 375개가 있습니다. 사람 32명이라는 뜻도 아닙니다.</p></details>
+</section>
+
+<section class="lesson" id="prep" data-title="4 · 전처리: 데이터를 같은 기준으로">
+<div class="eyebrow">4장 · 전처리</div><h1>잘 배우게 하려면<br>입력의 기준부터 맞춥니다</h1><p class="lead">사람마다 위치와 크기가 다르고, 좌표에는 누락과 떨림이 있습니다. 모델이 이런 차이를 전부 동작 의미로 착각하지 않도록 정리했습니다.</p>
+<h2>실제 처리 순서</h2><ol class="steps"><li><b>정면(F) 파일 선택·125점 추출</b><p>조사한 5방향 파일의 3D 좌표가 같아서 정면만 읽었습니다. 상체·양손·얼굴을 정해진 순서로 합칩니다.</p></li><li><b>빠진 좌표 메우기</b><p>좌표 셋이 모두 0인 관절을 결측으로 취급합니다. 앞뒤 정상 프레임 사이를 선형 보간합니다. 어떤 관절이 전 프레임 결측이면 코드에서는 0으로 채우므로 실제 위치를 알아낸 것으로 해석하면 안 됩니다.</p></li><li><b>단위 확인</b><p>일부 원본은 m 대신 mm였습니다. 코드에서는 어깨너비 중앙값이 10을 넘으면 mm로 판단해 1000으로 나눕니다. 데이터에 맞춘 판별 규칙이지 완벽한 단위 검출기는 아닙니다.</p></li><li><b>작은 떨림 줄이기</b><p>Savitzky–Golay 필터를 사용합니다. 기본은 가까운 5프레임을 보고 2차 곡선으로 추세를 잡습니다. 큰 오류를 자동으로 고치는 단계는 아닙니다.</p></li><li><b>손가락 뼈 길이 맞추기</b><p>손가락 뼈가 매 프레임 늘었다 줄지 않도록 클립 내 길이의 중앙값을 사용합니다. 각 뼈의 방향은 유지하며 부모 관절부터 다시 연결합니다.</p></li><li><b>위치·방향·크기 정규화</b><p>처음 10프레임의 평균 목 위치를 기준점으로 빼고, 어깨 방향으로 y축 회전한 뒤 어깨너비로 나눕니다.</p></li><li><b>움직임 구간 검출·저장</b><p>처음 손목 자세에서 충분히 벗어난 구간을 active로 기록합니다. 정규화 좌표는 npy, 변환 정보는 meta에 저장합니다.</p></li></ol>
+<h2>정규화를 숫자 하나로 이해하기</h2><p>회전을 잠시 빼고 한 축만 보겠습니다. 사람 A의 목 위치가 2.0m이고 손이 2.32m, 어깨너비가 0.32m라면 <code>(2.32 − 2.0) / 0.32 = 1</code>입니다. 사람 B가 더 멀리 있고 더 커도, 손이 목에서 어깨너비만큼 떨어져 있으면 똑같이 1이 됩니다.</p>
+<div class="demo"><h3>직접 계산 · 촬영 위치가 달라도 같은 상대 자세</h3><label for="originRange">설명용 몸 위치 <output id="originValue"></output>m</label><input id="originRange" type="range" min="0" max="3" step="0.1" value="1"><label for="scaleRange">어깨너비 <output id="scaleValue"></output>m</label><input id="scaleRange" type="range" min="0.2" max="0.6" step="0.01" value="0.32"><div id="normReadout" class="readout"></div><div class="norm-bars"><span>원래 손 좌표 <b id="rawPoint"></b></span><span>목 기준 손 좌표 <b id="centerPoint"></b></span><span>정규화 후 <b>1.00</b></span></div><p class="caption">손이 목에서 어깨너비 1배만큼 떨어진 상태를 유지하는 1차원 예시입니다. 실제 코드의 3D 회전은 생략했습니다.</p></div>
+{{code:ml/prep/preprocess.py|normalize}}
+<ol class="explain"><li><code>ref = x[:n_ref]</code>: 처음 10프레임을 기준 자세 계산에 씁니다.</li><li><code>origin</code>: 그 구간의 목 좌표 평균입니다. 매 프레임 목을 따로 0으로 만드는 방식은 아닙니다.</li><li><code>sh</code>와 <code>yaw</code>: 어깨선이 x–z 평면에서 돌아간 각도를 구합니다.</li><li><code>(x - origin) @ rot.T</code>: 위치를 옮긴 다음 회전합니다. <code>@</code>는 행렬 곱입니다.</li><li><code>scale</code>: 클립 전체에서 양 어깨 거리의 평균을 구합니다.</li><li><code>y / scale</code>: 어깨너비를 1로 맞춥니다. origin/yaw/scale은 해석·단위 환산에 쓰도록 함께 반환합니다.</li></ol>
+<p class="note">“목 원점”은 기준 목 위치를 뜻합니다. 사람이 시간에 따라 움직이는 작은 변화까지 모두 지우지는 않습니다. 정규화 후 1은 1미터가 아니라 어깨너비 1배입니다.</p>
+<details class="answer"><summary>확인: 정규화 좌표 오차가 0.1이고 어깨너비가 0.32m이면 몇 mm일까?</summary><p>0.1 × 0.32 × 1000 = 32mm입니다. 정규화 오차 자체를 mm라고 쓰면 단위가 틀립니다.</p></details>
+</section>
+
+<section class="lesson" id="quality" data-title="5 · 이상 데이터: 검사와 수리">
+<div class="eyebrow">5장 · 데이터 품질</div><h1>파일이 열려도<br>동작이 정상인 것은 아닙니다</h1><p class="lead">네 작업에서 큰 비중을 차지한 일은 모델 구현만이 아니라, 데이터가 무엇을 잘못 말하고 있는지 찾는 일이었습니다.</p>
+<h2>세 종류의 검사는 서로 다릅니다</h2><table><thead><tr><th>검사</th><th>예시</th><th>통과해도 모르는 것</th></tr></thead><tbody><tr><td>형식 검사</td><td>배열 모양·float32·NaN/Inf·프레임 수</td><td>손이 사람에게 가능한 위치인지</td></tr><tr><td>기하·시간 검사</td><td>몸 손목과 손 시작점 간격, 프레임 사이 이동</td><td>그 동작이 정확한 수어 의미인지</td></tr><tr><td>의미·시각 평가</td><td>손모양 식별, 인식 모델, 사람 평가</td><td>전체 어휘·사용자 상황의 완전한 정확성</td></tr></tbody></table>
+<h2>평균만 보면 놓치는 오류</h2><p>99프레임은 손목 간격이 1cm이고, 한 프레임만 101cm라면 평균은 2cm입니다. “평균 2cm”만 보면 평범해 보여도 한순간 손이 크게 튑니다. 그래서 <b>클립 평균뿐 아니라 순간 최대값</b>을 검사했습니다.</p><div class="spike-chart" role="img" aria-label="정상 간격 1cm가 이어지다가 한 프레임에서 101cm로 튀는 설명 그림"><svg viewBox="0 0 360 180"><path d="M20 145H340M20 20V145" class="axis"/><path d="M21 140 L155 140 L175 25 L195 140 L340 140" class="signal"/><text x="185" y="30">한 프레임 101cm</text><text x="30" y="115">나머지 99프레임 1cm</text><text x="280" y="170">시간 →</text></svg></div>
+<h2>실제로 발견하고 결정한 것</h2><p>WORD 48,000클립의 형식 검사에서는 오류가 없어도, 손목 간격과 귀·눈 좌표에는 문제가 있었습니다. 특히 왼쪽 귀가 코에서 수 미터 떨어진 클립이 많았습니다. 항상 엉뚱한 위치에 있으면 프레임 간 이동만 재는 검사로는 잡히지 않습니다. <b>시간 변화와 몸 안의 거리 관계를 둘 다 봐야 하는 이유</b>입니다.</p>
+<div class="decision"><b>재훈의 결정 · 귀·눈을 통째로 버리지 않고 다시 계산</b><p>반대쪽이 정상이면 얼굴 중심면을 기준으로 대칭 위치를 구하고, 그렇지 않으면 클립 안 보간, 마지막 대안으로 수행자 평균을 사용했습니다. 다른 121점은 유지했습니다. WORD 16,771클립, SEN 65클립을 수리한 기록이 있습니다.</p><p>수리는 정답을 새로 관측한 것이 아니라 근거를 둔 추정입니다. 그래서 원본 백업, 방법, 수정 범위를 남겼습니다.</p></div>
+<h2>초기 분류와 최종 학습 제외를 혼동하지 않기</h2><p>초기에는 usable(사용 가능) / review(추가 확인) / hold(보류)로 분류했습니다. 이후 귀·눈을 고치고 다시 검사한 결과로 최종 제외 목록을 만들었습니다. 따라서 초기 hold 2,027개와 최종 WORD 제외 1,855개는 서로 다른 시점·조건의 숫자입니다.</p><pre class="toy"><code>WORD 최종 제외
+수리 후 동작 보류 883개
++ 길이 비율 이상 985개
+− 두 조건에 모두 해당하는 13개
+= 1,855개
+
+SEN 최종 제외: 153개
+통합 최종 제외: 2,008개</code></pre><p>review는 최종 정책에서 학습에 포함했습니다. “사용 가능”도 수어 의미 정확성 보증은 아닙니다. 임계값 100cm는 이 데이터에서 사용한 보수적인 품질 규칙이며 모든 동작 데이터에 그대로 적용하는 정답은 아닙니다.</p>
+<h2>네가 만든 도구의 연결</h2><p><code>audit_word</code>로 넓게 검사 → <code>diagnose_word</code>·<code>review_spikes</code>로 후보를 좁힘 → <code>plot_review</code>로 그림 확인 → <code>repair_ears</code>로 선택한 부분 수리 → <code>scan_spikes</code> 재검사 → <code>quality_lists</code>·분할표에 정책 반영. 자동 검사와 사람의 결정이 이어진 과정입니다.</p>
+<details class="answer"><summary>확인: 오류 클립을 학습에서 제외했다는 것은 원본 파일을 삭제했다는 뜻일까?</summary><p>아닙니다. 제외 목록에 clip ID를 넣고 읽는 단계에서 걸러낼 수 있습니다. 파일 보관, 좌표 수리, 학습 제외는 서로 다른 행동입니다. 이 프로젝트도 품질 정책과 제외 목록을 별도로 관리합니다.</p></details>
+</section>
+
+<section class="lesson" id="labels" data-title="6 · 라벨과 시간 구간">
+<div class="eyebrow">6장 · 숫자에 설명 붙이기</div><h1>동작 좌표와<br>단어 이름은 다른 데이터입니다</h1><p class="lead">좌표만 있으면 손이 어디 있는지는 알 수 있지만, 그 동작의 이름이 “학교”인지는 알 수 없습니다.</p>
+<h2>작은 설명서, meta</h2><pre class="toy"><code>// 설명용으로 만든 메타 예시
+{
+  "clip": "WORD0001_REAL01",
+  "item": "WORD0001",
+  "signer": "REAL01",
+  "type": "WORD",
+  "frames": 120,
+  "active": [30, 89],
+  "label": "ok",
+  "gloss": ["예시단어"],
+  "dur_ratio": 1.0
+}</code></pre><table><tbody><tr><th>clip</th><td>한 동작 파일의 고유 이름. 좌표·메타·토큰을 연결하는 열쇠</td></tr><tr><th>item / signer</th><td>어떤 단어·문장인지 / 누가 했는지</td></tr><tr><th>gloss</th><td>시간순 수어 형태소 이름 목록. 자연스러운 한국어 문장과 같지 않을 수 있음</td></tr><tr><th>segments</th><td>각 형태소의 시작·끝 시각과 프레임 구간</td></tr><tr><th>nonmanual</th><td>비수지 표지. 이 데이터에서 확인한 라벨은 의문형이며 얼굴 좌표 자체가 아님</td></tr><tr><th>label</th><td>ok / empty / missing. 라벨 연결 상태</td></tr></tbody></table>
+<h2>왜 라벨을 그냥 파일 순서대로 붙이면 안 될까요?</h2><p>좌표가 48,000개 있어도 정면 라벨은 47,994개였고, 좌표에만 있는 것과 라벨에만 있는 것이 따로 있었습니다. 번호 순서대로 붙이면 한 파일 누락 이후 모든 정답이 밀릴 수 있습니다. <code>clip</code> 이름으로 맞춰야 합니다.</p><p>REAL02의 누락 55단어와 REAL25의 라벨 55단어가 번호·길이에서 비슷했지만, 같은 사람이라는 확인은 없었습니다. 그래서 재훈은 임의로 연결하지 않았습니다. 이 판단은 파일 수를 맞추는 것보다 학습 정답의 신뢰도를 우선한 것입니다.</p>
+<h2>30fps인 줄 알았는데 10fps라면?</h2><p>영상 길이가 3초이고 좌표 프레임이 30개라면 실제 추출 속도는 10fps일 수 있습니다. 이를 30fps로 재생하면 1초에 끝나므로 3배 빨라집니다. 라벨의 2초 지점을 <code>2×30=60</code>번 프레임으로 바꾸면 파일 범위 밖이 됩니다.</p><pre class="toy"><code>dur_ratio = 영상 길이 / (좌표 프레임 수 / 30)
+          = 3초 / (30 / 30초)
+          = 3
+
+라벨을 쓰는 모델의 조건:
+label == "ok" 그리고 0.85 ≤ dur_ratio &lt; 1.5</code></pre><p>비율이 크면 프레임 속도·길이가 의심스럽다는 뜻입니다. 코드의 필터는 의심 클립을 걸러내는 조건이지, 원래 프레임 속도를 완벽하게 복원하는 기능은 아닙니다.</p>
+<h2>VQ와 받아쓰기가 라벨을 다르게 쓰는 이유</h2><p>VQ는 입력 동작을 그대로 복원하도록 배웁니다. 정답은 그 동작 자체라 단어 이름이 없어도 학습 원리는 성립합니다. 받아쓰기는 단어·문장을 조건으로 토큰을 예측하므로 올바른 라벨이 필요합니다. 인식 모델 역시 동작의 단어 정답이 필요합니다. 그래서 같은 원본을 쓰더라도 학습 대상 조건이 다릅니다.</p>
+<details class="answer"><summary>확인: 의문 라벨이 있으니 E5가 얼굴의 의문 표정도 만들까?</summary><p>아닙니다. E5는 상체·손 55점만 학습하고 얼굴은 평균값으로 채웁니다. 라벨의 존재, 생성 모델의 조건 입력, 디코더가 얼굴 움직임을 만드는 능력은 각각 다른 조건입니다.</p></details>
+</section>
+
+<section class="lesson" id="split" data-title="7 · 학습과 시험을 분리하기">
+<div class="eyebrow">7장 · 공정한 평가</div><h1>연습한 사람과<br>시험 볼 사람을 나눕니다</h1><p class="lead">이미 본 동작을 기억한 것과 새로운 사람에게도 통하는 것은 다른 능력입니다.</p>
+<div class="split-visual"><div><b>학습 · train</b><strong>12명</strong><p>모델 가중치를 바꾸는 연습 자료</p><small>REAL01·02·05~10·13~16</small></div><div><b>검증 · val</b><strong>2명</strong><p>설정과 후보를 고르는 자료</p><small>REAL04·11</small></div><div><b>평가 · test</b><strong>2명</strong><p>마지막 성능을 확인할 자료</p><small>REAL03·12</small></div></div>
+<h2>왜 프레임을 무작위로 섞어 나누지 않았을까요?</h2><p>한 사람의 100프레임 중 80개를 학습, 20개를 시험에 넣으면 바로 옆의 거의 같은 자세를 이미 봤을 수 있습니다. 사람별 체형·습관도 양쪽에 남습니다. 새로운 사람의 동작을 표현할 수 있는지 보려면 사람 단위로 통째로 나누어야 합니다.</p><p><code>splits/full.json</code>, <code>full_sen.json</code>, <code>full_all.json</code>은 각자가 매번 새로 뽑지 않고 같은 분할을 쓰기 위한 약속입니다. <code>seed</code>는 무작위 선택을 반복할 수 있게 하는 시작값이며 공정한 평가를 자동 보장하는 값은 아닙니다.</p>
+{{code:ml/common/data.py|apply_split}}
+<ol class="explain"><li><code>excluded</code>는 품질 제외 clip 이름을 빠르게 찾는 집합입니다.</li><li>제외 목록에 든 메타를 먼저 걸러냅니다.</li><li><code>part</code>는 “REAL03 → test”처럼 사람 이름에서 분할 이름을 찾는 사전입니다.</li><li><code>out</code>에 train/val/test 세 바구니를 만듭니다.</li><li>각 클립의 사람을 보고 해당 바구니에 넣습니다. 분할표에 없는 사람은 넣지 않습니다.</li><li>마지막에 세 목록을 돌려줍니다. 함수에는 라벨/길이·새 문장 조합을 거르는 조건이 없습니다.</li></ol>
+<h2>“처음 보는 사람”과 “처음 보는 문장 조합”도 다릅니다</h2><p>사람만 나눠도 같은 문장 순서는 학습에 있을 수 있습니다. 새 조합 생성 능력을 평가하려면 특정 gloss 열 전체를 생성 모델 학습에서 빼야 합니다. 이 프로젝트는 새 단어 열 50개와 별도 의문 항목 5개를 선정했습니다. 수행자마다 라벨이 조금 달라서 <b>gloss 열 또는 문장 번호 또는 의문 항목</b> 중 하나라도 해당하면 제외하는 규칙을 만들었습니다.</p><div class="decision"><b>예시</b><p>학습에 “학교 → 가다”, “병원 → 있다”가 있고 시험에 “학교 → 있다”가 있다면, 단어를 처음 보는 시험이 아니라 아는 단어의 새 조합 시험입니다. 실제 선정 목록은 이 예시가 아니라 분할표의 heldout_sentences에 있습니다.</p></div>
+<table><thead><tr><th>현재 인수인계 기준</th><th>학습 대상 수</th></tr></thead><tbody><tr><td>WORD: 품질 제외만 적용</td><td>34,574</td></tr><tr><td>WORD: 라벨·길이도 적용</td><td>34,501</td></tr><tr><td>SEN: 품질·라벨·길이 적용</td><td>23,884</td></tr><tr><td>SEN: 새 조합 919개도 제외</td><td>22,965</td></tr><tr><td>새 조합 test</td><td>150클립 (학습 대상 아님)</td></tr></tbody></table>
+<p class="note">E5는 SEN 추가 제외 58개와 새 조합 목록을 정하기 전에 학습됐습니다. “생성 모델에서 보지 않은 조합”이라고는 설명할 수 있지만, “VQ도 그 동작을 전혀 본 적 없다”고 말하면 틀립니다. 또한 현재 VQ 학습 코드는 중간마다 test 점수를 출력하고 실험 판단에도 이를 참고했습니다. 엄격한 최종 성능 주장에서는 val로 설정을 고르고 test를 마지막에 쓰는 절차와 이 제한을 구분해야 합니다.</p>
+<details class="answer"><summary>확인: apply_split을 썼으면 문장 holdout도 자동으로 빠질까?</summary><p>아닙니다. 함수가 처리하는 것은 exclude.clips와 수행자 또는 item 분할입니다. heldout_sentences 조건은 생성 학습 코드에서 별도로 적용해야 합니다. 이름이 “분할”이라고 모든 평가 조건을 처리한다고 추측하면 안 됩니다.</p></details>
+</section>
+
+<section class="lesson" id="encoder" data-title="8 · 인코더: 동작을 특징으로">
+<div class="eyebrow">8장 · 모델의 첫 부분</div><h1>좌표를 바로 외우지 않고<br>짧은 특징으로 바꿉니다</h1><p class="lead">인코더는 긴 동작을 압축된 설명으로 바꾸는 신경망입니다. 사람이 “팔이 올라가고 손가락이 접힌다”라고 설명하듯, 모델은 숫자로 된 특징을 만듭니다.</p>
+<h2>먼저 ‘학습하는 계산’이란?</h2><p>아주 단순한 예로 <code>출력 = 입력 × w</code>가 있다면 w를 바꿀 때 출력이 달라집니다. 신경망은 이런 조절 가능한 숫자, 즉 <b>가중치</b>를 많이 가지고 있습니다. 처음부터 좋은 값을 아는 것이 아니라 복원 오차를 보며 조절합니다. 가중치는 프로그램의 구조와 달리 학습을 통해 달라지는 값입니다.</p>
+<h2>E5의 실제 모양을 따라가기</h2><div class="tensor-track"><p><code>[B, T, 375]</code><span>입력은 모든 125점</span></p><p><code>[B, T, 165]</code><span>상체·손 앞 55점 × 3만 선택</span></p><p><code>[B, 165, T]</code><span>Conv1d가 요구하는 축 순서로 교환</span></p><p><code>[B, 256, T/2]</code><span>시간 길이 절반</span></p><p><code>[B, 256, T/4]</code><span>시간 길이 다시 절반</span></p></div><p>E5 기본 특징 차원은 256입니다. <b>256은 코드북 칸 수 512와 다릅니다.</b> 한 특징이 숫자 256개이고, 그 특징을 대표할 후보가 코드북에 512개 있는 것입니다.</p>
+{{code:ml/vq/model.py|Encoder}}
+<ol class="explain"><li><code>nn.Conv1d(in_dim, width, 3, padding=1)</code>: 시간 방향의 가까운 자세를 보고 특징을 계산합니다. 입력 채널은 좌표값들입니다.</li><li><code>nn.ReLU()</code>: 음수를 0으로 바꾸는 비선형 연산입니다. 여러 층이 복잡한 관계를 표현하도록 돕습니다.</li><li><code>stride=2</code>인 합성곱: 시간 방향으로 두 칸씩 진행하여 길이를 줄입니다. down_t=2라 두 번 수행합니다.</li><li><code>resnet1d</code>: 잔차 블록입니다. 입력에 학습한 변화를 더해 정보를 전달합니다.</li><li>마지막 합성곱은 특징의 채널 수를 <code>code_dim</code>으로 맞춥니다.</li><li><code>self.net(x)</code>는 쌓아 놓은 계산을 순서대로 실행합니다.</li></ol>
+<details class="deeper"><summary>조금 더: “4프레임 = 토큰 하나”가 정확히 뜻하는 것</summary><p>시간 길이가 4분의 1이 되므로 토큰 하나가 출력 시간에서 4프레임 간격을 담당한다는 뜻입니다. 합성곱은 주변 시간도 보기 때문에, 겹치지 않는 4프레임만 독립적으로 읽어서 토큰을 만든다는 뜻은 아닙니다. 디코더 역시 이웃 토큰 문맥을 함께 사용합니다.</p><p>잔차 블록의 <code>x + f(x)</code>는 이전 정보를 바로 전달하는 길을 남깁니다. dilation은 시간축에서 띄엄띄엄 떨어진 위치까지 볼 수 있게 하는 간격입니다. 처음에는 “가까운 프레임과 넓은 시간 문맥을 함께 본다”까지만 이해해도 됩니다.</p></details>
+<details class="answer"><summary>확인: 80프레임을 인코딩한 뒤 특징 길이는? 토큰 후보는 몇 종류?</summary><p>길이는 80÷4=20입니다. 각 위치의 특징은 기본 설정에서 256차원이고, 각 특징을 바꿀 코드북 후보는 512종입니다. 20, 256, 512는 각각 시간 길이·특징 차원·후보 종류 수입니다.</p></details>
+</section>
+
+<section class="lesson" id="codebook" data-title="9 · 코드북: 가까운 대표 번호 고르기">
+<div class="eyebrow">9장 · VQ의 핵심</div><h1>비슷한 특징을<br>같은 번호로 부릅니다</h1><p class="lead">Vector Quantization은 여러 숫자로 된 특징 벡터를, 준비된 대표 벡터 중 가장 가까운 것으로 바꾸는 일입니다.</p>
+<h2>색상표 비유</h2><p>무한히 많은 색을 제한된 물감 세트로 표현한다고 생각해 보세요. 입력 색과 가장 가까운 물감 번호를 고릅니다. 수어 자모표는 색 대신 <b>동작 특징</b>을 비교합니다. 코드북은 그 대표 특징을 모은 표이고 토큰은 선택한 행 번호입니다.</p><p>대표가 512개이면 번호는 0~511입니다. 번호 47이 더 크거나 작은 동작을 뜻하지는 않습니다. 번호의 대소는 의미 순서가 아닙니다. 모델을 다시 학습하면 같은 번호가 다른 특징을 나타낼 수 있습니다.</p>
+<div class="demo" id="vqDemo"><h3>직접 고르기 · 가장 가까운 대표는?</h3><div class="controls"><label for="vx">특징 x <output id="vxOut"></output><input id="vx" type="range" min="0" max="10" step="0.1" value="4.6"></label><label for="vy">특징 y <output id="vyOut"></output><input id="vy" type="range" min="0" max="10" step="0.1" value="5.5"></label></div><svg id="vqSvg" viewBox="0 0 600 310" role="img" aria-label="설명용 2차원 특징과 여섯 대표 벡터의 거리"></svg><p id="vqResult" class="readout" aria-live="polite"></p><p class="caption">설명용 2차원·6개 코드 예시입니다. 실제 E5는 256차원·512개입니다. 움직이는 입력과 대표를 선으로 연결해 가장 가까운 후보를 표시합니다.</p></div>
+{{code:ml/vq/model.py|QuantizeEMAReset.quantize}}
+<p>이 함수는 특징 x와 코드북의 모든 행 사이 거리를 계산하고, 가장 작은 거리의 번호를 반환합니다.</p><ol class="explain"><li><code>x.pow(2).sum(1)</code>: 입력 특징의 제곱을 더합니다.</li><li><code>x @ self.codebook.t()</code>: 입력과 각 대표의 내적입니다. t()는 코드북의 행·열을 뒤집어 곱할 수 있게 합니다.</li><li>거리 식 <code>||x−c||² = ||x||² − 2x·c + ||c||²</code>를 한꺼번에 계산합니다.</li><li><code>dist.argmin(1)</code>: 가장 작은 거리의 <b>값이 아니라 번호</b>를 고릅니다.</li></ol>
+<h2>대표 특징은 누가 정하나요?</h2><p>사람이 “이 번호는 손 올리기”라고 이름을 붙인 것이 아닙니다. 학습 중 인코더가 만든 특징에서 시작하고, 그 대표를 선택한 특징들의 평균 방향으로 조금씩 옮깁니다. 이 코드에서는 EMA, 즉 <b>과거 값을 많이 남기면서 새 정보를 조금 섞는 이동 평균</b>을 씁니다. 기본 mu=0.99는 기존 통계 99%, 새 배치 통계 1%를 섞는 설정입니다.</p><p>일부 코드만 계속 선택되면 나머지는 배우지 못합니다. 이를 코드북 붕괴라고 부릅니다. 사용량이 부족한 코드를 현재 특징으로 다시 채우는 reset도 구현되어 있습니다.</p>
+<h2>사용률과 perplexity는 왜 둘 다 기록하나요?</h2><p>사용률은 512칸 중 한 번이라도 등장한 칸의 비율입니다. perplexity는 <b>얼마나 고르게 사용했는지</b>를 요약합니다. 512칸을 모두 한 번씩 썼어도 대부분 한 칸만 반복하면 사용률은 높고 perplexity는 낮을 수 있습니다. ppl 208이 “208개만 사용했다”는 뜻은 아닙니다.</p>
+<details class="deeper"><summary>조금 더: argmin처럼 딱 고르는 연산은 어떻게 학습할까요?</summary><p>번호 선택은 연속적으로 조금씩 변하는 계산이 아닙니다. 코드의 <code>xq = x + (xq - x).detach()</code>는 앞방향 계산에서는 선택한 대표 xq를 쓰되, 뒤로 학습 신호를 보낼 때는 x로 바로 전달하는 straight-through 방식입니다. 코드북 자체는 일반 가중치처럼 optimizer로 갱신하지 않고 EMA로 갱신합니다.</p></details>
+<details class="answer"><summary>확인: “512개 자모로 3,000단어를 표현한다”는 말은 모순일까?</summary><p>아닙니다. 토큰 하나가 단어 하나를 뜻하지 않습니다. 여러 토큰의 순서와 문맥으로 하나의 동작을 표현합니다. 글자 종류보다 단어 종류가 많은 것과 비슷하지만, 토큰에 사람이 정한 언어 의미가 있는 것은 아닙니다.</p></details>
+</section>
+
+<section class="lesson" id="decoder" data-title="10 · 디코더: 번호를 다시 움직임으로">
+<div class="eyebrow">10장 · 출력까지 연결</div><h1>번호를 읽고<br>좌표를 다시 만듭니다</h1><p class="lead">번호 자체에는 좌표가 들어 있지 않습니다. 같은 코드북과 디코더가 있어야 그 번호를 해석할 수 있습니다.</p>
+<h2>토큰 3개를 넣었을 때</h2><div class="flow"><div><small>설명용 번호</small><b>[12, 7, 91]</b><span>[1, 3]</span></div><i>→</i><div><small>코드북 조회</small><b>대표 특징 3개</b><span>[1, 256, 3]</span></div><i>→</i><div><small>디코더</small><b>시간 길이 ×4</b><span>[1, 165, 12]</span></div><i>→</i><div><small>축 복원·얼굴 채움</small><b>12프레임 동작</b><span>[1, 12, 375]</span></div></div>
+{{code:ml/vq/model.py|MotionVQVAE.decode}}
+<ol class="explain"><li><code>F.embedding(idx, codebook)</code>: 번호마다 코드북의 해당 행, 즉 대표 특징 벡터를 꺼냅니다. 단어 사전 조회가 아닙니다.</li><li><code>permute(0,2,1)</code>: 디코더가 읽을 채널·시간 순서로 바꿉니다.</li><li><code>self.decoder</code>: 특징을 섞고 시간 길이를 두 번 2배로 늘려 좌표를 예측합니다.</li><li>다시 <code>[배치, 시간, 좌표]</code> 순서로 바꾸고 <code>_fill</code>을 호출합니다.</li></ol>
+{{code:ml/vq/model.py|MotionVQVAE._fill}}
+<p>E5는 앞 165개 값, 즉 몸·손만 예측합니다. 하지만 팀의 출력 계약은 항상 375개입니다. 그래서 나머지 210개, 얼굴 70점의 좌표는 학습 데이터에서 구한 평균 얼굴로 채웁니다. <code>expand</code>는 필요한 배치·시간 길이에 같은 얼굴값을 맞춰 쓰고, <code>torch.cat</code>은 예측한 부분과 얼굴 부분을 이어 붙입니다.</p>
+<h2>얼굴 좌표가 있다고 얼굴을 생성하는 것은 아닙니다</h2><p>화면에는 125점이 모두 있어도 70점은 고정된 평균 얼굴입니다. “얼굴 포함 출력”과 “얼굴 움직임을 학습한 모델”을 구분해야 합니다. E2는 얼굴까지 학습한 조건이고 E5는 그렇지 않습니다.</p>
+<h2>토큰을 하나씩 따로 복원해 붙이면 같은 결과일까요?</h2><p>꼭 같지 않습니다. 디코더의 합성곱이 주변 토큰을 함께 보기 때문입니다. 토큰 격자는 한 토큰을 반복한 상황에서 어떤 모습이 나오는지 보여주는 시각화입니다. 실제 단어 속에서 그 토큰이 반드시 똑같은 4프레임 모양을 만든다는 보장은 없습니다.</p>
+<h2>파일 세트가 중요한 이유</h2><p><code>model.py</code>는 설계도, <code>model.pt</code>는 배운 가중치와 코드북, <code>config.json</code>은 모델 크기와 학습 설정, <code>tokens_e5.json</code>은 그 모델로 바꾼 번호 목록입니다. 설계도가 같더라도 다른 학습 결과의 코드북을 가져오면 같은 번호가 다른 동작 특징을 가리킬 수 있습니다.</p>
+<details class="answer"><summary>확인: 20개 토큰을 E5 디코더에 넣으면 몇 프레임, 몇 관절이 나올까?</summary><p>80프레임, 125관절 형식이 나옵니다. 다만 움직임을 예측한 관절은 앞 55개이고 얼굴 70개는 평균 얼굴입니다. 출력 배열은 배치 1일 때 [1,80,375]입니다.</p></details>
+</section>
+
+<section class="lesson" id="training" data-title="11 · 학습: 틀린 만큼 고치기">
+<div class="eyebrow">11장 · 학습 루프</div><h1>복원해 보고, 차이를 재고,<br>다음에는 덜 틀리게 고칩니다</h1><p class="lead">학습은 한 번의 마법 같은 변환이 아니라 작은 수정의 반복입니다. 한 반복에서 무엇이 바뀌는지 보면 긴 학습 코드도 읽을 수 있습니다.</p>
+<h2>학습 한 번의 순서</h2><ol class="steps"><li><b>동작 조각 뽑기</b><p>학습 클립에서 무작위로 64프레임 창을 잘라 배치를 만듭니다. 기본 batch=32입니다. 한 iteration이 전체 데이터를 한 번 다 봤다는 뜻은 아닙니다.</p></li><li><b>복원해 보기</b><p><code>xh, commit, ppl, _ = model(x)</code>. x는 정답 동작, xh는 복원, commit은 인코더 특징과 대표 사이의 손실, ppl은 사용 분포입니다.</p></li><li><b>손실 계산</b><p>위치·속도·손가락 상대좌표·commitment 손실을 섞습니다.</p></li><li><b>가중치 수정</b><p>이전 gradient를 비우고, 오차를 줄일 방향을 계산하고, optimizer가 한 걸음 수정합니다.</p></li><li><b>기록·평가·저장</b><p>몇 번마다 손실·사용률을 기록하고 복원 오차를 계산합니다. 중간 상태와 최종 모델을 저장합니다.</p></li></ol>
+{{code:ml/vq/train.py|sample_batch}}
+<p><code>np.empty</code>는 결과를 담을 자리를 마련합니다. 배치의 각 칸마다 클립 하나를 뽑고, 가능한 시작 프레임 s를 뽑아 <code>x[s:s+window]</code>를 넣습니다. <code>torch.from_numpy</code>는 NumPy 배열을 PyTorch 계산에 사용할 텐서로 연결합니다. 창보다 짧은 클립은 main에서 먼저 제외합니다.</p>
+<h2>왜 손실을 여러 개 쓰나요?</h2><table><thead><tr><th>손실</th><th>쉽게 말하면</th><th>없으면 놓칠 수 있는 것</th></tr></thead><tbody><tr><td>위치 pos</td><td>관절이 원래 위치에 가까운가</td><td>팔·손의 전체 위치</td></tr><tr><td>속도 vel</td><td>다음 프레임으로 움직이는 변화가 비슷한가</td><td>시간에 따른 떨림·동작 변화</td></tr><tr><td>손 상대 hand</td><td>손목에 비해 손가락 모양이 비슷한가</td><td>손 전체 위치가 맞아도 손가락이 뭉개지는 문제</td></tr><tr><td>commit</td><td>인코더 특징이 선택한 대표에서 너무 멀어지지 않는가</td><td>인코더·코드북 표현의 불안정</td></tr></tbody></table>
+{{code:ml/vq/train.py|losses}}
+<p><code>view</code>로 375개 값을 다시 관절·좌표로 나눕니다. <code>nj</code>만큼만 써서 E5에서는 얼굴을 손실에서 제외합니다. <code>x4[:,1:] − x4[:,:-1]</code>는 연속 프레임의 차이입니다. 물리적 m/s로 환산한 값이 아니라 정규화 좌표의 프레임 간 변화입니다.</p><p>코드의 위치·속도·손 손실은 단순 L1이 아니라 <b>Smooth L1</b>입니다. 작은 차이 부근은 부드럽게, 큰 차이는 상대적으로 덜 급격하게 증가하도록 계산합니다. 부위 가중치는 손 2, 몸 1을 기본으로 두고 평균으로 정규화합니다.</p>
+<pre class="toy"><code># 실제 train.py 학습 루프의 핵심과 같은 순서
+loss = pos + 0.5 * vel + 1.0 * hand + 0.02 * commit
+opt.zero_grad()   # 지난 반복의 gradient 비우기
+loss.backward()  # 손실을 줄일 가중치 변화 방향 계산
+opt.step()       # 가중치 한 걸음 수정</code></pre><p>위 계수는 코드의 기본 설정입니다. 실행 옵션이 바뀌면 계수도 바뀔 수 있습니다. 이 전체 손실값은 학습 목적함수이며, 보고서의 손 mm와 같은 단위·숫자가 아닙니다.</p>
+<div class="demo"><h3>한 번씩 배우기 · 조절 숫자 w 하나만 있는 작은 모델</h3><p>입력 2에 대해 정답 6을 만들고 싶습니다. 출력은 2×w입니다.</p><div id="trainReadout" class="readout" aria-live="polite"></div><div class="buttons"><button id="trainStep" type="button">학습 한 번</button><button id="trainReset" type="button">처음으로</button></div><p class="caption">제곱 오차와 단순 경사하강법으로 만든 설명용 계산입니다. 실제 VQ 학습·AdamW·EMA는 실행하지 않습니다.</p></div>
+<details class="deeper"><summary>더 알아보기: learning rate, epoch, checkpoint</summary><p><b>learning rate</b>는 한 번에 얼마나 고칠지 정하는 크기입니다. 너무 크면 지나치고 너무 작으면 느릴 수 있습니다. warmup은 처음부터 큰 보폭을 쓰지 않고 조금씩 늘리는 방식입니다.</p><p><b>iteration</b>은 배치로 한 번 업데이트한 횟수입니다. epoch는 보통 전체 학습 데이터를 한 차례 본 양을 뜻합니다. 이 코드는 무작위 창을 계속 뽑으므로 “20만 iteration = 데이터를 20만 번 전부 읽음”은 틀립니다.</p><p><b>checkpoint</b>는 모델뿐 아니라 optimizer와 난수 상태·현재 반복 수 등을 저장합니다. 이어 학습할 때 진행 상태를 복구합니다. 최종 model.pt와 중간 ckpt.pt는 목적이 다릅니다.</p></details>
+<details class="answer"><summary>확인: 손실이 줄었으니 처음 보는 사람에게도 잘할까?</summary><p>학습 손실 감소만으로는 모릅니다. 훈련 자료를 외울 수도 있습니다. 분리된 사람의 복원 오차와 손모양을 확인해야 합니다. 코드 사용률·다른 데이터 구간도 함께 봐야 합니다.</p></details>
+</section>
+
+<section class="lesson" id="tokenize" data-title="12 · 토큰 파일 만들기">
+<div class="eyebrow">12장 · 팀원에게 줄 학습 재료</div><h1>배운 자모표로<br>8만 클립을 번호로 바꿨습니다</h1><p class="lead">모델을 학습하는 일과, 학습된 모델로 데이터를 토큰화하는 일은 다릅니다. 토큰화에서는 가중치를 고치지 않습니다.</p>
+<h2>단어와 문장을 다르게 자르는 이유</h2><p>단어 클립은 시작과 끝에 손을 내리고 기다리는 구간이 있습니다. 이것까지 단어의 특징으로 배우면 단어를 이어 붙일 때 매번 손을 내릴 수 있습니다. 그래서 WORD는 active 앞뒤 4프레임만 여유로 남깁니다. SEN은 단어 사이의 움직임을 배워야 하므로 전체 구간을 남깁니다.</p>
+{{code:ml/gen/tokenize.py|segment}}
+<ol class="explain"><li><code>T</code>: 실제 클립 길이입니다.</li><li>WORD이면 active 시작에서 4를 빼고 끝에는 4와 1을 더합니다. active 끝이 포함형이라 Python의 끝 제외 슬라이스로 바꿀 때 +1이 필요합니다.</li><li><code>max</code>와 <code>min</code>으로 파일 범위를 넘지 않게 합니다.</li><li>SEN이면 <code>s=0, e=T</code>로 전체를 선택합니다.</li><li><code>(e-s)//down*down</code>으로 길이를 4의 배수로 줄입니다. 끝의 최대 3프레임이 잘릴 수 있습니다.</li></ol>
+<div class="demo"><h3>직접 계산 · 전체 구간을 쓸 때</h3><label for="lengthRange">입력 프레임 <output id="lengthValue"></output></label><input id="lengthRange" type="range" min="16" max="160" step="1" value="83"><div id="lengthReadout" class="readout" aria-live="polite"></div><div id="tokenStrip" class="token-strip" aria-label="토큰 개수 표시"></div><p class="caption">SEN처럼 전체를 사용하는 예시입니다. 번호는 넣지 않고 토큰 칸 수만 표시합니다. WORD에는 먼저 active 자르기가 있습니다.</p></div>
+<h2>tokens_e5.json 안에는 무엇이 있나요?</h2><pre class="toy"><code>// 구조 설명용 예시. 실제 토큰 열을 복사한 것이 아닙니다.
+{
+  "vq_version": "v0.3-e5",
+  "nb_code": 512,
+  "down": 4,
+  "clips": {
+    "예시클립": {
+      "item": "예시항목", "signer": "예시수행자", "type": "WORD",
+      "frames": [36, 116],
+      "tokens": [12, 7, 91, "… 총 20개"]
+    }
+  }
+}</code></pre><p>예시의 36~116은 끝 제외 80프레임이므로 토큰 20개입니다. 실제 파일의 tokens는 문자열 없이 정수로만 구성됩니다. 각 클립에 item/signer/type과 구간이 있지만 <b>label·dur_ratio·gloss는 없습니다.</b> 따라서 학습 조건을 모두 적용하려면 메타도 읽어야 합니다.</p>
+<h2>실제 산출물과 확인 범위</h2><ul><li>WORD 48,000개 + SEN 32,000개 = 80,000클립을 변환했습니다.</li><li>토큰 개수 범위는 WORD 3~46개, SEN 16~85개였습니다.</li><li>8만 개 전체에 대해 메타 대응·번호 범위·프레임 길이와 토큰 수의 관계를 점검했습니다.</li><li>36개 표본은 실제 좌표를 다시 인코딩해 저장 토큰과 일치하는지 확인했습니다. 8만 개 전체를 재인코딩한 검사는 아닙니다.</li></ul><p class="note">현재 gen/tokenize.py는 vq_version을 자동 출력하지 않습니다. 기록에 따르면 v0.3-e5 문자열은 만들어진 파일에 별도로 추가했습니다. “버전 관리 요구사항이 있다”와 “생성 코드가 자동 보장한다”는 다른 말입니다.</p>
+<details class="answer"><summary>확인: 토큰 파일이 8만 클립이면 8만 개를 전부 학습에 써도 될까?</summary><p>아닙니다. 그 안에는 평가·검증 사람과 품질 제외 대상도 있습니다. 분할표·메타의 라벨/길이·문장 holdout을 적용한 뒤 학습 목록을 만들어야 합니다.</p></details>
+</section>
+
+<section class="lesson" id="metrics" data-title="13 · 숫자를 올바르게 읽기">
+<div class="eyebrow">13장 · 성능 평가</div><h1>“28mm”를 말하기 전에<br>무엇을 평균냈는지 봅니다</h1><p class="lead">숫자가 하나 있으면 먼저 네 가지를 묻습니다. 어떤 데이터? 어떤 관절? 어떤 단위? 어떤 평균?</p>
+<h2>관절 위치 오차</h2><p>같은 프레임·같은 관절의 원본과 복원 좌표 사이 직선 거리를 구합니다. 3D에서는 x·y·z 차이를 제곱해 더한 뒤 제곱근을 구합니다. 정규화 좌표의 거리에 <code>norm.scale × 1000</code>을 곱하면 mm입니다. 손의 오차는 양손 42점에서 평균낸 값입니다.</p><p><b>손가락 상대 오차</b>는 각 손의 손목을 빼서 손목 기준으로 비교합니다. 손 전체가 조금 밀렸지만 손모양은 맞는 경우와 손가락 형태 자체가 틀린 경우를 구분하는 데 도움을 줍니다. 이 값도 수어 의미 정확도 자체는 아닙니다.</p>
+<h2>클립 평균과 프레임 평균</h2><div class="demo"><h3>평균 방식이 다르면 숫자가 달라집니다</h3><p>짧은 클립 A: 10프레임·평균 10mm. 긴 클립 B: 평균 30mm.</p><label for="metricRange">B의 길이 <output id="metricValue"></output>프레임</label><input id="metricRange" type="range" min="10" max="100" step="10" value="90"><div id="metricReadout" class="readout" aria-live="polite"></div><p class="caption">A/B는 설명용 가상 클립입니다. 긴 클립에 더 많은 비중을 줄지에 따라 결과가 달라집니다.</p></div><p><code>vq/train.py → evaluate</code>는 먼저 클립별 오차를 구하고 클립들의 평균을 냅니다. <code>vq/eval_clips.py</code>는 프레임을 단어·전환·앞뒤 구간으로 나누어 모아 평균을 냅니다. E5 summary의 혼합 test 손 28.2mm와 SEN 별도 평가의 28.1mm는 같은 표본·집계가 아닙니다.</p>
+<h2>왜 단어 구간·전환·대기를 따로 봤나요?</h2><p>손을 내리고 기다리는 프레임은 복원하기 쉬울 수 있습니다. 전체 평균만 보면 정작 수어를 하는 구간의 오차를 가릴 수 있습니다. 라벨의 시작·끝 시각을 사용해 의미 있는 단어 구간과 단어 사이 전환을 따로 측정했습니다.</p>
+{{code:ml/vq/eval_clips.py|regions}}
+<p>처음에는 모든 프레임을 앞뒤(2)로 두고, 라벨 구간을 단어(0)로 표시한 다음 두 단어 사이 빈 구간을 전환(1)으로 표시합니다. 이미 단어 구간인 곳은 전환으로 덮어쓰지 않습니다. 구간 라벨이 부정확하면 이 평가도 영향을 받습니다.</p>
+<h2>DTW는 다른 속도를 맞춰 비교하는 방법</h2><p>같은 단어도 한 사람은 느리게, 다른 사람은 빠르게 할 수 있습니다. 프레임 번호끼리 바로 비교하면 속도 차이도 큰 오차가 됩니다. DTW는 시간축에서 서로 대응시킬 위치를 찾아 비교합니다. B1의 52.7mm는 55관절 DTW 거리이고, E5의 손 28.1mm는 복원 프레임의 손 위치 오차입니다. 이 둘을 그대로 빼서 “24.6mm 개선”이라고 말하면 안 됩니다.</p>
+<h2>평가에서 아직 남은 것</h2><p>코드 사용률이 높고 좌표 오차가 작아도 수어를 읽을 수 있는지는 따로 봐야 합니다. 역할표에는 평가 사람의 단어 10개 손모양 식별, 승현의 읽는 모델을 이용한 역번역 보존율 확인이 남아 있습니다. 생성 결과는 생성 모델이 나온 뒤 B1·B2와 같은 조건으로 비교해야 합니다.</p>
+<details class="answer"><summary>확인: E5 얼굴 오차 35.0mm를 “얼굴 생성 성능”이라고 발표해도 될까?</summary><p>안 됩니다. E5의 얼굴은 평균 얼굴입니다. 움직이는 얼굴을 학습한 결과가 아니므로 얼굴 생성 성능으로 해석하지 않습니다. 부위·모델 조건을 숫자와 함께 설명해야 합니다.</p></details>
+</section>
+
+<section class="lesson" id="experiments" data-title="14 · E1에서 E5까지의 판단">
+<div class="eyebrow">14장 · 네가 실제로 한 실험</div><h1>모델을 여러 번 돌린 이유는<br>다음 선택을 하기 위해서입니다</h1><p class="lead">실험 이름을 외우기보다 “무엇을 바꿨고, 무엇을 알았는가”를 따라가세요.</p>
+<h2>단어 데이터에서 조건 비교</h2><table><thead><tr><th>실험</th><th>변경</th><th>test 손 mm</th><th>해석</th></tr></thead><tbody><tr><td>E1</td><td>몸·손, 512개, 10만 회</td><td>28.1</td><td>첫 정식 기준</td></tr><tr><td>E2</td><td>얼굴까지 125점 학습</td><td>31.7</td><td>이 조건에서는 손이 더 나빠짐</td></tr><tr><td>E4a</td><td>코드북 1024개</td><td>29.9</td><td>크게 하는 것만으로 개선 안 됨</td></tr><tr><td>E4b</td><td>512개, 20만 회</td><td>27.0</td><td>단어 손 오차가 조금 줄어듦</td></tr></tbody></table><p class="caption">ml/experiments.md의 클립 평균. E3(부위별 코드북), 256개 코드북 실험은 완료 근거가 없습니다. 한 번씩의 결과로 모든 설정·seed에서 우월하다고 일반화하지 않습니다.</p>
+<h2>다음 질문: 단어로 배운 자모표가 문장도 잘 표현할까?</h2><p>단어 하나를 또박또박 수행한 동작과 문장 속에서 앞뒤 단어와 이어 수행한 동작은 다릅니다. E4b를 문장에 적용하자 단어 구간 50.6mm, 전환 52.7mm로 오차가 커졌습니다. 그래서 문장 데이터도 함께 배우는 E5를 만들었습니다.</p>
+<div id="experimentChart" class="experiment-chart" role="img" aria-label="E4b와 E5의 손 오차 비교. 문장 전체 37.3에서 28.1, 문장 단어 50.6에서 33.7, 전환 52.7에서 34.3mm로 감소"></div>
+<table><thead><tr><th>같은 프레임 평균 평가</th><th>E4b: WORD만</th><th>E5: WORD+SEN</th></tr></thead><tbody><tr><td>WORD 전체 손</td><td>27.1mm</td><td>28.4mm</td></tr><tr><td>SEN 전체 손</td><td>37.3mm</td><td>28.1mm</td></tr><tr><td>SEN 단어 구간 손</td><td>50.6mm</td><td>33.7mm</td></tr><tr><td>SEN 전환 손</td><td>52.7mm</td><td>34.3mm</td></tr></tbody></table><p>평가 사람은 REAL03·REAL12입니다. E4b의 위 표 27.0과 여기 27.1은 반올림 오타로 단정하면 안 됩니다. 앞 표는 클립 평균, 이 표는 별도 프레임 평균 평가입니다.</p>
+<div class="decision"><b>재훈의 판단 · 단어 성능 약간을 양보하고 문장 표현을 개선</b><p>E5에서 단어 오차는 1.3mm 증가했지만 문장 전체는 9.2mm, 단어 구간은 16.9mm, 전환은 18.4mm 줄었습니다. 문장 생성에 쓸 공통 자모표라는 목적을 고려하면 E5를 후보로 선택할 근거가 됩니다. 다만 버전은 아직 v0.3-e5이며 v1 확정과 다릅니다.</p></div>
+<h2>B1에서 얻은 별도의 교훈</h2><p>저장 클립을 그대로 잇기, 움직이는 부분만 잘라 보간하기, 자른 구간의 토큰을 잇고 복원하기를 비교했습니다. 3단어 조합 400개에서 길이는 약 12.2초 → 8.6초 → 7.9초로 달랐지만 세 방법 모두 중간에 손이 약 두 번 내려갔습니다. 시간을 줄이는 것만으로 자연스러운 전환을 해결하지 못했다는 뜻입니다.</p><p>B1 단어 평가 5,907개에서 저장 클립 DTW는 52.7mm, VQ 복원 비교는 31.6mm였습니다. 이 B1 비교의 VQ는 <b>E1</b>입니다. E5의 최종 생성 점수처럼 섞어 설명하면 안 됩니다.</p>
+<h2>코드 밖에서 남긴 결과물</h2><p>토큰 512개의 격자 그림과 재생 HTML, 실험 비교 그림, 중간 발표 7장 분량 초안, 사람이 읽는 설명 앱, 팀원별 인수인계 문서와 서버 안내도 만들었습니다. 설명 앱의 합성 장면은 개념 시연이고, 실험 뷰어는 실제 원본·복원 좌표를 확인하는 자료입니다. 둘을 같은 증거로 취급하지 않습니다.</p>
+<details class="answer"><summary>확인: “얼굴을 넣으면 항상 나쁘다”가 이번 실험의 결론일까?</summary><p>아닙니다. 이번 데이터·구조·손실·학습 조건의 E2에서 손 복원 오차가 커졌다는 결과입니다. 다른 구조나 부위별 코드북(E3)·손실 조정에서는 결과가 달라질 수 있습니다. E3는 아직 실험되지 않았습니다.</p></details>
+</section>
+
+<section class="lesson" id="handoff" data-title="15 · 팀 연결과 남은 일">
+<div class="eyebrow">15장 · 인수인계</div><h1>내 컴퓨터에서 된 것과<br>팀이 쓸 수 있는 것은 다릅니다</h1><p class="lead">계약은 파일과 함수의 모양을 정하는 약속입니다. 다른 사람이 네 코드를 전부 이해하지 않아도 이어 붙일 수 있게 합니다.</p>
+<h2>재훈이 넘기는 두 계약</h2><table><thead><tr><th>계약</th><th>넘기는 것</th><th>받는 쪽이 확인할 것</th></tr></thead><tbody><tr><td>① 동작 데이터</td><td>npy·meta·공통 분할표·좌표계</td><td>같은 관절 순서와 단위, 같은 평가 사람, 품질·라벨 조건</td></tr><tr><td>② 토큰 + 디코더</td><td>tokens_e5.json·model.pt·config·버전</td><td>동일 모델 조합, 번호 범위·길이, decode 출력 형식</td></tr></tbody></table>
+<h2>버전과 해시를 왜 같이 기록하나요?</h2><p>버전 이름은 사람이 읽는 표지입니다. 서로 다른 파일에 같은 이름이 붙을 수도 있습니다. SHA-256 해시는 파일 내용으로 계산한 지문입니다. 인수인계 때 해시가 일치하면 파일이 같은지 확인할 수 있습니다. 해시가 일치한다고 학습 품질이 좋다는 뜻은 아닙니다.</p><p>10월 18일 점검에서는 전체 토큰 구조와 메타를 대조하고, 36개 표본 재인코딩과 디코딩 형태를 확인했습니다. 10월 27일 이 대화에서는 토큰·모델 해시가 그 점검 문서와 같음을 다시 확인했습니다. 교재의 화면 실험은 그 실제 모델을 실행하지 않습니다.</p>
+<h2>인수인계가 끝나는 조건</h2><ol><li>팀원이 공용 경로에 접속해 필요한 파일을 읽는다.</li><li>받은 파일 해시와 버전을 대조한다.</li><li>디코더를 불러와 유한한 float32 좌표와 예상 모양이 나오는지 확인한다.</li><li>필터 적용 후 학습/검증/평가 목록과 수를 확인한다.</li><li>실행 결과와 사용할 버전을 팀에서 확인한다.</li></ol><p>공용 서버에 팀원별 handoff 링크를 만든 기록은 있습니다. 팀원들의 최초 접속·수령 실행과 v1 승인까지 완료됐다는 증거는 이 브랜치에서 확인되지 않았습니다.</p>
+<h2>현재 자료에서 조심해서 읽을 두 부분</h2><div class="decision"><b>간단 안내와 상세 점검표의 차이</b><p>지헌용 간단 안내에는 토큰+분할표만으로 시작할 수 있다고 적혀 있지만, 상세 점검표와 계약은 메타의 label·dur_ratio 조건도 요구합니다. 올바른 학습 목록에는 메타가 필요합니다. 네 브랜치의 gen/train_word·train_sentence에는 그 필터가 없습니다. 지헌의 다른 최신 브랜치에서 고쳤는지는 별도 확인 대상입니다.</p></div><p><b>v1 후보와 v1 완료:</b> 발표 초안의 “E5로 간다”는 방향과 실제 v1 동결 완료는 다릅니다. 사용률 기준은 넘었지만, 손 오차 개선을 어떤 데이터에서 판정할지, 단어 10개 손모양 식별, 팀 승인을 확인해야 합니다.</p>
+<h2>지금까지의 역할 상태</h2><ul><li><b>완료 근거 있음:</b> WORD/SEN 정리, 고정 분할, E1·E2·E4a·E4b·E5, 토큰 제작·점검, B1, 격자, 발표 초안, 서버 배치 기록.</li><li><b>완료 근거 없음:</b> E3, 256개 비교 실험, v1 최종 동결·팀 수령 실행, 정식 인식 모델로 역번역 보존율.</li><li><b>네 담당과 팀 통합을 구분:</b> 생성 모델 본 학습·추론 API·웹캠·앱 완성은 각 담당자의 진행과 결합해야 합니다.</li></ul>
+<details class="answer"><summary>확인: “내 역할은 끝났다” 대신 지금 가장 정확하게 말할 문장은?</summary><p>“정식 데이터와 자모표 핵심 구현·실험, E5 토큰과 디코더 준비·점검까지 마쳤습니다. 현재는 v1 관문 판정과 팀원 환경에서의 인수인계·통합 검증이 남아 있습니다.”</p></details>
+</section>
+
+<section class="lesson" id="source" data-title="16 · 실제 파일을 찾아 읽기">
+<div class="eyebrow">16장 · 코드 사전</div><h1>필요한 파일을 찾고<br>실제 원문과 연결하기</h1><p class="lead">여기에는 재훈 담당 Python 파일 26개와 인수인계에 연결된 gen/tokenize.py를 합쳐 {{FILE_COUNT}}개를 담았습니다. 각 파일은 입력·처리·출력으로 읽으세요.</p><p>현재 작업 폴더의 main 파일이 아니라 <code>feature/ai-motion-vq · 2df9317</code>의 원문입니다. 원문은 보관용 읽기 자료이며 여기서 실행되지 않습니다. __init__.py, 다른 팀원의 본 학습 코드, 설명 앱의 JavaScript 전체는 이 부록에 포함하지 않았습니다.</p>
+<h2>처음 읽을 때의 6개 경유지</h2><ol><li><a href="#src-ml-common-skeleton-py">skeleton.py</a>: 어떤 숫자 위치가 어떤 관절인가?</li><li><a href="#src-ml-prep-preprocess-py">preprocess.py → process</a>: 원본 하나가 어떻게 npy가 되는가?</li><li><a href="#src-ml-common-data-py">data.py → load_data / apply_split</a>: 어떤 데이터를 모델에 주는가?</li><li><a href="#src-ml-vq-model-py">model.py → forward / encode / decode</a>: 모양이 어디서 바뀌는가?</li><li><a href="#src-ml-vq-train-py">train.py → sample_batch / losses / main</a>: 한 번 학습할 때 무엇을 고치는가?</li><li><a href="#src-ml-gen-tokenize-py">tokenize.py → segment / main</a>: 결과를 어떤 파일로 넘기는가?</li></ol>
+<label for="fileSearch" class="search-label">파일 이름·역할 찾기<input id="fileSearch" type="search" placeholder="예: 손목, 분할, model" autocomplete="off"></label><p id="searchCount" class="caption"></p><div id="sourceAtlas">{{ATLAS}}</div>
+<h2>코드 이외의 자료는 어디서 확인하나요?</h2><ul class="evidence"><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/docs/ai-log/jaehun.md" target="_blank" rel="noopener">개발·판단 기록</a> — 날짜별 문제, 변경 이유, 검증, 남은 일</li><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/ml/experiments.md" target="_blank" rel="noopener">실험 결과표</a> — 데이터·부위·학습 횟수·오차</li><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/ml/prep/quality_policy.md" target="_blank" rel="noopener">품질 정책</a> — 초기 분류와 최종 제외 기준</li><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/docs/contracts.md" target="_blank" rel="noopener">모델 사이 계약</a> — 좌표·토큰·분할·버전</li><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/docs/handoff/jaehun-to-jiheon-e5.md" target="_blank" rel="noopener">E5 상세 전달 점검표</a> — 호환성·해시·필터 조건</li><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/docs/presentation/midterm_jamopyo_jaehun.md" target="_blank" rel="noopener">중간 발표 초안</a> — 발표 흐름과 예상 질문</li><li><a href="https://github.com/toadsam/Sign-Language/blob/{{REV}}/docs/server.md" target="_blank" rel="noopener">서버 안내</a> — 팀원들이 실제 파일을 사용하는 위치</li></ul><p>위 링크는 인터넷과 저장소 접근 권한이 필요할 수 있습니다. 교재 본문·코드 부록·계산 예시는 연결 없이도 읽힙니다. 작성 시점의 각 코드 파일 해시는 교재 폴더의 source-manifest.json에 기록했습니다.</p>
+<details class="answer"><summary>확인: model.py를 다 읽어도 학습이 어떻게 진행되는지 모르겠다면?</summary><p>자연스럽습니다. model.py는 계산 구조를 정의하고, 실제 데이터를 뽑고 오차를 계산해 가중치를 고치는 반복은 train.py에 있습니다. 파일 하나가 프로그램 전체가 아닙니다. 두 파일의 입력·출력 연결을 따라 읽으면 됩니다.</p></details>
+</section>
+
+<section class="lesson" id="review" data-title="17 · 내 말로 설명하고 복습하기">
+<div class="eyebrow">17장 · 이해를 확인하는 시간</div><h1>읽을 수 있는 것에서<br>설명할 수 있는 것으로</h1><p class="lead">이 장은 정답을 외우는 페이지가 아닙니다. 먼저 답을 가리고 말해 본 뒤, 막힌 곳의 장으로 돌아가세요.</p>
+<h2>3분 설명의 뼈대</h2><blockquote><p>“저는 수어 동작을 번호 열로 압축하고 다시 3D 좌표로 복원하는 VQ-VAE 자모표를 맡았습니다.</p><p>먼저 AI Hub의 단어 48,000개와 문장 32,000개 클립을 정리했습니다. 좌표의 단위, 귀·눈 오류, 프레임 속도 문제를 검사했고, 학습과 평가에 같은 사람이 섞이지 않게 분할표를 고정했습니다.</p><p>모델은 동작의 시간 길이를 4분의 1로 줄여 특징을 만들고, 512개 대표 특징 중 가까운 번호로 바꿉니다. 디코더는 그 번호를 다시 동작으로 만듭니다. E5는 몸과 손만 학습하며 얼굴은 평균 얼굴입니다.</p><p>실험에서는 코드북을 크게 하거나 얼굴을 함께 넣는 것만으로 손 오차가 좋아지지 않았습니다. 단어만으로 학습하면 문장의 전환을 잘 표현하지 못해 문장도 함께 학습했습니다. E5에서 문장 전체 손 오차가 37.3에서 28.1mm로 줄었습니다.</p><p>현재 8만 클립의 토큰과 디코더, 공통 분할표를 준비하고 점검했습니다. v1 확정, 손모양 확인, 팀원 수령·실행과 정식 역번역 평가는 남아 있습니다.”</p></blockquote><p>여기에 “내가 직접 판단한 것”을 하나 붙이세요. 예를 들어 귀 좌표의 수리 범위, REAL25 라벨을 임의 연결하지 않은 이유, 단어와 문장 성능의 균형을 고려해 E5를 후보로 선택한 이유입니다. 코드를 AI와 함께 작성했다는 사실과 결과를 검증·판단하는 책임을 구분해서 설명하면 됩니다.</p>
+<h2>한 클립의 여행을 종이에 그려 보기</h2><p>설명용 80프레임짜리 동작 하나를 그립니다. 다음 빈칸을 채워 보세요.</p><pre class="toy"><code>원본 JSON → 전처리 → npy [80, ___, 3]
+→ load_data [80, ___]
+→ 배치 추가 [1, 80, ___]
+→ 몸·손 선택 [1, 80, ___]
+→ 인코더 특징 [1, 256, ___]
+→ 토큰 [1, ___]
+→ 디코더 + 평균 얼굴 [1, ___, 375]</code></pre><details class="answer"><summary>정답과 해설</summary><p>125, 375, 375, 165, 20, 20, 80입니다. 이 예시는 이미 사용할 구간이 80프레임으로 정해졌다고 가정합니다. WORD는 토큰화 전 active 자르기가 있으므로 원본 전체가 80프레임이라는 조건만으로 토큰이 항상 20개라고 할 수는 없습니다.</p></details>
+<h2>스스로 답할 질문 10개</h2><div class="quiz-list">
+<details class="answer"><summary>1. VQ는 무엇을 정답으로 배우나요?</summary><p>입력 동작 자체를 복원 정답으로 배웁니다. 단어 이름을 맞히는 분류와 다릅니다.</p></details>
+<details class="answer"><summary>2. 125점과 375차원은 왜 둘 다 등장하나요?</summary><p>관절 125개에 x/y/z 세 좌표가 있어 375개 숫자입니다. 같은 정보를 나누어 보거나 펼쳐 본 모양입니다.</p></details>
+<details class="answer"><summary>3. “토큰 47 = 학교”라고 정의할 수 있나요?</summary><p>아닙니다. 동작 특징 대표의 번호입니다. 여러 단어에서 나타날 수 있고, 특정 단어와 자주 함께 나온다는 통계가 단어 뜻 자체는 아닙니다.</p></details>
+<details class="answer"><summary>4. 손이 부드러워 보이면 수어가 정확한가요?</summary><p>아닙니다. 평활화는 중요한 손가락 변화까지 약하게 만들 수 있습니다. 위치 오차, 손가락 상대좌표, 의미 식별을 함께 확인해야 합니다.</p></details>
+<details class="answer"><summary>5. 코드북 크기를 1024로 늘리면 왜 더 좋다고 단정할 수 없나요?</summary><p>표현 후보가 늘어도 학습 데이터·최적화가 충분하지 않을 수 있고 생성 모델이 골라야 하는 종류도 늘어납니다. 이번 E4a에서는 손 오차가 오히려 커졌습니다.</p></details>
+<details class="answer"><summary>6. test 사람을 학습에 넣지 않았다면 평가에 아무 문제 없나요?</summary><p>가중치 학습에서 분리한 것은 중요하지만, test 결과를 계속 보며 후보를 고르면 선택 과정이 test에 맞춰질 수 있습니다. 검증과 최종 시험의 역할도 분리해야 합니다.</p></details>
+<details class="answer"><summary>7. E5는 최신 제외 2,008개를 모두 적용해 학습했나요?</summary><p>아닙니다. SEN 58개 추가 제외 전에 학습했습니다. 현재 전달하는 분할표와 E5의 당시 학습 조건이 다른 부분입니다.</p></details>
+<details class="answer"><summary>8. tokens_e5.json과 E1 디코더를 같이 쓰면 왜 안 되나요?</summary><p>번호가 가리키는 코드북 벡터가 다릅니다. 같은 번호라도 다른 특징으로 해석하므로 동작이 잘못 복원될 수 있습니다.</p></details>
+<details class="answer"><summary>9. 36클립 재인코딩 일치가 무엇을 보장하나요?</summary><p>선택한 36개에서 좌표→토큰 변환이 저장 파일과 일치함을 보여줍니다. 전체 8만 개 재인코딩 일치나 의미 정확성을 입증한 것은 아닙니다. 전체에는 별도의 구조 검사를 했습니다.</p></details>
+<details class="answer"><summary>10. 지금 다음으로 해야 할 개발보다 먼저 할 학습은?</summary><p>한 클립의 배열 모양을 끝까지 따라가고, E4b→E5의 선택 이유를 자신의 말로 설명하는 것입니다. 이후 이해가 부족한 파일 하나를 골라 입력·처리·출력을 손으로 적어 보세요.</p></details>
+</div>
+<h2>내가 이해한 내용을 적기</h2><label for="myNotes">자료를 보지 않고 “나는 무엇을 만들었고 왜 그렇게 했나”를 적어 보세요.</label><textarea id="myNotes" rows="8" placeholder="예: 나는 동작을 토큰으로 바꾸는 모델을 만들었다. 단어만 학습했을 때 문장에서…"></textarea><p id="notesStatus" class="caption">메모는 이 브라우저 안에만 저장합니다.</p>
+<h2>읽고 나서도 헷갈리는 단어를 찾을 때</h2><table><thead><tr><th>용어</th><th>이 프로젝트에서의 뜻</th></tr></thead><tbody><tr><td>키포인트</td><td>몸의 특정 지점 위치. 관절 외에 얼굴 특징점도 포함</td></tr><tr><td>클립 / 프레임</td><td>한 동작 기록 / 그 안의 한 시점 자세</td></tr><tr><td>메타데이터</td><td>좌표 파일의 이름·사람·단위·길이·라벨 등을 설명하는 정보</td></tr><tr><td>정규화</td><td>위치·방향·크기의 기준을 맞추는 변환</td></tr><tr><td>gloss</td><td>수어 형태소를 이름으로 적은 열</td></tr><tr><td>특징 벡터</td><td>신경망이 만든 숫자 묶음. 사람이 정한 관절 좌표와 다름</td></tr><tr><td>코드북 / 토큰</td><td>대표 특징들의 표 / 선택한 대표의 번호</td></tr><tr><td>VQ-VAE</td><td>연속 특징을 이산 대표로 바꾸어 입력을 복원하는 모델</td></tr><tr><td>인코더 / 디코더</td><td>동작을 특징으로 / 특징을 동작으로 바꾸는 부분</td></tr><tr><td>손실 / 평가 지표</td><td>학습 수정에 쓰는 목적값 / 결과를 비교해 보고하는 수치</td></tr><tr><td>가중치 / 체크포인트</td><td>모델이 배우는 숫자 / 모델·학습 상태의 저장본</td></tr><tr><td>EMA / reset</td><td>과거와 새 통계를 섞는 갱신 / 덜 쓰인 코드의 재배치</td></tr><tr><td>holdout</td><td>특정 평가를 위해 학습에서 떼어 둔 대상</td></tr><tr><td>역번역</td><td>만든/복원한 동작을 인식 모델로 읽어 원래 단어가 나오는지 확인</td></tr><tr><td>B1 / B2</td><td>클립 이어붙이기 / 토큰 없이 좌표를 직접 예측하는 비교 조건</td></tr></tbody></table>
+<p class="closing">오늘 목표는 파일을 전부 외우는 것이 아닙니다. <b>입력 하나가 어떤 문제를 거쳐 어떤 출력이 되는지, 그리고 그 선택을 왜 했는지</b> 설명할 수 있으면 됩니다.</p>
+</section>
+
+<footer class="lesson-footer"><label class="mark"><input type="checkbox" id="done">이 장을 내 말로 설명할 수 있어요</label><div class="pager"><button id="prev" type="button">← 이전 장</button><span id="pageCount"></span><button id="next" type="button">다음 장 →</button></div></footer>
+<footer class="credits">정재훈의 작업을 위한 학습 교재 · 작성 2026.10.27<br>근거: feature/ai-motion-vq · 2df9317 · 실제 기록과 설명용 예시를 구분했습니다.</footer>
+</main></div><script>{{JS}}</script></body></html>

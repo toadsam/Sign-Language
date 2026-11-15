@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-27",
+  "desktop": [
+    {
+      "active": "start",
+      "overflow": false
+    },
+    {
+      "active": "role",
+      "overflow": false
+    },
+    {
+      "active": "python",
+      "overflow": false
+    },
+    {
+      "active": "arrays",
+      "overflow": false
+    },
+    {
+      "active": "prep",
+      "overflow": false
+    },
+    {
+      "active": "quality",
+      "overflow": false
+    },
+    {
+      "active": "labels",
+      "overflow": false
+    },
+    {
+      "active": "split",
+      "overflow": false
+    },
+    {
+      "active": "encoder",
+      "overflow": false
+    },
+    {
+      "active": "codebook",
+      "overflow": false
+    },
+    {
+      "active": "decoder",
+      "overflow": false
+    },
+    {
+      "active": "training",
+      "overflow": false
+    },
+    {
+      "active": "tokenize",
+      "overflow": false
+    },
+    {
+      "active": "metrics",
+      "overflow": false
+    },
+    {
+      "active": "experiments",
+      "overflow": false
+    },
+    {
+      "active": "handoff",
+      "overflow": false
+    },
+    {
+      "active": "source",
+      "overflow": false
+    },
+    {
+      "active": "review",
+      "overflow": false
+    }
+  ],
+  "mobile390": [
+    {
+      "active": "start",
+      "overflow": false
+    },
+    {
+      "active": "role",
+      "overflow": false
+    },
+    {
+      "active": "python",
+      "overflow": false
+    },
+    {
+      "active": "arrays",
+      "overflow": false
+    },
+    {
+      "active": "prep",
+      "overflow": false
+    },
+    {
+      "active": "quality",
+      "overflow": false
+    },
+    {
+      "active": "labels",
+      "overflow": false
+    },
+    {
+      "active": "split",
+      "overflow": false
+    },
+    {
+      "active": "encoder",
+      "overflow": false
+    },
+    {
+      "active": "codebook",
+      "overflow": false
+    },
+    {
+      "active": "decoder",
+      "overflow": false
+    },
+    {
+      "active": "training",
+      "overflow": false
+    },
+    {
+      "active": "tokenize",
+      "overflow": false
+    },
+    {
+      "active": "metrics",
+      "overflow": false
+    },
+    {
+      "active": "experiments",
+      "overflow": false
+    },
+    {
+      "active": "handoff",
+      "overflow": false
+    },
+    {
+      "active": "source",
+      "overflow": false
+    },
+    {
+      "active": "review",
+      "overflow": false
+    }
+  ],
+  "verified": [
+    "six interactive teaching demos",
+    "source links",
+    "file search",
+    "progress persistence and reset",
+    "notes persistence and reset",
+    "all chapters reading mode"
+  ],
+  "javascriptErrors": [],
+  "preview": "C:/Users/jk636/OneDrive/문서/GitHub/Whims-of-Wonder/Whims-of-Wonder/MetaverseProgramming/My project/Assets/Sign-Language/docs/study/jaehun-guide/preview.png"
+}
