@@ -137,6 +137,8 @@ signlingo-hand-sequence-v1, [T,2,21,2], Left/Right 슬롯, XY좌표.
 녹화 정보에는 조건이 포함될 수 있으므로 평가 참가자 공유 영상과 분리합니다.
 captureStream의30fps는 목표값이며 정확한30fps/CFR를 보장하지 않습니다.
 
+VM의 평가 동작(npy)을 비교 화면용 JSON으로 바꾸기(데이터가 있는 VM에서, 결과는 커밋 금지):
+python3 ../viewer/seunghyeok/evaluation/export_motion_json.py --manifest runs/generated.json --output /새출력폴더
 실제 영상이 준비된 뒤(frontendcodes 폴더 기준, 기본 3조건 B1/B2/Ours-H × 20문장 = 60개):
 python3 ../viewer/seunghyeok/evaluation/prepare_videos.py --input /입력폴더 --output /새출력폴더
 조건을 바꾸려면 --conditions B1,Ours-H 또는 --conditions B1,B2,Ours-H,Ours-HF (2개 이상).

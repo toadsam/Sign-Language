@@ -301,10 +301,18 @@
 - 검증: check-follow-baseline 6항목 통과(합성 기록만 사용). 화면의 기록 줄 형식과 body-score.ts 점수 식이 바뀌면 이 검사가 실패하도록 묶었다. check-body-score 통과.
 - 남은 것: 개발 서버 /sign-follow?calib=1에서 종류별 5회 이상 따라 한 실제 기록을 모아 계산하고, 제안 값을 재훈과 확인한 뒤 반영한다.
 
-## 2026-11-15 · 평가 영상 정리 도구를 3조건 기본으로  (커밋 대기)
+## 2026-11-15 · 평가 영상 정리 도구를 3조건 기본으로  (커밋 c45ab59)
 - 목표: 재훈 지도의 남은 일 "네 조건 비교 영상과 사람 평가"(승현 · 승혁)를 위해, B2 · Ours-HF가 아직 없어도 평가 영상 묶음을 만들 수 있게 한다.
 - AI에게 맡긴 것: Claude Code가 viewer/seunghyeok/evaluation/prepare_videos.py에 --conditions 옵션을 넣었다. 기본값은 설계서 필수 3조건 B1 · B2 · Ours-H이고 Ours-HF는 넣을 때만 쓴다. 알려진 이름만, 중복 없이, 2개 이상 받는다. 고르지 않은 조건 폴더가 입력에 있으면 멈추고, 조건표에는 실제로 쓴 조건만 적는다. 합성 영상 검사 test_prepare_videos.py를 새로 만들고 README와 SEUNGHYEOK_GUIDE의 사용법을 고쳤다.
 - 처음 계획 → 바꾼 것: 4조건 고정 코드에서 Ours-HF만 빼려 했지만, B2도 정식 학습 전이라 조건을 고를 수 있게 했다. 고르지 않은 폴더를 조용히 무시하면 조건을 빠뜨린 채 묶을 수 있어서 거부하게 했다.
 - 내가 판단한 것: 다음 작업으로 평가 영상 도구를 3조건으로 고치기로 정했다.
 - 검증: test_prepare_videos.py 7항목 통과(ffmpeg 시험 화면 1초 합성 영상). 기본 3조건 묶음(ZIP 001~003), 2조건, 4조건, 고르지 않은·빠진 폴더 거부, 잘못된 조건 목록 거부, 명령줄 기본값 · 오류 종료 확인.
 - 남은 것: 평가 문장 20개 확정(승현과), 조건별 동작 JSON 만들기(VM), 비교 화면에서 녹화한 실제 영상으로 묶음 만들기. B2 학습은 지헌 쪽 진행이 필요하다.
+
+## 2026-11-16 · 평가 동작 npy를 비교 화면용 JSON으로 바꾸는 도구  (커밋 대기)
+- 목표: 사람 평가 영상을 만들려면 VM의 조건별 평가 동작(npy)을 비교 화면(/sign-compare)에 넣어 녹화해야 하는데, 그 사이를 잇는 도구가 없었다. 저장 동작을 계약 ⑤ JSON으로 바꿔 바로 넣을 수 있게 한다.
+- AI에게 맡긴 것: Claude Code가 viewer/seunghyeok/evaluation/export_motion_json.py와 검사 test_export_motion_json.py를 만들었다. 입력은 ml/eval/compare.py와 같은 records 목록(읽기만 하고 승현 폴더는 고치지 않음)이고, 출력은 prepare_videos.py 입력과 같은 <조건>/sentence-NN 구조다. 조건 고르기는 prepare_videos.py의 규칙(기본 B1·B2·Ours-H, 2개 이상)을 그대로 쓴다. 문장 번호는 records 순서나 --clips 순서, 대응표는 private/clip-map.json에 따로 둔다. B1은 baseline, 나머지는 model로 표시하고, 토큰·자막 구간은 비운다. 출력 폴더 README에 AI Hub 파생물이라 커밋·외부 공유 금지를 적는다. README와 SEUNGHYEOK_GUIDE에 전체 순서(변환 → 비교 화면 녹화 → 묶음)를 적었다.
+- 처음 계획 → 바꾼 것: 검사에서 해독기 확인용 스크립트가 임시 폴더에서 typescript를 못 찾아 실패했고, 합성 동작 프레임 수 기대값도 잘못 적어 실패했다. 둘 다 검사 쪽을 고쳤고 변환기 코드는 바꾸지 않았다.
+- 내가 판단한 것: 다음 작업 후보(팀원 메시지 초안, JSON 변환 도구) 중 VM 없이 혼자 할 수 있는 변환 도구를 먼저 하기로 했다.
+- 검증: test_export_motion_json.py 5항목 통과(합성 동작만). 출력 JSON을 frontendcodes motion.ts의 decodeMotion에 넣어 좌표가 오차 0으로 같게 돌아오는 것, 기본 3조건 구조와 대응표, --clips 순서와 --sample, 잘못된 목록·없는 조건·중복·모양·NaN·절댓값 100 초과 거부(출력 미생성)를 확인했다. test_prepare_videos.py 7항목도 다시 통과.
+- 남은 것: VM에서 실제 generated.json으로 실행(지헌·승현과 목록 위치 확인), 평가 문장 20개 확정, 비교 화면에서 실제 녹화.

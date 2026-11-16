@@ -1,7 +1,22 @@
 수어링고 — 승혁 파트: 평가 영상 정리 도구
 
 프로젝트 적용:
-viewer/seunghyeok/evaluation/prepare_videos.py
+viewer/seunghyeok/evaluation/export_motion_json.py  (1단계: 저장 동작 npy → 비교 화면용 JSON)
+viewer/seunghyeok/evaluation/prepare_videos.py      (3단계: 녹화 영상 → 무작위 번호 묶음)
+
+전체 순서:
+1. VM에서 export_motion_json.py로 조건별 sentence-NN.json을 만든다.
+   입력은 ml/eval/compare.py와 같은 records 목록(generated.json). 모델은 돌리지 않는다.
+   python3 viewer/seunghyeok/evaluation/export_motion_json.py --manifest runs/generated.json --output /새출력폴더
+   옵션: --conditions B1,Ours-H / --clips 클립목록.txt(이 순서가 문장 번호) / --sample 0
+   결과: <조건>/sentence-NN.json, private/clip-map.json(문장 번호↔클립, 참가자에게 주지 않음)
+   B1은 baseline, 나머지는 model로 표시. 토큰·자막 구간은 비어 있음.
+   주의: AI Hub 좌표에서 나온 파일이다. 저장소에 커밋하거나 외부에 올리지 않는다.
+2. 비교 화면(/sign-compare)에 같은 문장의 조건별 JSON을 넣고, 칸마다 녹화해
+   <조건>/sentence-NN.webm 이름으로 모은다.
+3. prepare_videos.py로 무작위 번호 묶음을 만든다 (아래).
+검사: python3 -I viewer/seunghyeok/evaluation/test_export_motion_json.py
+  (합성 동작 5항목. 출력 JSON을 frontendcodes의 motion.ts decodeMotion에 넣어 좌표가 같게 돌아오는지 포함)
 
 기본 모드: 설계서의 필수 3조건 B1/B2/Ours-H × 20문장 = 60개 영상 필요 (2026-11-15부터).
 Ours-HF(얼굴 포함)는 확장 실험이라 --conditions에 넣을 때만 쓴다 (4조건 80개).
