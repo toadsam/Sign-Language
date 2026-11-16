@@ -11,13 +11,32 @@ import zipfile
 from fractions import Fraction
 from pathlib import Path
 
+# 알려진 조건 전체. Ours-HF(얼굴 포함)는 설계서상 확장 실험이라 기본값에서 뺀다.
 CONDITIONS = ('B1', 'B2', 'Ours-H', 'Ours-HF')
+DEFAULT_CONDITIONS = ('B1', 'B2', 'Ours-H')
 EXTENSIONS = {'.mp4', '.webm'}
 
 
-def collect(root, count):
+def parse_conditions(text):
+    """'B1,Ours-H' → ('B1', 'Ours-H'). 알려진 이름만, 중복 없이, 2개 이상. 순서는 CONDITIONS 순서로 맞춘다."""
+    names = [name.strip() for name in str(text).split(',') if name.strip()]
+    unknown = [name for name in names if name not in CONDITIONS]
+    if unknown:
+        raise ValueError(f'알 수 없는 조건: {", ".join(unknown)}. 쓸 수 있는 조건: {", ".join(CONDITIONS)}')
+    if len(set(names)) != len(names):
+        raise ValueError('같은 조건을 두 번 넣었습니다.')
+    if len(names) < 2:
+        raise ValueError('비교하려면 조건이 2개 이상 필요합니다.')
+    return tuple(c for c in CONDITIONS if c in names)
+
+
+def collect(root, count, conditions=DEFAULT_CONDITIONS):
     clips, problems = [], []
-    for condition in CONDITIONS:
+    leftover = [c for c in CONDITIONS if c not in conditions and (root / c).exists()]
+    if leftover:
+        problems.append(f'고르지 않은 조건 폴더가 입력에 있습니다: {", ".join(leftover)}. '
+                        '--conditions에 넣거나 입력 폴더에서 빼 주세요.')
+    for condition in conditions:
         folder = root / condition
         if not folder.is_dir():
             problems.append(f'{condition}: 폴더가 없습니다.')
@@ -67,7 +86,8 @@ def probe(path):
         raise ValueError(f'{path.name}: 유효한 영상 프레임·재생 정보를 찾지 못했습니다.') from None
 
 
-def package(root, output, test_mode=False):
+def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS):
+    conditions = parse_conditions(','.join(conditions))
     root, output = Path(root).resolve(), Path(output).resolve()
     if not root.is_dir():
         raise ValueError('입력 폴더를 찾을 수 없습니다.')
@@ -78,7 +98,7 @@ def package(root, output, test_mode=False):
     if shutil.which('ffprobe') is None or shutil.which('ffmpeg') is None:
         raise ValueError('ffprobe와 ffmpeg 설치가 필요합니다.')
     count = 1 if test_mode else 20
-    clips = collect(root, count)
+    clips = collect(root, count, conditions)
     for clip in clips:
         clip['video'] = probe(clip['path'])
     if len({(c['video']['width'], c['video']['height']) for c in clips}) != 1:
@@ -107,7 +127,7 @@ def package(root, output, test_mode=False):
             mapping.append({'filename': filename, 'sentence': clip['sentence'], 'condition': clip['condition'],
                             'inputFile': str(clip['path']), 'video': exported})
         (private / 'condition-map.json').write_text(json.dumps({'testMode': test_mode, 'sentences': count,
-            'conditions': list(CONDITIONS), 'clips': mapping,
+            'conditions': list(conditions), 'clips': mapping,
             'note': '조건표는 승현에게 별도로 전달할 관리 자료입니다. 평가 참가자에게 전달하지 마세요.'}, ensure_ascii=False, indent=2), encoding='utf-8')
         # Shared archive contains only numbered clips, never the condition map.
         with zipfile.ZipFile(stage / 'evaluation-videos.zip', 'w', zipfile.ZIP_STORED) as archive:
@@ -125,13 +145,15 @@ def package(root, output, test_mode=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='20문장×4조건 영상 누락 검사 및 무작위 번호 정리')
+    parser = argparse.ArgumentParser(description='20문장×조건별 영상 누락 검사 및 무작위 번호 정리 (기본 B1·B2·Ours-H 3조건)')
     parser.add_argument('--input', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--test-mode', action='store_true', help='1문장×4조건으로 기능만 점검; 실제 평가용이 아님')
+    parser.add_argument('--conditions', default=','.join(DEFAULT_CONDITIONS),
+                        help=f'쉼표로 구분한 조건 (2개 이상). 기본 {",".join(DEFAULT_CONDITIONS)}. 쓸 수 있는 조건: {",".join(CONDITIONS)}')
+    parser.add_argument('--test-mode', action='store_true', help='1문장×조건으로 기능만 점검; 실제 평가용이 아님')
     args = parser.parse_args()
     try:
-        count = package(args.input, args.output, args.test_mode)
+        count = package(args.input, args.output, args.test_mode, parse_conditions(args.conditions))
     except (ValueError, OSError) as error:
         parser.exit(1, f'정리 실패:\n{error}\n')
     print(f'{count}개 영상 정리 완료: {args.output}')

@@ -3,16 +3,21 @@
 프로젝트 적용:
 viewer/seunghyeok/evaluation/prepare_videos.py
 
-기본 모드: 20문장×B1/B2/Ours-H/Ours-HF=80개 영상 필요.
-입력 폴더 예:
+기본 모드: 설계서의 필수 3조건 B1/B2/Ours-H × 20문장 = 60개 영상 필요 (2026-11-15부터).
+Ours-HF(얼굴 포함)는 확장 실험이라 --conditions에 넣을 때만 쓴다 (4조건 80개).
+B2가 아직 없으면 --conditions B1,Ours-H 처럼 2개 이상 골라 쓸 수 있다.
+고르지 않은 조건 폴더가 입력에 있으면 빠뜨린 실수를 막으려고 멈춘다.
+입력 폴더 예(기본 3조건):
 input/B1/sentence-01.mp4 ... sentence-20.mp4
 input/B2/sentence-01.mp4 ... sentence-20.mp4
 input/Ours-H/sentence-01.mp4 ... sentence-20.mp4
-input/Ours-HF/sentence-01.mp4 ... sentence-20.mp4
 WebM도 지원. 같은 조건·문장의 MP4/WebM중복은 거부.
 
 실행(프로젝트 루트 기준):
 python3 viewer/seunghyeok/evaluation/prepare_videos.py --input /입력폴더 --output /새출력폴더
+python3 viewer/seunghyeok/evaluation/prepare_videos.py --input /입력폴더 --output /새출력폴더 --conditions B1,Ours-H
+python3 viewer/seunghyeok/evaluation/prepare_videos.py --input /입력폴더 --output /새출력폴더 --conditions B1,B2,Ours-H,Ours-HF
+검사: python3 -I viewer/seunghyeok/evaluation/test_prepare_videos.py (합성 1초 영상, 7항목)
 현재 PC에는 python3/ffmpeg/ffprobe가 설치되어 있음.
 출력 폴더는 입력 폴더 바깥, 기존에 없는 새 경로여야 함.
 
@@ -38,3 +43,8 @@ ZIP에는001~004영상만 포함, 조건표 제외 확인.
 원본보존/기존출력덮어쓰기방지/누락시출력미생성 확인.
 test-bundle은 같은 합성 영상을 복제한 기능점검 자료이며 실제 평가자료가 아님.
 실제80개영상은 아직 만들지 않았음.
+
+2026-11-15 조건 선택 추가 검증 (test_prepare_videos.py 7항목 통과):
+기본 3조건 묶음(ZIP 001~003, 조건표 3조건), B2 없이 2조건, Ours-HF 포함 4조건,
+고르지 않은 조건 폴더·빠진 조건 폴더 거부(출력 미생성), 잘못된 이름·중복·1개 조건 거부, 명령줄 기본값·오류 종료.
+실제 평가 영상은 아직 없음.
