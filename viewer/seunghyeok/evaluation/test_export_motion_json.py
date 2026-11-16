@@ -74,7 +74,9 @@ class ExportMotionJsonTest(unittest.TestCase):
         mapping = json.loads((out / 'private' / 'clip-map.json').read_text(encoding='utf-8'))
         self.assertEqual(mapping['conditions'], ['B1', 'B2', 'Ours-H'])
         self.assertEqual({(m['sentence'], m['clip']) for m in mapping['files']}, {(1, 'SEN0001_REAL03'), (2, 'SEN0002_REAL12')})
-        self.assertIn('AI Hub', (out / 'README.txt').read_text(encoding='utf-8'))
+        credit = '한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용'
+        self.assertIn(f'출처: {credit}', (out / 'README.txt').read_text(encoding='utf-8'))
+        self.assertEqual(mapping['credit'], credit)
 
     @unittest.skipIf(shutil.which('node') is None or not (FRONT / 'node_modules' / 'typescript').exists(), 'node + frontendcodes/node_modules 필요')
     def test_frontend_decoder_reads_same_coordinates(self):

@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from prepare_videos import DEFAULT_CONDITIONS, parse_conditions  # noqa: E402
+from prepare_videos import CREDIT, DEFAULT_CONDITIONS, parse_conditions  # noqa: E402
 
 JOINTS = 125
 MAX_FRAMES = 18000      # motion.ts decodeMotion 상한
@@ -124,7 +124,7 @@ def export(manifest_path, output, conditions=DEFAULT_CONDITIONS, clips=None, sam
                             'frames': response['frames'], 'fps': response['fps'], 'source': response['source']})
         (stage / 'private' / 'clip-map.json').write_text(json.dumps({
             'manifest': str(Path(manifest_path).resolve()), 'conditions': list(conditions), 'sample': sample,
-            'sentences': len({j['sentence'] for j in jobs}), 'files': mapping,
+            'sentences': len({j['sentence'] for j in jobs}), 'files': mapping, 'credit': CREDIT,
             'note': '문장 번호와 클립 대응표입니다. 평가 참가자에게 전달하지 마세요.'}, ensure_ascii=False, indent=2), encoding='utf-8')
         (stage / 'README.txt').write_text(
             '평가용 저장 동작을 비교 화면용 JSON(계약 ⑤)으로 바꾼 결과입니다. 모델을 새로 돌리지 않았습니다.\n'
@@ -132,7 +132,8 @@ def export(manifest_path, output, conditions=DEFAULT_CONDITIONS, clips=None, sam
             '  같은 <조건>/sentence-NN.webm 이름으로 모은 뒤 prepare_videos.py로 묶습니다.\n'
             'private/clip-map.json: 문장 번호 ↔ 클립 대응표. 평가 참가자에게 주지 않습니다.\n'
             '주의: AI Hub 수어 데이터에서 나온 좌표입니다(B1은 실제 클립을 이어 붙인 것).\n'
-            '  저장소에 커밋하거나 외부에 올리지 마세요. 토큰 · 자막 구간은 비어 있습니다.\n', encoding='utf-8')
+            '  저장소에 커밋하거나 외부에 올리지 마세요. 토큰 · 자막 구간은 비어 있습니다.\n'
+            f'출처: {CREDIT}. 이 좌표로 만든 영상·그림에도 같은 출처를 적습니다.\n', encoding='utf-8')
         if output.exists():
             raise ValueError('출력 폴더가 작업 중 생성됐습니다. 덮어쓰지 않습니다.')
         shutil.move(str(stage), str(output))

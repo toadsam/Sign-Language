@@ -309,10 +309,18 @@
 - 검증: test_prepare_videos.py 7항목 통과(ffmpeg 시험 화면 1초 합성 영상). 기본 3조건 묶음(ZIP 001~003), 2조건, 4조건, 고르지 않은·빠진 폴더 거부, 잘못된 조건 목록 거부, 명령줄 기본값 · 오류 종료 확인.
 - 남은 것: 평가 문장 20개 확정(승현과), 조건별 동작 JSON 만들기(VM), 비교 화면에서 녹화한 실제 영상으로 묶음 만들기. B2 학습은 지헌 쪽 진행이 필요하다.
 
-## 2026-11-16 · 평가 동작 npy를 비교 화면용 JSON으로 바꾸는 도구  (커밋 대기)
+## 2026-11-16 · 평가 동작 npy를 비교 화면용 JSON으로 바꾸는 도구  (커밋 7b50d52)
 - 목표: 사람 평가 영상을 만들려면 VM의 조건별 평가 동작(npy)을 비교 화면(/sign-compare)에 넣어 녹화해야 하는데, 그 사이를 잇는 도구가 없었다. 저장 동작을 계약 ⑤ JSON으로 바꿔 바로 넣을 수 있게 한다.
 - AI에게 맡긴 것: Claude Code가 viewer/seunghyeok/evaluation/export_motion_json.py와 검사 test_export_motion_json.py를 만들었다. 입력은 ml/eval/compare.py와 같은 records 목록(읽기만 하고 승현 폴더는 고치지 않음)이고, 출력은 prepare_videos.py 입력과 같은 <조건>/sentence-NN 구조다. 조건 고르기는 prepare_videos.py의 규칙(기본 B1·B2·Ours-H, 2개 이상)을 그대로 쓴다. 문장 번호는 records 순서나 --clips 순서, 대응표는 private/clip-map.json에 따로 둔다. B1은 baseline, 나머지는 model로 표시하고, 토큰·자막 구간은 비운다. 출력 폴더 README에 AI Hub 파생물이라 커밋·외부 공유 금지를 적는다. README와 SEUNGHYEOK_GUIDE에 전체 순서(변환 → 비교 화면 녹화 → 묶음)를 적었다.
 - 처음 계획 → 바꾼 것: 검사에서 해독기 확인용 스크립트가 임시 폴더에서 typescript를 못 찾아 실패했고, 합성 동작 프레임 수 기대값도 잘못 적어 실패했다. 둘 다 검사 쪽을 고쳤고 변환기 코드는 바꾸지 않았다.
 - 내가 판단한 것: 다음 작업 후보(팀원 메시지 초안, JSON 변환 도구) 중 VM 없이 혼자 할 수 있는 변환 도구를 먼저 하기로 했다.
 - 검증: test_export_motion_json.py 5항목 통과(합성 동작만). 출력 JSON을 frontendcodes motion.ts의 decodeMotion에 넣어 좌표가 오차 0으로 같게 돌아오는 것, 기본 3조건 구조와 대응표, --clips 순서와 --sample, 잘못된 목록·없는 조건·중복·모양·NaN·절댓값 100 초과 거부(출력 미생성)를 확인했다. test_prepare_videos.py 7항목도 다시 통과.
 - 남은 것: VM에서 실제 generated.json으로 실행(지헌·승현과 목록 위치 확인), 평가 문장 20개 확정, 비교 화면에서 실제 녹화.
+
+## 2026-11-16 · 평가 영상 도구에 AI Hub 출처 표기 추가  (커밋 대기)
+- 목표: 팀 규칙(RULES.md 2절)의 출처 표기 "한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용"을 평가 영상 도구 결과물에 넣는다.
+- AI에게 맡긴 것: Claude Code가 prepare_videos.py에 CREDIT 문구를 두고, prepare_videos.py · export_motion_json.py의 출력 README와 대응표(condition-map.json · clip-map.json)에 넣었다. 두 검사에 출처 확인을 더하고, evaluation/README에 출처 표기와 공유 범위(막대인간 영상은 발표 가능, JSON · 원본 좌표는 반출 금지)를 적었다.
+- 처음 계획 → 바꾼 것: Codex 시절 outputs 설명 문서를 인계 안내서와 대조하다가, 인계 안내서에 없던 출처 표기 규칙을 찾았다. 참가자용 ZIP에는 영상만 두는 기존 규칙을 지키려고 ZIP 안에는 문구 파일을 넣지 않았다.
+- 내가 판단한 것: outputs 설명 문서를 읽어 대조하게 했고, 찾은 출처 규칙을 도구에 넣기로 했다.
+- 검증: test_prepare_videos.py 7항목, test_export_motion_json.py 5항목 통과(합성 자료). 출력 README와 대응표 두 곳에 같은 출처 문구가 있는지 확인한다.
+- 남은 것: 평가 안내문 · 발표 자료에 같은 출처를 적는다. 평가 참가자에게 막대인간 영상을 보여 주는 범위는 팀과 한 번 더 확인한다.

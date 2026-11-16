@@ -54,6 +54,10 @@ class PrepareVideosTest(unittest.TestCase):
         self.assertEqual(sorted(c['condition'] for c in mapping['clips']), ['B1', 'B2', 'Ours-H'])
         with zipfile.ZipFile(out / 'evaluation-videos.zip') as archive:
             self.assertEqual(sorted(archive.namelist()), ['001.webm', '002.webm', '003.webm'])
+        credit = '한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용'
+        self.assertEqual(P.CREDIT, credit)
+        self.assertEqual(mapping['credit'], credit)
+        self.assertIn(f'출처: {credit}', (out / 'README.txt').read_text(encoding='utf-8'))
 
     def test_two_conditions_when_b2_missing(self):
         count, _, mapping = self.run_package(self.input_with('B1', 'Ours-H'), ('Ours-H', 'B1'))

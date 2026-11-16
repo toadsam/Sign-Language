@@ -4,6 +4,11 @@
 viewer/seunghyeok/evaluation/export_motion_json.py  (1단계: 저장 동작 npy → 비교 화면용 JSON)
 viewer/seunghyeok/evaluation/prepare_videos.py      (3단계: 녹화 영상 → 무작위 번호 묶음)
 
+출처 표기(팀 규칙 RULES.md 2절): 한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용
+  두 도구의 출력 README와 대응표(clip-map.json, condition-map.json)에 자동으로 들어간다.
+  평가 안내문·발표 자료·영상 설명에도 같은 문구를 적는다.
+  막대인간 그림·영상은 발표에 써도 되지만, 변환한 JSON·원본 좌표는 승인된 사람의 컴퓨터 밖으로 내보내지 않는다.
+
 전체 순서:
 1. VM에서 export_motion_json.py로 조건별 sentence-NN.json을 만든다.
    입력은 ml/eval/compare.py와 같은 records 목록(generated.json). 모델은 돌리지 않는다.

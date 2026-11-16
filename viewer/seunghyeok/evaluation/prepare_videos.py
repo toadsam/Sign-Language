@@ -15,6 +15,8 @@ from pathlib import Path
 CONDITIONS = ('B1', 'B2', 'Ours-H', 'Ours-HF')
 DEFAULT_CONDITIONS = ('B1', 'B2', 'Ours-H')
 EXTENSIONS = {'.mp4', '.webm'}
+# 팀 규칙(docs/handoff/RULES.md 2절): AI Hub 데이터를 쓴 결과물에 붙이는 출처 표기
+CREDIT = '한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용'
 
 
 def parse_conditions(text):
@@ -127,7 +129,7 @@ def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS):
             mapping.append({'filename': filename, 'sentence': clip['sentence'], 'condition': clip['condition'],
                             'inputFile': str(clip['path']), 'video': exported})
         (private / 'condition-map.json').write_text(json.dumps({'testMode': test_mode, 'sentences': count,
-            'conditions': list(conditions), 'clips': mapping,
+            'conditions': list(conditions), 'clips': mapping, 'credit': CREDIT,
             'note': '조건표는 승현에게 별도로 전달할 관리 자료입니다. 평가 참가자에게 전달하지 마세요.'}, ensure_ascii=False, indent=2), encoding='utf-8')
         # Shared archive contains only numbered clips, never the condition map.
         with zipfile.ZipFile(stage / 'evaluation-videos.zip', 'w', zipfile.ZIP_STORED) as archive:
@@ -137,7 +139,8 @@ def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS):
             ('기능 점검용 합성 입력 묶음입니다. 실제 평가 자료가 아닙니다.\n' if test_mode else '평가 영상 정리 결과입니다. 내용·시점·프레임 속도는 평가 전에 확인해주세요.\n') +
             'evaluation-videos.zip: 무작위 번호 영상만 포함.\nprivate/condition-map.json: 조건표. 승현에게 별도 전달할 자료이며 참가자 공유 ZIP에 포함되지 않습니다.\n' +
             '입력 파일은 보존했습니다. 영상은 재인코딩하지 않고 영상 트랙만 정리하며 오디오·컨테이너 메타데이터를 제외했습니다.\n' +
-            '같은 원본 영상을 여러 조건으로 넣어도 모델 결과의 진위는 자동 검증할 수 없습니다. 정확한30fps/CFR 여부도 보장하지 않습니다.\n', encoding='utf-8')
+            '같은 원본 영상을 여러 조건으로 넣어도 모델 결과의 진위는 자동 검증할 수 없습니다. 정확한30fps/CFR 여부도 보장하지 않습니다.\n' +
+            f'출처: {CREDIT}. 평가 안내·발표 자료에 이 출처를 함께 적습니다.\n', encoding='utf-8')
         if output.exists():
             raise ValueError('출력 폴더가 작업 중 생성됐습니다. 덮어쓰지 않습니다.')
         shutil.move(str(stage), str(output))
