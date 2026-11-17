@@ -61,6 +61,10 @@ const IDLE_ARM_WEIGHT = 0.15;
  *  2026-11-17 승혁 · 재훈: 0.1 → 0.16 임시. 웹캠으로 잘 따라 한 손 모양 거리가 0.125~0.156이라 0.1이면 매번 떴다.
  *  "손 모양만 다름" 기록으로 웹캠이 손 모양을 가르는지 본 뒤 다시 정한다 (가르면 그 사이 값, 못 가르면 안내를 뺀다). */
 const SHAPE_HINT = 0.16;
+/** "손가락 모양이 달랐어요" 안내를 낼지. 2026-11-17 승혁 · 재훈: 끈다.
+ *  "손 모양만 다름"(주먹 · 다른 손가락) 5회의 모양 거리(중앙 0.110)가 "잘 따라 함" 10회(중앙 0.170)보다 오히려 가까워,
+ *  웹캠 손 모양 거리로는 손 모양을 가를 수 없었다. 손 인식이 나아지면 기록으로 다시 확인하고 켠다. */
+const SHAPE_HINT_ON = false;
 // 거리 → 점수. [이 거리 이하면 100, 이 거리 이상이면 0]
 // 2026-11-17 승혁: 손 자리만 웹캠 실제 시도 10회로 다시 맞췄다 (tools/follow-baseline.cjs).
 // 자리: 100점 = "잘 따라 함" 거리 중앙값 0.201(지헌 기록의 사람끼리 약 0.20과 비슷), 0점 = "다른 동작" 중앙값 0.49. 이전 [0.12, 0.5]
@@ -196,10 +200,11 @@ function mean(values: number[]) {
 }
 // 2026-11-17 승혁: 자리 · 모양 반영 비율을 6:4에서 8:2로. 웹캠은 손가락보다 손 위치를 훨씬 정확하게 잡는다
 // (잘 따라 한 시도의 모양 점수가 40점대). 같은 기록에서 잘 따라 함 70~78 → 80~89점, 다른 동작 0~25 → 0~33점.
-// 모양이 틀리면 여전히 감점되고 "손가락 모양" 안내는 SHAPE_HINT로 따로 나온다.
+// 같은 날 8:2 → 9:1. 웹캠이 손 모양을 가르지 못했다(SHAPE_HINT_ON 설명). 기록 20개에서 잘 따라 함 78~94점, 다른 동작 0~38점.
+// 손 모양을 완전히 빼지 않고 10%만 남겨, 손 인식이 나아지면 다시 키울 수 있게 한다.
 function combine(position: number, shape: number | null) {
   const p = toScore(position, POSITION_RANGE);
-  return shape === null ? p : Math.round(0.8 * p + 0.2 * toScore(shape, SHAPE_RANGE));
+  return shape === null ? p : Math.round(0.9 * p + 0.1 * toScore(shape, SHAPE_RANGE));
 }
 
 function pass(mineMotion: ScoreMotion, friendMotion: ScoreMotion, mirror: boolean): Pass | null {
@@ -293,9 +298,9 @@ function hintsFor(p: Pass, words: FollowScore['words'], mirrored: boolean): stri
   wrist('오른손', 3, p.friendUses.right, -1);
   wrist('왼손', 7, p.friendUses.left, 1);
   if (p.unseen.right > 0.5) hints.push({ weight: 0.5, text: '오른손이 화면에 잘 안 보였어요. 손 전체가 보이게 해 주세요.' });
-  else if (p.parts.rightHand !== null && p.parts.rightHand > SHAPE_HINT) hints.push({ weight: p.parts.rightHand * 2, text: '오른손 손가락 모양이 달랐어요.' });
+  else if (SHAPE_HINT_ON && p.parts.rightHand !== null && p.parts.rightHand > SHAPE_HINT) hints.push({ weight: p.parts.rightHand * 2, text: '오른손 손가락 모양이 달랐어요.' });
   if (p.unseen.left > 0.5) hints.push({ weight: 0.5, text: '왼손이 화면에 잘 안 보였어요. 손 전체가 보이게 해 주세요.' });
-  else if (p.parts.leftHand !== null && p.parts.leftHand > SHAPE_HINT) hints.push({ weight: p.parts.leftHand * 2, text: '왼손 손가락 모양이 달랐어요.' });
+  else if (SHAPE_HINT_ON && p.parts.leftHand !== null && p.parts.leftHand > SHAPE_HINT) hints.push({ weight: p.parts.leftHand * 2, text: '왼손 손가락 모양이 달랐어요.' });
   if (words.length > 1) {
     const worst = words.reduce((a, b) => (b.score < a.score ? b : a));
     if (worst.score < 60) hints.push({ weight: 0.25, text: `「${worst.gloss}」 부분이 가장 달랐어요.` });
