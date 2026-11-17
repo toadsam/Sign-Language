@@ -16,7 +16,7 @@ const follow = fs.readFileSync(path.join(__dirname, '../components/sign-camera/F
 for (const piece of ['`${i + 1}\\t${a.kind}\\t점수 ${a.score}\\t자리 ${a.position.toFixed(3)}\\t모양 ${a.shape === null ? \'없음\' : a.shape.toFixed(3)}', "'\\t반대 손'", "['잘 따라 함', '대충 따라 함', '다른 동작']"])
   assert.ok(follow.includes(piece), `FollowAlong.web.tsx 기록 형식이 바뀌었습니다: ${piece}`);
 const score = fs.readFileSync(path.join(__dirname, '../components/sign-camera/body-score.ts'), 'utf8');
-for (const piece of ['Math.round(100 * Math.min(1, Math.max(0, 1 - (distance - best) / (worst - best))))', 'Math.round(0.6 * p + 0.4 * toScore(shape, SHAPE_RANGE))'])
+for (const piece of ['Math.round(100 * Math.min(1, Math.max(0, 1 - (distance - best) / (worst - best))))', 'Math.round(0.8 * p + 0.2 * toScore(shape, SHAPE_RANGE))'])
   assert.ok(score.includes(piece), `body-score.ts 점수 식이 바뀌었습니다: ${piece}`);
 passed.push('screen record format and score formula unchanged');
 
@@ -35,7 +35,7 @@ passed.push('line parsing, blank lines, error line numbers');
 assert.equal(B.quantile([3, 1, 2], 0.5), 2); assert.equal(B.quantile([1, 2, 3, 4], 0.5), 2.5); assert.equal(B.quantile([], 0.5), null);
 assert.equal(B.toScore(0.12, [0.12, 0.5]), 100); assert.equal(B.toScore(0.5, [0.12, 0.5]), 0); assert.equal(B.toScore(0.31, [0.12, 0.5]), 50);
 assert.equal(B.combine({ position: 0.12, shape: null }, [0.12, 0.5], [0.05, 0.2]), 100);
-assert.equal(B.combine({ position: 0.5, shape: 0.05 }, [0.12, 0.5], [0.05, 0.2]), 40);
+assert.equal(B.combine({ position: 0.5, shape: 0.05 }, [0.12, 0.5], [0.05, 0.2]), 20);
 passed.push('quantile and score formula');
 
 // 4. 잘 갈리는 기록 → 제안, 잘못 통과 0

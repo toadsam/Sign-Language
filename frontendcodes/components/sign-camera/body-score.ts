@@ -192,9 +192,12 @@ type Pass = {
 function mean(values: number[]) {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
 }
+// 2026-11-17 승혁: 자리 · 모양 반영 비율을 6:4에서 8:2로. 웹캠은 손가락보다 손 위치를 훨씬 정확하게 잡는다
+// (잘 따라 한 시도의 모양 점수가 40점대). 같은 기록에서 잘 따라 함 70~78 → 80~89점, 다른 동작 0~25 → 0~33점.
+// 모양이 틀리면 여전히 감점되고 "손가락 모양" 안내는 SHAPE_HINT로 따로 나온다.
 function combine(position: number, shape: number | null) {
   const p = toScore(position, POSITION_RANGE);
-  return shape === null ? p : Math.round(0.6 * p + 0.4 * toScore(shape, SHAPE_RANGE));
+  return shape === null ? p : Math.round(0.8 * p + 0.2 * toScore(shape, SHAPE_RANGE));
 }
 
 function pass(mineMotion: ScoreMotion, friendMotion: ScoreMotion, mirror: boolean): Pass | null {

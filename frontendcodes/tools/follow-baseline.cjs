@@ -56,7 +56,7 @@ const stats = (values) => values.length
 
 /** body-score.ts 와 같은 식 */
 const toScore = (d, [best, worst]) => Math.round(100 * Math.min(1, Math.max(0, 1 - (d - best) / (worst - best))));
-const combine = (r, pos, shape) => r.shape === null ? toScore(r.position, pos) : Math.round(0.6 * toScore(r.position, pos) + 0.4 * toScore(r.shape, shape));
+const combine = (r, pos, shape) => r.shape === null ? toScore(r.position, pos) : Math.round(0.8 * toScore(r.position, pos) + 0.2 * toScore(r.shape, shape));
 
 function readCurrentRanges(file) {
   const src = fs.readFileSync(file, 'utf8');
