@@ -13,7 +13,7 @@ const line = (i, kind, score, pos, shape, extra = '') =>
 
 // 1. 화면이 만드는 줄 형식이 이 도구가 읽는 형식과 같은지 (형식이 바뀌면 여기서 멈춘다)
 const follow = fs.readFileSync(path.join(__dirname, '../components/sign-camera/FollowAlong.web.tsx'), 'utf8');
-for (const piece of ['`${i + 1}\\t${a.kind}\\t점수 ${a.score}\\t자리 ${a.position.toFixed(3)}\\t모양 ${a.shape === null ? \'없음\' : a.shape.toFixed(3)}', "'\\t반대 손'", "['잘 따라 함', '대충 따라 함', '다른 동작']"])
+for (const piece of ['`${i + 1}\\t${a.kind}\\t점수 ${a.score}\\t자리 ${a.position.toFixed(3)}\\t모양 ${a.shape === null ? \'없음\' : a.shape.toFixed(3)}', "'\\t반대 손'", "['잘 따라 함', '대충 따라 함', '손 모양만 다름', '다른 동작']"])
   assert.ok(follow.includes(piece), `FollowAlong.web.tsx 기록 형식이 바뀌었습니다: ${piece}`);
 const score = fs.readFileSync(path.join(__dirname, '../components/sign-camera/body-score.ts'), 'utf8');
 for (const piece of ['Math.round(100 * Math.min(1, Math.max(0, 1 - (distance - best) / (worst - best))))', 'Math.round(0.8 * p + 0.2 * toScore(shape, SHAPE_RANGE))'])
@@ -65,10 +65,28 @@ fs.writeFileSync(file, [...good, ...other].map((x, i) => line(i + 1, x.kind, 0, 
 const out = execFileSync(process.execPath, [path.join(__dirname, 'follow-baseline.cjs'), file], { encoding: 'utf8' });
 assert.match(out, /기록 10개/); assert.ok(out.includes(`지금 값: 자리 [${current.position.join(', ')}]`), '지금 값 줄');
 assert.match(out, /const POSITION_RANGE: \[number, number\] = \[0\.15, 0\.45\];/); assert.match(out, /const SHAPE_RANGE: \[number, number\] = \[0\.06, 0\.18\];/);
+assert.match(out, /\[손 모양 가르기\][\s\S]*아직 판단하지 않음: .*"손 모양만 다름" 0개/);
 fs.writeFileSync(file, '');
 assert.throws(() => execFileSync(process.execPath, [path.join(__dirname, 'follow-baseline.cjs'), file], { stdio: 'pipe' }), /기록 줄이 없습니다/);
 fs.rmSync(dir, { recursive: true, force: true });
 assert.equal(fs.readFileSync(path.join(__dirname, '../components/sign-camera/body-score.ts'), 'utf8'), score);
 passed.push('reads current ranges, CLI prints suggestion, empty file fails, body-score.ts untouched');
+
+// 7. 손 모양 가르기 ("손 모양만 다름": 자리는 같게, 손 모양만 다르게)
+const shapeOnly = (shapes) => shapes.map((v) => ({ kind: '손 모양만 다름', score: 0, position: 0.2, shape: v, mirrored: false }));
+const goodShapes = [0.125, 0.133, 0.137, 0.142, 0.156].map((v) => ({ kind: '잘 따라 함', score: 0, position: 0.2, shape: v, mirrored: false }));
+const byOf = (records) => B.suggest(records).by;
+let sep = B.shapeSeparation(byOf([...goodShapes, ...shapeOnly([0.19, 0.21, 0.23, 0.25, 0.30])]));
+assert.equal(sep.separable, true); assert.equal(sep.hint, 0.173); assert.deepEqual(sep.range, [0.137, 0.23]); assert.equal(sep.overlap, 0);
+sep = B.shapeSeparation(byOf([...goodShapes, ...shapeOnly([0.13, 0.15, 0.16, 0.20, 0.22])]));
+assert.equal(sep.separable, false); assert.equal(sep.overlap, 0.4); assert.equal(sep.hint, undefined);
+sep = B.shapeSeparation(byOf([...goodShapes, ...shapeOnly([0.2, 0.2, 0.2, 0.2]), { kind: '손 모양만 다름', score: 0, position: 0.2, shape: null, mirrored: false }]));
+assert.equal(sep.ready, false); assert.match(sep.reason, /"손 모양만 다름" 4개/);
+const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'follow-baseline-'));
+fs.writeFileSync(path.join(dir2, 'r.txt'), [...goodShapes, ...shapeOnly([0.19, 0.21, 0.23, 0.25, 0.30])].map((x, i) => line(i + 1, x.kind, 0, x.position, x.shape)).join('\n'));
+const out2 = execFileSync(process.execPath, [path.join(__dirname, 'follow-baseline.cjs'), path.join(dir2, 'r.txt')], { encoding: 'utf8' });
+assert.match(out2, /→ 갈린다[\s\S]*const SHAPE_HINT = 0\.173;[\s\S]*const SHAPE_RANGE: \[number, number\] = \[0\.137, 0\.23\];/);
+fs.rmSync(dir2, { recursive: true, force: true });
+passed.push('shape-only records: separable suggests hint and range, overlap says not separable, too few waits');
 
 console.log(JSON.stringify({ synthetic: true, camera: false, passed }, null, 2));

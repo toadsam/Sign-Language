@@ -103,7 +103,12 @@ assert.ok(mir.score < 70, '반대 손은 감점: ' + mir.score);
 const fist = scoreFollow(motion({ frames: 60, right: signA, open: 0 }), friend);
 assert.equal(fist.position.score, 100);
 assert.ok(fist.shape.score < 70, '손 모양 점수가 깎인다: ' + fist.shape.score);
-assert.ok(Array.from(fist.hints).some((h) => h.includes('오른손 손가락 모양')));
+// 2026-11-17 승혁: SHAPE_HINT를 임시로 0.16으로 올렸다(body-score.ts). 이 가짜 손 모델에서 편 손 ↔ 주먹 거리는 약 0.13이 최대라
+// 기준을 넘지 못한다. 그래서 "기준을 넘으면 안내가 나오고, 못 넘으면 안 나온다"를 본다 (기준을 다시 정해도 그대로 쓸 수 있게).
+const shapeHint = Number(source.match(/const SHAPE_HINT = ([\d.]+);/)[1]);
+const fistHint = Array.from(fist.hints).some((h) => h.includes('오른손 손가락 모양'));
+assert.equal(fistHint, fist.parts.rightHand > shapeHint, `손 모양 거리 ${fist.parts.rightHand.toFixed(3)} · 안내 기준 ${shapeHint} · 안내 ${fistHint}`);
+assert.ok(!Array.from(same.hints).some((h) => h.includes('손가락 모양')), '똑같으면 손가락 안내가 없다');
 
 // 7. 손이 화면에 안 잡혔으면 그렇게 알려 준다
 const unseen = motion({ frames: 60, right: signA, open: 1 });
@@ -148,6 +153,6 @@ assert.ok(oneHand.score < 80 && oneHand.parts.leftArm > oneHand.parts.rightArm, 
 assert.ok(Array.from(oneHand.hints).some((h) => h.includes('왼손')));
 
 console.log('PASS 같으면 100 · 느리고 떨려도 ' + slow.score + ' · 다른 동작 ' + other.score + ' · 거울 ' + mir.score);
-console.log('PASS 안내: 더 높이 · 몸 쪽으로 · 손가락 모양 · 화면에 안 보임 · 반대 손 · 가장 달랐던 낱말');
+console.log('PASS 안내: 더 높이 · 몸 쪽으로 · 손가락 모양(기준 ' + shapeHint + '을 넘을 때만, 가짜 주먹 ' + fist.parts.rightHand.toFixed(3) + ') · 화면에 안 보임 · 반대 손 · 가장 달랐던 낱말');
 console.log('PASS 낱말마다 점수, 125점 동작, 양손 동작, 견줄 것이 없으면 null');
 console.log('가짜 동작만 썼다. 손 자리 기준선은 2026-11-17 한 사람 · 한 문장의 웹캠 시도 10회로 맞춘 값이고, 손 모양 기준선은 임시값이다.');

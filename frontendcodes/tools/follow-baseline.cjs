@@ -9,11 +9,12 @@
 //
 // 제안 규칙: 100점 기준 = "잘 따라 함" 거리의 중앙값, 0점 기준 = "다른 동작" 거리의 중앙값.
 // 두 종류가 각각 MIN_PER_KIND 개 이상일 때만 제안한다.
+// "손 모양만 다름" 기록이 있으면 웹캠이 손 모양을 가르는지 따로 보고 SHAPE_HINT · SHAPE_RANGE를 제안한다 (shapeSeparation).
 const fs = require('node:fs');
 const path = require('node:path');
 
-const GOOD = '잘 따라 함', ROUGH = '대충 따라 함', OTHER = '다른 동작';
-const KINDS = [GOOD, ROUGH, OTHER];
+const GOOD = '잘 따라 함', ROUGH = '대충 따라 함', SHAPE_ONLY = '손 모양만 다름', OTHER = '다른 동작';
+const KINDS = [GOOD, ROUGH, SHAPE_ONLY, OTHER];
 const MIN_PER_KIND = 5;
 /** 화면의 판정 경계 (body-score.ts verdict): 65점 이상이면 "거의 맞아요" */
 const PASS = 65;
@@ -86,6 +87,23 @@ function suggest(records) {
   return { by, suggestion: reasons.length ? null : { position, shape }, reasons };
 }
 
+/**
+ * 웹캠이 손 모양을 가르는가: "잘 따라 함"과 "손 모양만 다름"(자리는 같게, 손 모양만 일부러 다르게)의 모양 거리를 견준다.
+ * 가르면(손 모양만 다름의 최솟값 > 잘 따라 함의 최댓값) 안내 기준 = 둘 사이 가운데, 모양 범위 = [잘 따라 함 중앙, 손 모양만 다름 중앙].
+ * 못 가르면 제안하지 않고 재훈의 대안(안내 빼기 · 손 모양 몫 줄이기)을 알린다. 2026-11-17 재훈 요청.
+ */
+function shapeSeparation(by) {
+  const good = by[GOOD].map((r) => r.shape).filter((v) => v !== null);
+  const only = by[SHAPE_ONLY].map((r) => r.shape).filter((v) => v !== null);
+  if (good.length < MIN_PER_KIND || only.length < MIN_PER_KIND)
+    return { ready: false, reason: `손 모양이 잡힌 "${GOOD}" ${good.length}개 · "${SHAPE_ONLY}" ${only.length}개. 각각 ${MIN_PER_KIND}개 이상 필요합니다.` };
+  const goodMax = Math.max(...good), onlyMin = Math.min(...only);
+  const overlap = only.filter((v) => v <= goodMax).length / only.length;
+  const base = { ready: true, good: stats(good), only: stats(only), overlap };
+  if (!(onlyMin > goodMax)) return { ...base, separable: false };
+  return { ...base, separable: true, hint: round3((goodMax + onlyMin) / 2), range: [round3(quantile(good, 0.5)), round3(quantile(only, 0.5))] };
+}
+
 /** 범위로 매긴 점수: 종류별 중앙값과 잘못 통과 · 잘못 떨어짐 비율 */
 function evaluate(by, ranges) {
   const scores = Object.fromEntries(KINDS.map((k) => [k, by[k].map((r) => combine(r, ranges.position, ranges.shape))]));
@@ -126,11 +144,23 @@ function report(records, current) {
   } else {
     lines.push('', '제안하지 않음:', ...reasons.map((r) => `  - ${r}`));
   }
+  const sep = shapeSeparation(by);
+  lines.push('', `[손 모양 가르기] "${GOOD}" ↔ "${SHAPE_ONLY}" (손 모양 몫 · SHAPE_HINT는 이 결과로 정한다)`);
+  if (!sep.ready) lines.push(`  아직 판단하지 않음: ${sep.reason}`);
+  else {
+    lines.push(`  ${GOOD} 모양 거리: 중앙 ${fmt(sep.good.median)} · 최대 ${fmt(sep.good.max)}`,
+      `  ${SHAPE_ONLY} 모양 거리: 최소 ${fmt(sep.only.min)} · 중앙 ${fmt(sep.only.median)}`,
+      `  겹침: "${SHAPE_ONLY}" 중 ${pct(sep.overlap)}가 "${GOOD}" 최댓값 이하`);
+    if (sep.separable) lines.push('  → 갈린다. 바꿔 넣을 줄 (직접 확인 후 반영):',
+      `const SHAPE_HINT = ${sep.hint};`, `const SHAPE_RANGE: [number, number] = [${sep.range.join(', ')}];`);
+    else lines.push('  → 갈리지 않는다. 웹캠으로는 손 모양을 믿기 어렵다.',
+      '    재훈 제안: "손가락 모양" 안내를 빼고, 점수에서 손 모양 몫을 더 줄인다 (body-score.ts combine).');
+  }
   lines.push('', '주의: 몇 사람 · 몇 단어의 기록인지에 따라 값이 달라진다. 수어 뜻이 맞는지 판정한 값이 아니다.');
   return lines.join('\n');
 }
 
-module.exports = { parseLine, parseRecords, quantile, suggest, evaluate, report, readCurrentRanges, toScore, combine, MIN_PER_KIND };
+module.exports = { parseLine, parseRecords, quantile, suggest, evaluate, shapeSeparation, report, readCurrentRanges, toScore, combine, MIN_PER_KIND };
 
 if (require.main === module) {
   const file = process.argv[2];
