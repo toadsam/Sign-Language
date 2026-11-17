@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 
 import { LoginArt } from '@/components/paint/login-art';
 import { LOGO_NAME, VillageLogo } from '@/components/paint/logo';
@@ -242,7 +243,7 @@ function LoginContent({ googleAuth }: { googleAuth: ReturnType<typeof useGoogleI
   // "이미 로그인된 상태입니다" UI 제거
   // (회원가입 미완료 유저가 signup으로 이동해야 하는데 방해됨)
 
-  const { width } = useWindowDimensions();
+  const { width } = useAppSize();
   const artWidth = Math.min(width - 44, 360);
 
   return (

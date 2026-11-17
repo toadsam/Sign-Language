@@ -5,13 +5,14 @@ import { useFonts } from 'expo-font';
 import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { PaintTransitionProvider } from '@/components/paint/transition';
 import { SplashOverlay } from '@/components/splash-overlay';
 import { Paint } from '@/constants/paint';
 import { AuthProvider, useAuth } from '@/context/auth-context';
+import { APP_MAX_WIDTH, AppFrameContext } from '@/hooks/use-app-size';
 
 // 색칠 마을은 종이 위 그림이라 어두운 모드에서도 종이색을 쓴다
 const PaperTheme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: Paint.paper, card: Paint.paper, text: Paint.ink } };
@@ -23,16 +24,25 @@ export const unstable_settings = {
 export default function RootLayout() {
   const [showSplash, setShowSplash] = useState(true);
   const [fontsLoaded] = useFonts({ GowunBatang_400Regular, GowunBatang_700Bold, GowunDodum_400Regular });
+  // 웹: 넓은 화면에서는 앱을 폰 너비로 가운데에 둔다. AI 작업실(sign-*)은 넓게 쓰는 화면이라 틀에 넣지 않는다
+  const segments = useSegments();
+  const framed = Platform.OS === 'web' && !String(segments[0] ?? '').startsWith('sign-');
 
   return (
     <AuthProvider>
       <ThemeProvider value={PaperTheme}>
-        <PaintTransitionProvider>
-          <View style={{ flex: 1, backgroundColor: Paint.paper }}>
-            {fontsLoaded && <AuthGate />}
-            {showSplash && <SplashOverlay ready={fontsLoaded} onDone={() => setShowSplash(false)} />}
+        <AppFrameContext.Provider value={framed}>
+          <View style={styles.stage}>
+            <View style={[styles.frame, framed && styles.framed]}>
+              <PaintTransitionProvider>
+                <View style={{ flex: 1, backgroundColor: Paint.paper }}>
+                  {fontsLoaded && <AuthGate />}
+                  {showSplash && <SplashOverlay ready={fontsLoaded} onDone={() => setShowSplash(false)} />}
+                </View>
+              </PaintTransitionProvider>
+            </View>
           </View>
-        </PaintTransitionProvider>
+        </AppFrameContext.Provider>
         <StatusBar style="dark" />
       </ThemeProvider>
     </AuthProvider>
@@ -93,3 +103,9 @@ function AuthGate() {
   );
 }
 
+const styles = StyleSheet.create({
+  // 틀 바깥(양옆)은 조금 짙은 종이색이라 가운데의 앱이 구분된다
+  stage: { flex: 1, alignItems: 'center', backgroundColor: Paint.paperDeep },
+  frame: { flex: 1, width: '100%', backgroundColor: Paint.paper },
+  framed: { maxWidth: APP_MAX_WIDTH, overflow: 'hidden' },
+});
