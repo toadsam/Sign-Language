@@ -43,13 +43,20 @@ cd ~/Downloads/Sign-Language-main/frontendcodes && npx expo start --web --port 8
 ### B. VM 있을 때 (지헌에게 시간 확인 후)
 
 1. 단톡에 "VM 쓴다, 약 30분" 알린다. VM 전원은 지헌이 관리한다.
-2. 포트 연결 (8080 앱 API, 8000 검증 화면):
+2. **먼저 상태를 본다.** 다른 사람이 서버를 이미 켜 두었을 수 있다 (11/17에는 재훈 계정의 추론 서버 · Spring이 켜져 있었고, 배포 앱이 이를 부를 수 있다).
+   ```bash
+   gcloud compute ssh <내 계정>@sign-ml --project=project-bd08e20d-00af-4b04-81b --zone=asia-northeast3-b --command 'nvidia-smi; bash /data/work/jiheon/serve_vm_sentence/status.sh'
+   ```
+   - "추론 서버 8000: 정상 / Spring 8080: 정상"이면 **켜지도 끄지도 않고** 아래 3의 포트 연결만 한다.
+   - 아무것도 안 켜져 있을 때만 4에서 직접 켜고, 끝날 때 직접 끈다.
+3. 포트 연결 (8080 앱 API, 8000 검증 화면):
    ```bash
    gcloud compute ssh <내 계정>@sign-ml --project=project-bd08e20d-00af-4b04-81b --zone=asia-northeast3-b -- -L 8080:127.0.0.1:8080 -L 8000:127.0.0.1:8000
    ```
-3. VM 안에서 문장 서버 켜기 (1~2분): `bash /data/work/jiheon/serve_vm_sentence/start_sentence.sh`
+4. (꺼져 있을 때만) VM 안에서 문장 서버 켜기 (1~2분): `bash /data/work/jiheon/serve_vm_sentence/start_sentence.sh`
    단어 모델(`serve_vm/start.sh`)과 같은 포트를 쓰므로 둘 중 하나만 켠다.
-4. 통역 화면을 실제 서버로 열기: `http://localhost:8081/translator?gen=http://localhost:8080/api/sign/generate`
+5. 통역 화면을 실제 서버로 열기: `http://localhost:8081/translator?gen=http://localhost:8080/api/sign/generate`
+   통역 화면은 로그인이 필요하다. 로그인 화면에서 "로그인 없이 둘러보기"로 들어간 뒤 위 주소를 다시 연다.
    첫 요청은 1~8초 걸릴 수 있다. 시연 전에 한 번 미리 보내 둔다.
 
 ### 미리 열어 둘 탭
@@ -131,7 +138,7 @@ cd ~/Downloads/Sign-Language-main/frontendcodes && npx expo start --web --port 8
 ## 4. 끝내기
 
 1. 재생 · 녹화를 멈춘다.
-2. VM을 썼으면 VM 안에서 `bash /data/work/jiheon/serve_vm_sentence/stop.sh` → 지헌에게 껐다고 알린다. VM 전원은 건드리지 않는다.
+2. **내가 직접 켠 경우에만** VM 안에서 `bash /data/work/jiheon/serve_vm_sentence/stop.sh` → 지헌에게 껐다고 알린다. 남이 켜 둔 서버는 끄지 않는다. VM 전원은 건드리지 않는다.
 3. 포트 연결 터미널, expo · 가짜 서버 터미널을 Ctrl+C로 끈다.
 
 ---
@@ -139,6 +146,12 @@ cd ~/Downloads/Sign-Language-main/frontendcodes && npx expo start --web --port 8
 ## 5. 아직 확인하지 않은 것
 
 - 이 순서대로 5분을 이어서 해 보기와 녹화
-- 실제 문장 모델(VM)로 통역 화면 · 생성 작업실 재생, 자막, unknown
 - 통역 화면을 가짜 서버(`?scenario=sentence`)로 연 모습 (재훈이 11/15 확인, 승혁은 아직)
 - 따라 하기를 실제 카메라로 해 본 점수
+
+11/17에 확인한 것 (재훈이 켜 둔 VM 서버에 포트 연결만 해서):
+- 테스트 문장 5개 모두 지헌 문서와 같은 결과 (저는 학교에 갑니다. 164프레임 · 나/학교/가다, 지하철을 타고 집에 가요. 156프레임 · unknown 집, 커피숍 → 카페 128프레임, 감사합니다. 124프레임, 버스 정류장이 어디예요? 버스/곳/무엇). 응답 0.25~0.76초
+- 빈 문장 400, "!!!" 422, "ㅋㅋㅋ" 200 · 0프레임 · unknown
+- 생성 작업실(지정한 API)에서 실제 응답 재생, 자막이 구간대로 바뀜(지하철 → 타다 → 가다), "제외되었습니다: 집" 안내
+- 통역 화면에서 3D 친구, 낱말 줄 "2 / 3 손짓", "AI가 그린 손짓이에요 · 못 그린 낱말: 집"
+- 자막은 첫 낱말 전(0~51프레임)과 낱말 사이 연결 구간에서 "자막 없는 구간"으로 비어 보인다
