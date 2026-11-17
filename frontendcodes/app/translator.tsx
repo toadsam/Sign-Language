@@ -9,7 +9,8 @@ import { useEventListener } from 'expo';
 import * as SecureStore from 'expo-secure-store';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
@@ -44,7 +45,7 @@ export default function TranslatorScreen() {
   const nav = usePaintNav();
   const reduce = useReducedMotion();
   const { user } = useAuth();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth } = useAppSize();
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

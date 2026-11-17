@@ -9,7 +9,8 @@
 import { useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -180,7 +181,7 @@ export default function QuizScreen() {
   const reduce = useReducedMotion();
   const params = useLocalSearchParams<{ mode?: string; title?: string; category?: string }>();
   const { user } = useAuth();
-  const { width } = useWindowDimensions();
+  const { width } = useAppSize();
   const isWrongOnlyMode = params.mode === 'wrong';
   const sessionTitleParam = typeof params.title === 'string' ? params.title : '';
   const categoryParam = typeof params.category === 'string' ? params.category : undefined;
