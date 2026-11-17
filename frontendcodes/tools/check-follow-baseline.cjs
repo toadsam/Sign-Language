@@ -57,12 +57,13 @@ assert.equal(s.suggestion, null); assert.match(s.reasons.join(), /모양 거리�
 passed.push('too few, overlapping or missing shape records give no suggestion');
 
 // 6. 지금 값 읽기와 실행
-assert.deepEqual(B.readCurrentRanges(path.join(__dirname, '../components/sign-camera/body-score.ts')), { position: [0.12, 0.5], shape: [0.05, 0.2] });
+const current = B.readCurrentRanges(path.join(__dirname, '../components/sign-camera/body-score.ts'));
+for (const r of [current.position, current.shape]) assert.ok(r.length === 2 && r.every(Number.isFinite) && 0 < r[0] && r[0] < r[1], `body-score.ts 범위를 읽지 못했습니다: ${r}`);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'follow-baseline-'));
 const file = path.join(dir, 'records.txt');
 fs.writeFileSync(file, [...good, ...other].map((x, i) => line(i + 1, x.kind, 0, x.position, x.shape)).join('\n'));
 const out = execFileSync(process.execPath, [path.join(__dirname, 'follow-baseline.cjs'), file], { encoding: 'utf8' });
-assert.match(out, /기록 10개/); assert.match(out, /지금 값: 자리 \[0\.12, 0\.5\]/);
+assert.match(out, /기록 10개/); assert.ok(out.includes(`지금 값: 자리 [${current.position.join(', ')}]`), '지금 값 줄');
 assert.match(out, /const POSITION_RANGE: \[number, number\] = \[0\.15, 0\.45\];/); assert.match(out, /const SHAPE_RANGE: \[number, number\] = \[0\.06, 0\.18\];/);
 fs.writeFileSync(file, '');
 assert.throws(() => execFileSync(process.execPath, [path.join(__dirname, 'follow-baseline.cjs'), file], { stdio: 'pipe' }), /기록 줄이 없습니다/);

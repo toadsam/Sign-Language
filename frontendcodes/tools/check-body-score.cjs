@@ -85,7 +85,9 @@ assert.ok(other.score < slow.score - 35);
 
 // 4. 손을 낮게 들면 "더 높이"
 const low = scoreFollow(motion({ frames: 60, right: (t) => { const p = signA(t); return [p[0], Math.min(1.3, p[1] + 0.3)]; }, open: 1 }), friend);
-assert.ok(low.score < same.score);
+// 2026-11-17 승혁: 새 기준선은 자리 거리 0.201(어깨너비의 약 20%) 이하를 100점으로 본다(실제로 잘 따라 한 거리).
+// 이 정도로 조금 낮은 손은 점수가 같을 수 있으므로, 점수는 같거나 낮고 "더 높이" 안내가 나오는지를 본다.
+assert.ok(low.score <= same.score);
 assert.ok(Array.from(low.hints).some((h) => h.includes('오른손') && h.includes('더 높이')), '낮으면 더 높이: ' + Array.from(low.hints).join(' / '));
 // 손을 너무 바깥으로 뻗으면 "몸 쪽으로"
 const wide = scoreFollow(motion({ frames: 60, right: (t) => { const p = signA(t), r = p[1] < 1.1 ? 0.3 : 0; return [p[0] - r, p[1]]; }, open: 1 }), friend);
@@ -148,4 +150,4 @@ assert.ok(Array.from(oneHand.hints).some((h) => h.includes('왼손')));
 console.log('PASS 같으면 100 · 느리고 떨려도 ' + slow.score + ' · 다른 동작 ' + other.score + ' · 거울 ' + mir.score);
 console.log('PASS 안내: 더 높이 · 몸 쪽으로 · 손가락 모양 · 화면에 안 보임 · 반대 손 · 가장 달랐던 낱말');
 console.log('PASS 낱말마다 점수, 125점 동작, 양손 동작, 견줄 것이 없으면 null');
-console.log('가짜 동작만 썼다. 점수 기준선은 임시값이고 실제 사람 · 카메라로 맞춘 것이 아니다.');
+console.log('가짜 동작만 썼다. 손 자리 기준선은 2026-11-17 한 사람 · 한 문장의 웹캠 시도 10회로 맞춘 값이고, 손 모양 기준선은 임시값이다.');
