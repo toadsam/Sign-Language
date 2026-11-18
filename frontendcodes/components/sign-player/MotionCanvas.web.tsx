@@ -8,6 +8,8 @@ import type { DecodedMotion } from './motion';
 type MotionCanvasProps = {
   data: DecodedMotion; frame: number; yaw: number; pitch: number;
   showBody: boolean; showHands: boolean; showFace: boolean; height?: number;
+  /** 값이 바뀔 때마다 장면이 같아도 다시 그린다. 캔버스 녹화는 새로 그린 장면만 담으므로, 정지 구간을 영상에 담을 때 쓴다 (일괄 녹화) */
+  tick?: number;
   onRenderSample?: (sample:RenderSample) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement | null) => void;
   onViewChange: (yaw: number, pitch: number) => void;
@@ -85,7 +87,7 @@ export default function MotionCanvas(props: MotionCanvasProps) {
       materials.forEach(material => material.dispose()); renderer.dispose(); renderer.forceContextLoss();
     };
   }, [contextVersion]);
-  useEffect(() => { drawRef.current?.(); }, [props.data, props.frame, yaw, pitch, props.showBody, props.showHands, props.showFace, height]);
+  useEffect(() => { drawRef.current?.(); }, [props.data, props.frame, yaw, pitch, props.showBody, props.showHands, props.showFace, height, props.tick]);
   return <div>
     {error ? <p role="alert" style={{color:'#ffb3b3'}}>{error}</p> : null}
     <canvas ref={canvasRef} aria-label="three.js 입체 캡슐 동작 미리보기" style={{display:'block',width:'100%',height,marginTop:16,borderRadius:12,touchAction:'none',cursor:'grab'}}

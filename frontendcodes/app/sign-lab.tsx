@@ -4,6 +4,7 @@ import type { Href } from 'expo-router';
 const screens=[
   {route:'/sign-player',title:'동작 하나 재생',state:'동작 JSON 불러오기',description:'몸·손·얼굴 좌표, 속도와 시점을 조절합니다. 합성 샘플로도 점검할 수 있습니다.'},
   {route:'/sign-compare',title:'네 동작 함께 비교',state:'조건별 JSON 필요',description:'원본·B1·B2·우리 방법을 같은 시간과 시점으로 재생합니다. 기본 자료는 합성 샘플입니다.'},
+  {route:'/sign-batch-record',title:'평가 영상 일괄 녹화',state:'PC 웹 · 조건별 JSON 폴더',description:'export_motion_json.py 출력 폴더를 고르면 같은 설정으로 하나씩 녹화해 prepare_videos.py가 읽는 ZIP으로 내려 줍니다.'},
   {route:'/sign-reconstruct',title:'원본·복원 비교',state:'AI HTML 또는 JSON 불러오기',description:'팀 viewer.html의 클립을 선택하거나 두 JSON을 불러옵니다. 좌표 차이와 비교 보고서를 확인합니다.'},
   {route:'/sign-codebook',title:'코드북 살펴보기',state:'E5 atlas HTML · 코드북 JSON 가져오기',description:'E5 2D 토큰 격자와 3D 코드북을 불러와 검색하고 재생합니다. 기본 목록은 모의 코드북입니다.'},
   {route:'/sign-generate',title:'문장 입력과 동작 생성',state:'문장 모델 · 실제 서버 재생 확인 (11/17)',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},

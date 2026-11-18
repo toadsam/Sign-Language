@@ -1,4 +1,4 @@
-export type ViewerRoute = 'sign-player' | 'sign-compare' | 'sign-codebook' | 'sign-reconstruct' | 'sign-generate';
+export type ViewerRoute = 'sign-player' | 'sign-compare' | 'sign-codebook' | 'sign-reconstruct' | 'sign-generate' | 'sign-batch-record';
 export function viewerUrl(base: string, route: ViewerRoute): string {
   let url: URL;
   try { url = new URL(base.trim()); } catch { throw new Error('웹 재생 서버 주소를 입력해주세요.'); }

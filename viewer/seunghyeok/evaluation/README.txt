@@ -17,9 +17,14 @@ viewer/seunghyeok/evaluation/prepare_videos.py      (3단계: 녹화 영상 → 
    결과: <조건>/sentence-NN.json, private/clip-map.json(문장 번호↔클립, 참가자에게 주지 않음)
    B1은 baseline, 나머지는 model로 표시. 토큰·자막 구간은 비어 있음.
    주의: AI Hub 좌표에서 나온 파일이다. 저장소에 커밋하거나 외부에 올리지 않는다.
-2. 비교 화면(/sign-compare)에 같은 문장의 조건별 JSON을 넣고, 칸마다 녹화해
-   <조건>/sentence-NN.webm 이름으로 모은다.
-3. prepare_videos.py로 무작위 번호 묶음을 만든다 (아래).
+2. 일괄 녹화 화면(/sign-batch-record, 2026-11-18)에서 1의 출력 폴더를 고르고 "일괄 녹화 시작".
+   모든 영상을 같은 크기(640×480, 화면 배율 2면 1280×960) · 시점 · 표시 설정(얼굴 기본 끔)으로,
+   앞뒤 0.5초 정지 화면을 넣어 1배속으로 녹화하고 <조건>/sentence-NN.webm 구조의 ZIP 하나로 내려 준다.
+   ZIP 안의 recording-info.json에는 조건 · 원본 파일 이름이 있으므로 참가자에게 주지 않는다.
+   녹화 중에는 그 브라우저 창을 가리거나 최소화하지 않는다. 영상이 기대 길이의 80%보다 짧거나 크기가 바뀌면 멈추고 ZIP을 만들지 않는다.
+   (한두 개만 다시 볼 때는 비교 화면 /sign-compare에서 칸마다 녹화해도 된다.)
+3. ZIP을 새 폴더에 풀고 prepare_videos.py로 무작위 번호 묶음을 만든다 (아래).
+   python3 viewer/seunghyeok/evaluation/prepare_videos.py --input <푼 폴더> --output <새 출력 폴더> --conditions B1,Ours-H
 검사: python3 -I viewer/seunghyeok/evaluation/test_export_motion_json.py
   (합성 동작 5항목. 출력 JSON을 frontendcodes의 motion.ts decodeMotion에 넣어 좌표가 같게 돌아오는지 포함)
 
