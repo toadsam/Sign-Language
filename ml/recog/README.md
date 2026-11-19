@@ -133,7 +133,9 @@ python -m recog.backtranslate --recog runs/recog_100 --vq runs/vq_v1 --data data
 ```
 
 `summary.json`, `rows.csv`, `table.md`에 원본과 B1/B2/Ours-H/Ours-HF 점수를 저장한다.
-각 기록마다 네 조건을 모두 요구하며, 중복 정답 clip을 거부한다.
+조건은 네 가지 중 일부만 있어도 된다(예: B2 학습 전에는 B1과 Ours-H만). 단, 모든 기록의
+조건 구성이 같아야 하며 다르면 거부한다. 표에는 원본과 manifest에 있는 조건만 나오고,
+어떤 조건으로 쟀는지는 `summary.json`의 `conditions`에 기록한다. 중복 정답 clip을 거부한다.
 샘플용 체크포인트는 비교 및 역번역에 `--smoke`를 명시해야 한다.
 기존 `python -m gen.compare ...` 명령은 `eval.legacy_compare`로 연결되며,
 표현자 분리 없는 기존 샘플 진단용이라는 경고를 출력한다. 정식 결과에는 사용하지 않는다.
