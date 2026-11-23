@@ -30,6 +30,9 @@ export default function SignPlayer({motion}: SignPlayerProps) {
   const [showBody,setShowBody]=useState(true), [showHands,setShowHands]=useState(true), [showFace,setShowFace]=useState(false);
   const [loopStart,setLoopStart]=useState(0), [loopEnd,setLoopEnd]=useState(0);
   const data=parsed.value;
+  // 2026-11-23 승혁: 주소에 ?fpsmark=1 을 붙이면 동작 프레임마다 흑백이 바뀌는 네모와 프레임 번호를 띄운다.
+  // 화면을 슬로모션(240fps)으로 찍어 tools/fps-from-video.py로 세면 실제 모니터에 보인 갱신 수를 알 수 있다. 평소에는 안 보인다.
+  const [fpsMark]=useState(()=>typeof window!=='undefined'&&new URLSearchParams(window.location.search).has('fpsmark'));
 
   useEffect(()=>{cancelCheck();cancelRecording();cursor.current=0;setFrame(0);setPlaying(false);setLoopStart(0);setLoopEnd(data?Math.max(0,data.response.frames-1):0);},[data,cancelCheck,cancelRecording]);
   useEffect(()=>{
@@ -65,6 +68,10 @@ export default function SignPlayer({motion}: SignPlayerProps) {
       <label><input type="checkbox" checked={showFace} onChange={e=>setShowFace(e.target.checked)}/> 얼굴 좌표</label>
     </div>
     </fieldset>
+    {fpsMark&&<div aria-label="표시 FPS 촬영 표지" style={{display:'flex',gap:16,alignItems:'center',marginTop:12}}>
+      <div style={{width:120,height:120,background:frame%2?'#ffffff':'#000000',border:'4px solid #ff3b30'}}/>
+      <output style={{fontSize:72,fontFamily:'ui-monospace,monospace',fontVariantNumeric:'tabular-nums'}}>{String(frame).padStart(3,'0')}</output>
+    </div>}
     <MotionCanvas data={data} frame={frame} yaw={yaw} pitch={pitch} showBody={showBody} showHands={showHands} showFace={showFace} onRenderSample={sample=>check.record(0,sample)} onCanvasReady={c=>{canvas.current=c;}} onViewChange={(y,p)=>{if(!recorder.busy&&!check.running){setYaw(y);setPitch(p);}}}/>
     <fieldset disabled={recorder.busy||check.running} style={{border:0,padding:0,margin:0}}><label style={{display:'flex',gap:12,alignItems:'center',marginTop:16}}>프레임 <input aria-label="프레임" type="range" min={0} max={last} value={Math.min(frame,last)} onChange={e=>seek(Number(e.target.value))} style={{flex:1}}/><output>{Math.min(frame,last)} / {last}</output></label>
     <p aria-label="현재 토큰" style={{color:'#adb7ca',fontSize:14}}>현재 토큰: {token===undefined?'정보 없음':`#${token}`} · 4프레임 단위 참고 표시</p>
