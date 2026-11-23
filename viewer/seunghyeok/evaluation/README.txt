@@ -25,6 +25,20 @@ viewer/seunghyeok/evaluation/prepare_videos.py      (3단계: 녹화 영상 → 
    (한두 개만 다시 볼 때는 비교 화면 /sign-compare에서 칸마다 녹화해도 된다.)
 3. ZIP을 새 폴더에 풀고 prepare_videos.py로 무작위 번호 묶음을 만든다 (아래).
    python3 viewer/seunghyeok/evaluation/prepare_videos.py --input <푼 폴더> --output <새 출력 폴더> --conditions B1,Ours-H
+VM에서 실제로 한 순서 (2026-11-23, 지헌 자료 /data/work/jiheon/eval/sentence_heldout_20261118/):
+  - 같은 단어 열이면 문장 번호 · 화자가 달라도 B1 · Ours-H 동작이 똑같다(43개 단어 열 모두 확인).
+    그래서 평가 문장은 단어 열 기준으로 고르고, 단어 열마다 클립 하나만 쓴다.
+  - 도구 올리기: /data/work/yuseunghyeok/tools/ 에 export_motion_json.py · prepare_videos.py · make_candidates.py
+    (zsh에서 gcloud 옵션을 변수에 담을 때는 배열로: O=(--project=... --zone=...); gcloud compute scp "${O[@]}" ...)
+  - 후보 표: python3 make_candidates.py --manifest <generated.json> --out /data/work/yuseunghyeok/eval
+    → candidates.tsv(단어 열 43개: 2낱말 13 · 3낱말 13 · 4낱말 8 · 5낱말 4 · 6낱말 5), clips_all.txt
+    후보 표는 팀원이 경로로 읽을 수 있게 644, 변환한 좌표 폴더는 700으로 둔다.
+  - 승현이 20개를 고르면 그 줄의 "고른 클립"만 clips_20.txt에 한 줄씩 적고:
+    source /data/venv/activate
+    python3 tools/export_motion_json.py --manifest <generated.json> --output eval/export_20_<날짜> --conditions B1,Ours-H --clips eval/clips_20.txt
+  - 승인된 Mac으로 가져오기: gcloud compute scp --recurse "${O[@]}" yuseunghyeok@sign-ml:/data/work/yuseunghyeok/eval/export_20_<날짜> <Mac 폴더>
+    → /sign-batch-record 일괄 녹화 → prepare_videos.py --conditions B1,Ours-H
+  - 43개 전체 변환 시험(eval/export_all43_20261123, 86개 JSON, 15MB)은 성공했다.
 검사: python3 -I viewer/seunghyeok/evaluation/test_export_motion_json.py
   (합성 동작 5항목. 출력 JSON을 frontendcodes의 motion.ts decodeMotion에 넣어 좌표가 같게 돌아오는지 포함)
 
