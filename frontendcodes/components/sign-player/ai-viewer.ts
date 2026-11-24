@@ -6,7 +6,8 @@ export type AiViewer = { fps: number; clips: Record<string, unknown>[]; labels: 
 /** Extract JSON only. Never execute the supplied HTML or its scripts. */
 export function readAiViewer(text: string): AiViewer {
   if (text.length > 40000000) throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');
-  let value;
+  // JSON.parse 결과는 any라 검사가 타입 검사를 받지 못했다. unknown으로 받고 아래에서 모양을 확인한다 (2026-11-24)
+  let value: unknown;
   if (text.trimStart().startsWith('{')) {
     try {
       value = JSON.parse(text.trimStart());
@@ -45,33 +46,45 @@ export function readAiViewer(text: string): AiViewer {
     }
     value = JSON.parse(text.slice(start, end));
   }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('비교 JSON은 객체여야 합니다.');
+  }
+  const data = value as { parts?: Record<string, unknown>; fps?: unknown; clips?: unknown; labels?: unknown };
   const parts = { body: [0, 13], lhand: [13, 34], rhand: [34, 55], face: [55, 125] };
+  const givenParts = data.parts;
   if (
-    !value.parts ||
-    Object.entries(parts).some(([name, range]) => JSON.stringify(value.parts[name]) !== JSON.stringify(range))
+    !givenParts ||
+    Object.entries(parts).some(([name, range]) => JSON.stringify(givenParts[name]) !== JSON.stringify(range))
   ) {
     throw new Error('125관절 부위 순서가 다릅니다.');
   }
-  if (!Number.isFinite(value.fps) || value.fps <= 0 || value.fps > 240) {
+  const fps = data.fps;
+  if (typeof fps !== 'number' || !Number.isFinite(fps) || fps <= 0 || fps > 240) {
     throw new Error('FPS가 올바르지 않습니다.');
   }
+  const clips = data.clips;
   if (
-    !Array.isArray(value.clips) ||
-    !value.clips.length ||
-    value.clips.length > 1000 ||
-    value.clips.some((clip: unknown) => !clip || typeof clip !== 'object' || Array.isArray(clip))
+    !Array.isArray(clips) ||
+    !clips.length ||
+    clips.length > 1000 ||
+    clips.some((clip: unknown) => !clip || typeof clip !== 'object' || Array.isArray(clip))
   ) {
     throw new Error('1~1000개의 클립 객체가 필요합니다.');
   }
+  const labels = data.labels;
   if (
-    value.labels !== undefined &&
-    (!Array.isArray(value.labels) ||
-      value.labels.length !== 2 ||
-      value.labels.some((label: unknown) => typeof label !== 'string' || label.length > 500))
+    labels !== undefined &&
+    (!Array.isArray(labels) ||
+      labels.length !== 2 ||
+      labels.some((label: unknown) => typeof label !== 'string' || label.length > 500))
   ) {
     throw new Error('원본과 복원의 제목은 두 개의 문자열이어야 합니다.');
   }
-  return { fps: value.fps, clips: value.clips, labels: value.labels ?? ['원본', '복원'] };
+  return {
+    fps,
+    clips: clips as Record<string, unknown>[],
+    labels: (labels as [string, string] | undefined) ?? ['원본', '복원'],
+  };
 }
 
 export function decodeAiViewerPair(viewer: AiViewer, index: number, demo: boolean): [DecodedMotion, DecodedMotion] {

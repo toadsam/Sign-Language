@@ -13,6 +13,7 @@ import type { ComparisonPlayerProps } from './ComparisonPlayer';
 import { createComparisonSamples, createReconstructionSamples } from './demo-comparison';
 import { frameAtTime, TIMELINE_FPS, timelineFrames } from './timeline';
 import { control } from './lab-style';
+import { viewPreset } from './view-preset';
 
 type Slot = { label: string; name: string; motion: DecodedMotion; error: string | null; loading: boolean };
 const initialSlots = (mode: ComparisonPlayerProps['mode']): Slot[] => {
@@ -110,14 +111,7 @@ export default function ComparisonPlayer({ mode = 'four' }: ComparisonPlayerProp
       );
     }
   };
-  const viewValue =
-    pitch === -Math.PI / 2
-      ? 'top'
-      : yaw === Math.PI / 2 && pitch === 0
-        ? 'side'
-        : yaw === 0 && pitch === 0
-          ? 'front'
-          : 'custom';
+  const viewValue = viewPreset(yaw, pitch);
   return (
     <section
       style={{ fontFamily: 'system-ui,sans-serif', color: '#edf0fa' }}

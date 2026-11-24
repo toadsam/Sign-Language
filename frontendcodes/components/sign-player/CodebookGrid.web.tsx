@@ -7,6 +7,7 @@ import TokenAtlasView from './TokenAtlas.web';
 import { readTokenAtlas } from './token-atlas';
 import type { TokenAtlas } from './token-atlas';
 import { control } from './lab-style';
+import { viewPreset } from './view-preset';
 
 const PAGE_SIZE = 6;
 const sectionStyle = { fontFamily: 'system-ui,sans-serif', color: '#152239' };
@@ -157,7 +158,8 @@ export default function CodebookGrid() {
         <label>
           시점 <select
             style={control}
-            value={yaw === 0 && pitch === 0 ? 'front' : yaw === Math.PI / 2 && pitch === 0 ? 'side' : 'custom'}
+            // 코드북에는 "위" 고르기가 없어 그때는 자유 시점으로 보인다
+            value={viewPreset(yaw, pitch) === 'top' ? 'custom' : viewPreset(yaw, pitch)}
             onChange={(e) => {
               setYaw(e.target.value === 'side' ? Math.PI / 2 : 0);
               setPitch(0);

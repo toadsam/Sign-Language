@@ -40,7 +40,7 @@ function harness(mode) {
     if (name === './useRenderCheck') return { useRenderCheck: () => ({ running: false }) };
     if (name === './useCanvasRecorder')
       return { useCanvasRecorder: () => ({ busy: false, active: { current: false }, stop() {} }) };
-    const actual = ['./motion', './timeline', './demo-comparison'];
+    const actual = ['./motion', './timeline', './demo-comparison', './view-preset', './frame-pick'];
     if (name !== './ComparisonPlayer.web' && !actual.includes(name) && !name.endsWith('.json'))
       return { __esModule: true, default: name };
     if (name.endsWith('.json')) return require(path.join(root, name));

@@ -9,6 +9,7 @@ import { useRenderCheck } from './useRenderCheck';
 import MotionCanvas from './MotionCanvas.web';
 import { pickFrame } from './frame-pick';
 import { control } from './lab-style';
+import { viewPreset } from './view-preset';
 
 const plainFieldset: CSSProperties = { border: 0, padding: 0, margin: 0 };
 const toolbar: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' };
@@ -126,8 +127,7 @@ export default function SignPlayer({ motion }: SignPlayerProps) {
     setPlaying(false);
   };
   const segment = data.response.segments.find((s) => frame >= s.start && frame < s.end);
-  const viewValue =
-    Math.abs(pitch) > 0.1 ? 'top' : yaw === Math.PI / 2 ? 'side' : yaw === 0 ? 'front' : 'custom';
+  const viewValue = viewPreset(yaw, pitch);
   return (
     <section
       aria-label="수어 동작 재생기"
