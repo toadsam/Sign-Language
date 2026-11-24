@@ -1,14 +1,56 @@
-const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),ts=require('typescript');
-const exportsObject={};
-const source=ts.transpileModule(fs.readFileSync(path.join(__dirname,'../components/sign-player/response-summary.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
-vm.runInNewContext(source,{exports:exportsObject});
-const {summarizeResponse}=exportsObject;
-const base={source:'model',frames:9,fps:30,joints:125,units:'shoulder',tokens:[0,1,2],segments:[],unknown:[],data:''};
-const normal=summarizeResponse(base);assert(normal.facts.some(x=>x.includes('0.30초')));assert(!normal.notices.some(x=>x.includes('토큰 표시가 없습니다')));
-const missing=summarizeResponse({...base,tokens:[]});assert(missing.notices.some(x=>x.includes('좌표는 재생할 수')));
-const short=summarizeResponse({...base,tokens:[0]});assert(short.notices.some(x=>x.includes('달라도 오류는 아닙니다')));
-const extra=summarizeResponse({...base,tokens:[0,1,2,3]});assert(extra.notices.some(x=>x.includes('정확한 토큰·프레임 정렬은 제공되지')));
-const demo=summarizeResponse({...base,source:'baseline',demo:true,unknown:['시험']});assert(demo.notices.some(x=>x.includes('합성 시험')));assert(demo.facts.some(x=>x.includes('기준선')));assert(demo.facts.some(x=>x.includes('미지원 단어: 1개')));
-const video=summarizeResponse({source:'video',items:[{hasVideo:true,url:'https://example.invalid/?token=SECRET'},{hasVideo:false}],unknown:[]});assert(video.facts.some(x=>x.includes('영상 있음 1개 · 영상 없음 1개')));assert(!JSON.stringify(video).includes('SECRET'));
-const empty=summarizeResponse({source:'video',items:[],unknown:[]});assert(empty.notices.some(x=>x.includes('재생 가능한 영상이 없습니다')));
-console.log('PASS: 부분 마지막 토큰/토큰0, 토큰 없음, 토큰 길이 차이는 오류 아닌 참고 안내, 합성·기준선·미지원 구분, 영상 개수·URL 미노출, 빈 목록 (7항목)');
+const fs = require('node:fs'),
+  path = require('node:path'),
+  vm = require('node:vm'),
+  assert = require('node:assert/strict'),
+  ts = require('typescript');
+const exportsObject = {};
+const source = ts.transpileModule(
+  fs.readFileSync(path.join(__dirname, '../components/sign-player/response-summary.ts'), 'utf8'),
+  { compilerOptions: { module: ts.ModuleKind.CommonJS } },
+).outputText;
+vm.runInNewContext(source, { exports: exportsObject });
+const { summarizeResponse } = exportsObject;
+const base = {
+  source: 'model',
+  frames: 9,
+  fps: 30,
+  joints: 125,
+  units: 'shoulder',
+  tokens: [0, 1, 2],
+  segments: [],
+  unknown: [],
+  data: '',
+};
+
+const normal = summarizeResponse(base);
+assert(normal.facts.some((x) => x.includes('0.30초')));
+assert(!normal.notices.some((x) => x.includes('토큰 표시가 없습니다')));
+
+const missing = summarizeResponse({ ...base, tokens: [] });
+assert(missing.notices.some((x) => x.includes('좌표는 재생할 수')));
+
+const short = summarizeResponse({ ...base, tokens: [0] });
+assert(short.notices.some((x) => x.includes('달라도 오류는 아닙니다')));
+
+const extra = summarizeResponse({ ...base, tokens: [0, 1, 2, 3] });
+assert(extra.notices.some((x) => x.includes('정확한 토큰·프레임 정렬은 제공되지')));
+
+const demo = summarizeResponse({ ...base, source: 'baseline', demo: true, unknown: ['시험'] });
+assert(demo.notices.some((x) => x.includes('합성 시험')));
+assert(demo.facts.some((x) => x.includes('기준선')));
+assert(demo.facts.some((x) => x.includes('미지원 단어: 1개')));
+
+const video = summarizeResponse({
+  source: 'video',
+  items: [{ hasVideo: true, url: 'https://example.invalid/?token=SECRET' }, { hasVideo: false }],
+  unknown: [],
+});
+assert(video.facts.some((x) => x.includes('영상 있음 1개 · 영상 없음 1개')));
+assert(!JSON.stringify(video).includes('SECRET'));
+
+const empty = summarizeResponse({ source: 'video', items: [], unknown: [] });
+assert(empty.notices.some((x) => x.includes('재생 가능한 영상이 없습니다')));
+
+console.log(
+  'PASS: 부분 마지막 토큰/토큰0, 토큰 없음, 토큰 길이 차이는 오류 아닌 참고 안내, 합성·기준선·미지원 구분, 영상 개수·URL 미노출, 빈 목록 (7항목)',
+);

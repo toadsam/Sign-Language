@@ -4,9 +4,10 @@ import type { Href } from 'expo-router';
 const screens=[
   {route:'/sign-player',title:'동작 하나 재생',state:'동작 JSON 불러오기',description:'몸·손·얼굴 좌표, 속도와 시점을 조절합니다. 합성 샘플로도 점검할 수 있습니다.'},
   {route:'/sign-compare',title:'네 동작 함께 비교',state:'조건별 JSON 필요',description:'원본·B1·B2·우리 방법을 같은 시간과 시점으로 재생합니다. 기본 자료는 합성 샘플입니다.'},
+  {route:'/sign-batch-record',title:'평가 영상 일괄 녹화',state:'PC 웹 · 조건별 JSON 폴더',description:'export_motion_json.py 출력 폴더를 고르면 같은 설정으로 하나씩 녹화해 prepare_videos.py가 읽는 ZIP으로 내려 줍니다.'},
   {route:'/sign-reconstruct',title:'원본·복원 비교',state:'AI HTML 또는 JSON 불러오기',description:'팀 viewer.html의 클립을 선택하거나 두 JSON을 불러옵니다. 좌표 차이와 비교 보고서를 확인합니다.'},
   {route:'/sign-codebook',title:'코드북 살펴보기',state:'E5 atlas HTML · 코드북 JSON 가져오기',description:'E5 2D 토큰 격자와 3D 코드북을 불러와 검색하고 재생합니다. 기본 목록은 모의 코드북입니다.'},
-  {route:'/sign-generate',title:'단어 입력과 동작 생성',state:'단어 모델 · Spring 기본 연결 확인',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
+  {route:'/sign-generate',title:'문장 입력과 동작 생성',state:'문장 모델 · 실제 서버 재생 확인 (11/17)',description:'내부 샘플·로컬 목업·지정한 API로 요청과 재생을 점검합니다. 목업은 합성 자료입니다.'},
   {route:'/sign-camera',title:'손 좌표 수집',state:'PC 웹 · 단어 모델 연결 대기',description:'카메라, 내 영상 또는 공개 시험 영상에서 손 관절을 추출하고 5초 좌표를 수집합니다.'},
   {route:'/sign-body',title:'내 움직임 좌표 받기',state:'PC 웹 · 상체 + 양손 55점',description:'카메라나 내 영상에서 상체와 손을 같이 뽑아 AI 동작과 같은 좌표로 바꾸고, 5초를 담아 3D 친구에게 입혀 봅니다. 채점의 앞 단계입니다.'},
   {route:'/sign-follow',title:'따라 하고 점수 받기',state:'PC 웹 · 친구 동작과 직접 비교',description:'친구(AI 동작)를 보며 카메라로 따라 하면 손의 자리와 손가락 모양을 견주어 점수와 고칠 곳을 알려 줍니다. 기준선은 임시값입니다.'},
@@ -16,9 +17,9 @@ export default function SignLab(){return <ScrollView style={styles.root} content
   <Stack.Screen options={{title:'승혁 개발 작업실'}}/>
   <Text style={styles.title}>승혁 개발 작업실</Text>
   <Text style={styles.description}>현재 만든 화면을 한곳에서 열고 점검하세요. 아래 상태는 구현 범위 안내이며 서버나 모델의 실시간 상태가 아닙니다.</Text>
-  <View style={styles.notice}><Text style={styles.noticeText}>E5 자모표와 원본·복원 파일을 불러올 수 있습니다. 단어 생성 API의 기본 연결은 확인했습니다. 문장 모델·인식 모델 연결과 최종 팀 통합은 남아 있습니다. 합성 자료를 실제 수어 결과로 판단하지 마세요.</Text></View>
+  <View style={styles.notice}><Text style={styles.noticeText}>E5 자모표와 원본·복원 파일을 불러올 수 있습니다. 단어(11/4)와 문장(11/17) 생성은 실제 모델 응답으로 재생 · 자막 · 미지원 단어 안내를 확인했습니다. 화면 재생 확인이며 수어 뜻의 정확도 평가는 아닙니다. 합성 자료를 실제 수어 결과로 판단하지 마세요.</Text></View>
   {Platform.OS!=='web'&&<Text style={styles.description}>동작 재생 화면은 WebView 서버 주소가 필요합니다. 손 좌표 수집·점검은 PC 웹에서 사용하세요.</Text>}
-  <View style={styles.grid}>{screens.map(screen=><Link key={screen.route} href={screen.route as Href} asChild>
+  <View style={styles.grid}>{screens.map(screen=><Link key={screen.route} replace href={screen.route as Href} asChild>
     <Pressable accessibilityRole="link" style={styles.card}>
       <Text style={styles.cardTitle}>{screen.title}</Text><Text style={styles.state}>{screen.state}</Text>
       <Text style={styles.description}>{screen.description}</Text><Text style={styles.open}>화면 열기 →</Text>

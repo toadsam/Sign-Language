@@ -11,13 +11,34 @@ import zipfile
 from fractions import Fraction
 from pathlib import Path
 
+# 알려진 조건 전체. Ours-HF(얼굴 포함)는 설계서상 확장 실험이라 기본값에서 뺀다.
 CONDITIONS = ('B1', 'B2', 'Ours-H', 'Ours-HF')
+DEFAULT_CONDITIONS = ('B1', 'B2', 'Ours-H')
 EXTENSIONS = {'.mp4', '.webm'}
+# 팀 규칙(docs/handoff/RULES.md 2절): AI Hub 데이터를 쓴 결과물에 붙이는 출처 표기
+CREDIT = '한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용'
 
 
-def collect(root, count):
+def parse_conditions(text):
+    """'B1,Ours-H' → ('B1', 'Ours-H'). 알려진 이름만, 중복 없이, 2개 이상. 순서는 CONDITIONS 순서로 맞춘다."""
+    names = [name.strip() for name in str(text).split(',') if name.strip()]
+    unknown = [name for name in names if name not in CONDITIONS]
+    if unknown:
+        raise ValueError(f'알 수 없는 조건: {", ".join(unknown)}. 쓸 수 있는 조건: {", ".join(CONDITIONS)}')
+    if len(set(names)) != len(names):
+        raise ValueError('같은 조건을 두 번 넣었습니다.')
+    if len(names) < 2:
+        raise ValueError('비교하려면 조건이 2개 이상 필요합니다.')
+    return tuple(c for c in CONDITIONS if c in names)
+
+
+def collect(root, count, conditions=DEFAULT_CONDITIONS):
     clips, problems = [], []
-    for condition in CONDITIONS:
+    leftover = [c for c in CONDITIONS if c not in conditions and (root / c).exists()]
+    if leftover:
+        problems.append(f'고르지 않은 조건 폴더가 입력에 있습니다: {", ".join(leftover)}. '
+                        '--conditions에 넣거나 입력 폴더에서 빼 주세요.')
+    for condition in conditions:
         folder = root / condition
         if not folder.is_dir():
             problems.append(f'{condition}: 폴더가 없습니다.')
@@ -57,9 +78,14 @@ def probe(path):
     try:
         data = json.loads(result.stdout)
         stream = data['streams'][0]
+        frames = int(stream['nb_read_frames'])
+        duration = float(data['format']['duration'])
+        # 브라우저 녹화(MediaRecorder WebM)는 평균 프레임 속도가 "0/0"으로 빠질 때가 있다(2026-11-24 평가 녹화 40개 중 1개).
+        # 그때는 실제로 읽은 프레임 수 ÷ 길이로 계산한다.
+        rate = Fraction(stream['avg_frame_rate']) if stream['avg_frame_rate'] not in ('0/0', '') else None
+        fps = float(rate) if rate else (frames / duration if duration > 0 else 0)
         info = {'codec': stream['codec_name'], 'width': int(stream['width']), 'height': int(stream['height']),
-                'fps': float(Fraction(stream['avg_frame_rate'])), 'frames': int(stream['nb_read_frames']),
-                'durationSeconds': float(data['format']['duration'])}
+                'fps': fps, 'frames': frames, 'durationSeconds': duration}
         if min(info['width'], info['height'], info['frames'], info['fps'], info['durationSeconds']) <= 0:
             raise ValueError()
         return info
@@ -67,7 +93,37 @@ def probe(path):
         raise ValueError(f'{path.name}: 유효한 영상 프레임·재생 정보를 찾지 못했습니다.') from None
 
 
-def package(root, output, test_mode=False):
+def first_shown(clips):
+    """문장마다 번호가 가장 앞선(먼저 보이는) 조건을 세어 {조건: 문장 수}로 준다. clips는 번호 순서대로."""
+    first = {}
+    for clip in clips:
+        first.setdefault(clip['sentence'], clip['condition'])
+    counts = {}
+    for condition in first.values():
+        counts[condition] = counts.get(condition, 0) + 1
+    return counts
+
+
+def shuffle_clips(clips, conditions, balance=True, rng=None, tries=20000):
+    """번호 순서를 무작위로 섞는다. balance면 문장마다 먼저 보이는 조건이 고르게(조건 사이 차이 1 이하) 될 때까지 다시 섞는다.
+
+    2026-11-24 승현: 완전 무작위로 섞으니 같은 문장에서 Ours-H가 먼저인 것이 12개, B1이 먼저인 것이 8개였다.
+    평가자는 먼저 본 영상을 기준 삼기 쉬워(순서 효과) 2조건이면 10 : 10이 되게 맞춘다. 섞기 자체는 그대로 무작위다.
+    """
+    rng = rng or random.SystemRandom()
+    sentences = len({clip['sentence'] for clip in clips})
+    for _ in range(tries):
+        rng.shuffle(clips)
+        if not balance:
+            return clips
+        counts = [first_shown(clips).get(condition, 0) for condition in conditions]
+        if sum(counts) == sentences and max(counts) - min(counts) <= 1:
+            return clips
+    raise ValueError('먼저 보이는 조건을 고르게 맞추지 못했습니다. --no-balance-order로 다시 해 보세요.')
+
+
+def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS, balance_order=True):
+    conditions = parse_conditions(','.join(conditions))
     root, output = Path(root).resolve(), Path(output).resolve()
     if not root.is_dir():
         raise ValueError('입력 폴더를 찾을 수 없습니다.')
@@ -78,12 +134,12 @@ def package(root, output, test_mode=False):
     if shutil.which('ffprobe') is None or shutil.which('ffmpeg') is None:
         raise ValueError('ffprobe와 ffmpeg 설치가 필요합니다.')
     count = 1 if test_mode else 20
-    clips = collect(root, count)
+    clips = collect(root, count, conditions)
     for clip in clips:
         clip['video'] = probe(clip['path'])
     if len({(c['video']['width'], c['video']['height']) for c in clips}) != 1:
         raise ValueError('영상 해상도가 서로 다릅니다. 같은 화면 크기로 준비해주세요.')
-    random.SystemRandom().shuffle(clips)
+    shuffle_clips(clips, conditions, balance_order)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Stage the complete package before exposing it. Input clips are never modified.
     with tempfile.TemporaryDirectory(prefix='sign-evaluation-', dir=output.parent) as temporary:
@@ -107,7 +163,8 @@ def package(root, output, test_mode=False):
             mapping.append({'filename': filename, 'sentence': clip['sentence'], 'condition': clip['condition'],
                             'inputFile': str(clip['path']), 'video': exported})
         (private / 'condition-map.json').write_text(json.dumps({'testMode': test_mode, 'sentences': count,
-            'conditions': list(CONDITIONS), 'clips': mapping,
+            'conditions': list(conditions), 'clips': mapping, 'credit': CREDIT,
+            'orderBalanced': balance_order, 'firstShown': first_shown(clips),
             'note': '조건표는 승현에게 별도로 전달할 관리 자료입니다. 평가 참가자에게 전달하지 마세요.'}, ensure_ascii=False, indent=2), encoding='utf-8')
         # Shared archive contains only numbered clips, never the condition map.
         with zipfile.ZipFile(stage / 'evaluation-videos.zip', 'w', zipfile.ZIP_STORED) as archive:
@@ -117,7 +174,8 @@ def package(root, output, test_mode=False):
             ('기능 점검용 합성 입력 묶음입니다. 실제 평가 자료가 아닙니다.\n' if test_mode else '평가 영상 정리 결과입니다. 내용·시점·프레임 속도는 평가 전에 확인해주세요.\n') +
             'evaluation-videos.zip: 무작위 번호 영상만 포함.\nprivate/condition-map.json: 조건표. 승현에게 별도 전달할 자료이며 참가자 공유 ZIP에 포함되지 않습니다.\n' +
             '입력 파일은 보존했습니다. 영상은 재인코딩하지 않고 영상 트랙만 정리하며 오디오·컨테이너 메타데이터를 제외했습니다.\n' +
-            '같은 원본 영상을 여러 조건으로 넣어도 모델 결과의 진위는 자동 검증할 수 없습니다. 정확한30fps/CFR 여부도 보장하지 않습니다.\n', encoding='utf-8')
+            '같은 원본 영상을 여러 조건으로 넣어도 모델 결과의 진위는 자동 검증할 수 없습니다. 정확한30fps/CFR 여부도 보장하지 않습니다.\n' +
+            f'출처: {CREDIT}. 평가 안내·발표 자료에 이 출처를 함께 적습니다.\n', encoding='utf-8')
         if output.exists():
             raise ValueError('출력 폴더가 작업 중 생성됐습니다. 덮어쓰지 않습니다.')
         shutil.move(str(stage), str(output))
@@ -125,13 +183,18 @@ def package(root, output, test_mode=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='20문장×4조건 영상 누락 검사 및 무작위 번호 정리')
+    parser = argparse.ArgumentParser(description='20문장×조건별 영상 누락 검사 및 무작위 번호 정리 (기본 B1·B2·Ours-H 3조건)')
     parser.add_argument('--input', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--test-mode', action='store_true', help='1문장×4조건으로 기능만 점검; 실제 평가용이 아님')
+    parser.add_argument('--conditions', default=','.join(DEFAULT_CONDITIONS),
+                        help=f'쉼표로 구분한 조건 (2개 이상). 기본 {",".join(DEFAULT_CONDITIONS)}. 쓸 수 있는 조건: {",".join(CONDITIONS)}')
+    parser.add_argument('--test-mode', action='store_true', help='1문장×조건으로 기능만 점검; 실제 평가용이 아님')
+    parser.add_argument('--no-balance-order', action='store_true',
+                        help='문장마다 먼저 보이는 조건을 고르게 맞추지 않고 완전 무작위로 섞기 (기본은 맞춤)')
     args = parser.parse_args()
     try:
-        count = package(args.input, args.output, args.test_mode)
+        count = package(args.input, args.output, args.test_mode, parse_conditions(args.conditions),
+                        balance_order=not args.no_balance_order)
     except (ValueError, OSError) as error:
         parser.exit(1, f'정리 실패:\n{error}\n')
     print(f'{count}개 영상 정리 완료: {args.output}')
