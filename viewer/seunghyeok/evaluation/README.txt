@@ -30,8 +30,11 @@ VM에서 실제로 한 순서 (2026-11-23, 지헌 자료 /data/work/jiheon/eval/
     그래서 평가 문장은 단어 열 기준으로 고르고, 단어 열마다 클립 하나만 쓴다.
   - 도구 올리기: /data/work/yuseunghyeok/tools/ 에 export_motion_json.py · prepare_videos.py · make_candidates.py
     (zsh에서 gcloud 옵션을 변수에 담을 때는 배열로: O=(--project=... --zone=...); gcloud compute scp "${O[@]}" ...)
-  - 후보 표: python3 make_candidates.py --manifest <generated.json> --out /data/work/yuseunghyeok/eval
-    → candidates.tsv(단어 열 43개: 2낱말 13 · 3낱말 13 · 4낱말 8 · 5낱말 4 · 6낱말 5), clips_all.txt
+  - 후보 표: python3 make_candidates.py --manifest <generated.json> --out /data/work/yuseunghyeok/eval --exclude SEN0892_REAL12
+    → candidates.tsv(단어 열 42개: 2낱말 13 · 3낱말 12 · 4낱말 8 · 5낱말 4 · 6낱말 5), clips_all.txt
+    (지헌 11/23: SEN0892의 REAL12 클립만 라벨이 "내리다"(다른 화자는 "차내리다")라 빼고 42개. 화자는 REAL03 우선, 없으면 REAL12.
+     평가는 끼워 넣기 없는 순수 생성이 최종이고 B2는 계획이 없어 B1 · Ours-H 두 조건.)
+    검사: python3 -I viewer/seunghyeok/evaluation/test_make_candidates.py (합성 자료 5항목)
     후보 표는 팀원이 경로로 읽을 수 있게 644, 변환한 좌표 폴더는 700으로 둔다.
   - 승현이 20개를 고르면 그 줄의 "고른 클립"만 clips_20.txt에 한 줄씩 적고:
     source /data/venv/activate
