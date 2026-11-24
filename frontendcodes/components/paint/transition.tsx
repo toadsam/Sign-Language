@@ -8,7 +8,8 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter, type Href } from 'expo-router';
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
@@ -60,7 +61,7 @@ type Layer = { d: string; fill?: string; stroke?: string; sw?: number; dash?: st
 export function PaintTransitionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const reduce = useReducedMotion();
-  const { width: W, height: H } = useWindowDimensions();
+  const { width: W, height: H } = useAppSize();
   const [layers, setLayers] = useState<Layer[]>([]);
   const busy = useRef(false);
   const tick = () => {

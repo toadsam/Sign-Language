@@ -1,43 +1,152 @@
-import { useEffect,useRef,useState } from 'react';
-import { readAiViewer,decodeAiViewerPair } from './ai-viewer';
+import { useEffect, useRef, useState } from 'react';
+import { readAiViewer, decodeAiViewerPair } from './ai-viewer';
 import type { AiViewer } from './ai-viewer';
 import type { DecodedMotion } from './motion';
-const control={background:'#232935',color:'#edf0fa',border:'1px solid #495266',borderRadius:8,padding:8,font:'inherit'};
-export default function AiViewerImport({disabled,onBusy,onPair}:{disabled:boolean;onBusy:(busy:boolean)=>void;onPair:(pair:[DecodedMotion,DecodedMotion],name:string,labels:[string,string])=>void}){
-  const [viewer,setViewer]=useState<AiViewer|null>(null),[name,setName]=useState(''),[index,setIndex]=useState(0),[demo,setDemo]=useState(true),[error,setError]=useState(''),[loading,setLoading]=useState(false),[notice,setNotice]=useState('');
-  const [selectedName,setSelectedName]=useState('');
-  const [readInfo,setReadInfo]=useState('');
-  const version=useRef(0);useEffect(()=>()=>{version.current++;},[]);
-  const load=async(file:File|undefined)=>{
-    if(!file)return;const request=++version.current;setSelectedName(file.name);setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트`);setLoading(true);onBusy(true);setError('');setNotice('');
-    try{
-      if(file.size>40000000)throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');
-      const bytes=await file.arrayBuffer();if(version.current!==request)return;
+const control = {
+  background: '#232935',
+  color: '#edf0fa',
+  border: '1px solid #495266',
+  borderRadius: 8,
+  padding: 8,
+  font: 'inherit',
+};
+const noteText = { fontSize: 13, color: '#adb7ca' };
+export default function AiViewerImport({
+  disabled,
+  onBusy,
+  onPair,
+}: {
+  disabled: boolean;
+  onBusy: (busy: boolean) => void;
+  onPair: (pair: [DecodedMotion, DecodedMotion], name: string, labels: [string, string]) => void;
+}) {
+  const [viewer, setViewer] = useState<AiViewer | null>(null);
+  const [name, setName] = useState('');
+  const [index, setIndex] = useState(0);
+  const [demo, setDemo] = useState(true);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [selectedName, setSelectedName] = useState('');
+  const [readInfo, setReadInfo] = useState('');
+  const version = useRef(0);
+  useEffect(
+    () => () => {
+      version.current++;
+    },
+    [],
+  );
+  const load = async (file: File | undefined) => {
+    if (!file) return;
+    const request = ++version.current;
+    setSelectedName(file.name);
+    setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트`);
+    setLoading(true);
+    onBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      if (file.size > 40000000) throw new Error('40MB 이하 비교 HTML 또는 JSON을 선택해주세요.');
+      const bytes = await file.arrayBuffer();
+      if (version.current !== request) return;
       setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트 · 읽은 크기 ${bytes.byteLength.toLocaleString()}바이트`);
-      if(bytes.byteLength!==file.size)throw new Error('파일을 끝까지 읽지 못했습니다. 파일 앱에서 다운로드를 완료한 뒤 다시 선택해주세요.');
-      let text:string;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new Error('UTF-8 형식의 파일이 아닙니다. 비교 JSON 원본 파일을 선택해주세요.');}
-      setReadInfo(`파일 크기 ${file.size.toLocaleString()}바이트 · 읽은 크기 ${bytes.byteLength.toLocaleString()}바이트 · UTF-8 정상`);
-      const next=readAiViewer(text);if(version.current!==request)return;setViewer(next);setName(file.name);setIndex(0);setDemo(true);
+      if (bytes.byteLength !== file.size) {
+        throw new Error('파일을 끝까지 읽지 못했습니다. 파일 앱에서 다운로드를 완료한 뒤 다시 선택해주세요.');
+      }
+      let text: string;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch {
+        throw new Error('UTF-8 형식의 파일이 아닙니다. 비교 JSON 원본 파일을 선택해주세요.');
+      }
+      setReadInfo(
+        `파일 크기 ${file.size.toLocaleString()}바이트 · 읽은 크기 ${bytes.byteLength.toLocaleString()}바이트 · UTF-8 정상`,
+      );
+      const next = readAiViewer(text);
+      if (version.current !== request) return;
+      setViewer(next);
+      setName(file.name);
+      setIndex(0);
+      setDemo(true);
+    } catch (e) {
+      if (version.current === request) setError(e instanceof Error ? e.message : '파일을 읽을 수 없습니다.');
+    } finally {
+      if (version.current === request) {
+        setLoading(false);
+        onBusy(false);
+      }
     }
-    catch(e){if(version.current===request)setError(e instanceof Error?e.message:'파일을 읽을 수 없습니다.');}
-    finally{if(version.current===request){setLoading(false);onBusy(false);}}
   };
-  const apply=()=>{if(!viewer)return;try{const pair=decodeAiViewerPair(viewer,index,demo);onPair(pair,`${name} · 클립 ${index} (${String(viewer.clips[index].name??'이름 없음')})`,viewer.labels);setError('');setNotice('원본과 복원을 함께 불러왔습니다.');}catch(e){setError(e instanceof Error?e.message:'좌표 변환 실패');}};
-  return <fieldset disabled={disabled||loading} style={{minWidth:0,maxWidth:'100%',boxSizing:'border-box',overflowWrap:'anywhere',padding:16,marginBottom:16,border:'1px solid #495266',borderRadius:12,background:'#111318'}}>
-    <legend>비교 HTML / JSON 불러오기</legend>
-    <label>비교 파일 선택 <input aria-label="AI 팀 viewer HTML 또는 비교 JSON" type="file" accept=".html,.htm,.json,text/html,application/json" style={{maxWidth:'100%'}} onChange={e=>{void load(e.target.files?.[0]);}}/></label>
-    {selectedName&&<p role="status">최근 선택한 파일: {selectedName}</p>}
-    {readInfo&&<p style={{fontSize:13,color:'#adb7ca'}}>{readInfo}</p>}
-    {loading&&<p role="status">데이터를 읽고 있습니다…</p>}
-    {viewer&&<p>읽은 파일: {name} · {viewer.clips.length}개 클립</p>}
-    {viewer&&<p>파일의 비교 설명: {viewer.labels[0]} ↔ {viewer.labels[1]}</p>}
-    {viewer&&<div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginTop:12}}>
-      <label style={{minWidth:0,maxWidth:'100%'}}>클립 <select aria-label="AI 결과 클립" style={{...control,maxWidth:'100%',boxSizing:'border-box'}} value={index} onChange={e=>setIndex(Number(e.target.value))}>{viewer.clips.map((clip,i)=><option key={i} value={i}>{i}: {String(clip.name??'이름 없음')} · {String(clip.split??'')} · {String(clip.frames)}프레임</option>)}</select></label>
-      <label><input type="checkbox" checked={demo} onChange={e=>setDemo(e.target.checked)}/> 합성 시험 파일로 표시</label>
-      <button style={control} onClick={apply}>선택한 클립 불러오기</button>
-    </div>}
-    {error&&<p role="alert" style={{color:'#ffb3b3'}}>{error} 기존 비교 동작은 유지합니다.</p>}
-    {notice&&<p role="status">{notice}</p>}
-    <p style={{fontSize:13,color:'#adb7ca'}}>아이폰에서는 비교 JSON 파일을 권장합니다. HTML은 내부 JSON 데이터만 읽으며 스크립트는 실행하지 않습니다. 실제 학습 결과인 경우 합성 표시를 해제하세요. 자막이나 시작 시점 정렬은 생성하지 않습니다.</p>
-  </fieldset>;
+  const apply = () => {
+    if (!viewer) return;
+    try {
+      const pair = decodeAiViewerPair(viewer, index, demo);
+      onPair(pair, `${name} · 클립 ${index} (${String(viewer.clips[index].name ?? '이름 없음')})`, viewer.labels);
+      setError('');
+      setNotice('원본과 복원을 함께 불러왔습니다.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '좌표 변환 실패');
+    }
+  };
+  return (
+    <fieldset
+      disabled={disabled || loading}
+      style={{
+        minWidth: 0,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        overflowWrap: 'anywhere',
+        padding: 16,
+        marginBottom: 16,
+        border: '1px solid #495266',
+        borderRadius: 12,
+        background: '#111318',
+      }}
+    >
+      <legend>비교 HTML / JSON 불러오기</legend>
+      <label>
+        비교 파일 선택 <input
+          aria-label="AI 팀 viewer HTML 또는 비교 JSON"
+          type="file"
+          accept=".html,.htm,.json,text/html,application/json"
+          style={{ maxWidth: '100%' }}
+          onChange={(e) => {
+            void load(e.target.files?.[0]);
+          }}
+        />
+      </label>
+      {selectedName && <p role="status">최근 선택한 파일: {selectedName}</p>}
+      {readInfo && <p style={noteText}>{readInfo}</p>}
+      {loading && <p role="status">데이터를 읽고 있습니다…</p>}
+      {viewer && <p>읽은 파일: {name} · {viewer.clips.length}개 클립</p>}
+      {viewer && <p>파일의 비교 설명: {viewer.labels[0]} ↔ {viewer.labels[1]}</p>}
+      {viewer && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
+          <label style={{ minWidth: 0, maxWidth: '100%' }}>
+            클립 <select
+              aria-label="AI 결과 클립"
+              style={{ ...control, maxWidth: '100%', boxSizing: 'border-box' }}
+              value={index}
+              onChange={(e) => setIndex(Number(e.target.value))}
+            >
+              {viewer.clips.map((clip, i) => (
+                <option key={i} value={i}>
+                  {i}: {String(clip.name ?? '이름 없음')} · {String(clip.split ?? '')} · {String(clip.frames)}프레임
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} /> 합성 시험 파일로 표시
+          </label>
+          <button style={control} onClick={apply}>선택한 클립 불러오기</button>
+        </div>
+      )}
+      {error && <p role="alert" style={{ color: '#ffb3b3' }}>{error} 기존 비교 동작은 유지합니다.</p>}
+      {notice && <p role="status">{notice}</p>}
+      <p style={noteText}>
+        아이폰에서는 비교 JSON 파일을 권장합니다. HTML은 내부 JSON 데이터만 읽으며 스크립트는 실행하지 않습니다. 실제 학습 결과인 경우 합성 표시를 해제하세요. 자막이나 시작 시점 정렬은 생성하지 않습니다.
+      </p>
+    </fieldset>
+  );
 }

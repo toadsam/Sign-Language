@@ -7,7 +7,8 @@
  * 화면을 누르면 바로 넘어간다. 움직임 줄이기를 켠 사람에게는 완성된 그림만 잠깐 보여 준다.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { G, Path, Text as SvgText } from 'react-native-svg';
 
@@ -39,7 +40,7 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 export function SplashOverlay({ onDone, ready = true }: { onDone: () => void; ready?: boolean }) {
   const reduce = useReducedMotion();
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useAppSize();
   const [t, setT] = useState(0); // 0~1: 장면 진행, 1~1.25: 덮고 걷히기
   const done = useRef(false);
   const boil = useBoil();

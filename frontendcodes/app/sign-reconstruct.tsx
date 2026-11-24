@@ -9,7 +9,7 @@ export default function SignReconstructScreen() {
     <LabHomeLink/>
     <Text style={styles.title}>원본과 복원 동작 비교하기</Text>
     <Text style={styles.description}>왼쪽은 원본, 오른쪽은 복원 동작입니다. 공통 재생과 프레임 이동으로 몸과 손의 자세를 비교하세요.</Text>
-    <Link href={'/sign-codebook' as Href} style={{color:'#1f80e3'}}>코드북 격자 화면 →</Link>
+    <Link replace href={'/sign-codebook' as Href} style={{color:'#1f80e3'}}>코드북 격자 화면 →</Link>
     <ComparisonPlayer mode="reconstruction"/>
   </ScrollView>;
 }

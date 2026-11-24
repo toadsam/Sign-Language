@@ -5,27 +5,89 @@ import { decodeMotion } from './motion';
 import { decodePlayback } from './playback';
 import type { PlaybackResponse } from './playback';
 import type { MotionResponse } from './motion';
-export type MockScenario = 'success' | 'all-unknown' | 'unknown' | 'error' | 'video' | 'video-error' | 'video-list' | 'video-empty';
+
+export type MockScenario =
+  | 'success'
+  | 'all-unknown'
+  | 'unknown'
+  | 'error'
+  | 'video'
+  | 'video-error'
+  | 'video-list'
+  | 'video-empty';
 export { validateGenerationText } from './generation-input';
+
 export function createMockGeneration(text: string, scenario: MockScenario): PlaybackResponse {
   validateGenerationText(text);
-  if (scenario === 'all-unknown') return decodeMotion({fps:30,joints:125,frames:0,units:'shoulder',data:'',tokens:[],segments:[],unknown:['점검용 미지원 단어'],source:'baseline',demo:true}).response;
+  if (scenario === 'all-unknown') {
+    return decodeMotion({
+      fps: 30,
+      joints: 125,
+      frames: 0,
+      units: 'shoulder',
+      data: '',
+      tokens: [],
+      segments: [],
+      unknown: ['점검용 미지원 단어'],
+      source: 'baseline',
+      demo: true,
+    }).response;
+  }
   if (scenario === 'error') throw new Error('화면 점검용 실패 응답입니다. 다시 시도해주세요.');
-  if(scenario==='video-list'||scenario==='video-empty')return decodePlayback({source:'video',items:scenario==='video-empty'?[]:[{word:'샘플 하나',id:1,file:'demo',url:publicAssetPath('sign-demo.mp4'),hasVideo:true},{word:'영상 없는 샘플',id:0,file:'',url:'',hasVideo:false},{word:'샘플 둘',id:2,file:'demo',url:publicAssetPath('sign-demo.mp4'),hasVideo:true}],unknown:[],demo:true});
-  if (scenario === 'video' || scenario === 'video-error') return decodePlayback({source:'video',videoUrl:publicAssetPath(scenario==='video'?'sign-demo.mp4':'missing-sign-demo.mp4'),unknown:[],demo:true});
+  if (scenario === 'video-list' || scenario === 'video-empty') {
+    return decodePlayback({
+      source: 'video',
+      items:
+        scenario === 'video-empty'
+          ? []
+          : [
+              { word: '샘플 하나', id: 1, file: 'demo', url: publicAssetPath('sign-demo.mp4'), hasVideo: true },
+              { word: '영상 없는 샘플', id: 0, file: '', url: '', hasVideo: false },
+              { word: '샘플 둘', id: 2, file: 'demo', url: publicAssetPath('sign-demo.mp4'), hasVideo: true },
+            ],
+      unknown: [],
+      demo: true,
+    });
+  }
+  if (scenario === 'video' || scenario === 'video-error') {
+    return decodePlayback({
+      source: 'video',
+      videoUrl: publicAssetPath(scenario === 'video' ? 'sign-demo.mp4' : 'missing-sign-demo.mp4'),
+      unknown: [],
+      demo: true,
+    });
+  }
   const response: MotionResponse = {
-    ...(sample as MotionResponse), demo: true, tokens: [0, 1],
-    segments: [{gloss:'샘플 구간 1',start:0,end:60},{gloss:'샘플 구간 2',start:60,end:120}],
+    ...(sample as MotionResponse),
+    demo: true,
+    tokens: [0, 1],
+    segments: [
+      { gloss: '샘플 구간 1', start: 0, end: 60 },
+      { gloss: '샘플 구간 2', start: 60, end: 120 },
+    ],
     unknown: scenario === 'unknown' ? ['점검용 미지원 단어'] : [],
   };
   return decodeMotion(response).response;
 }
-export async function generateMockMotion(text: string, scenario: MockScenario, signal: AbortSignal): Promise<PlaybackResponse> {
+
+export async function generateMockMotion(
+  text: string,
+  scenario: MockScenario,
+  signal: AbortSignal,
+): Promise<PlaybackResponse> {
   const value = validateGenerationText(text);
-  await new Promise<void>((resolve,reject)=>{
-    const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(new DOMException('취소됐습니다.','AbortError'));};
-    const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},600);
-    if(signal.aborted)abort();else signal.addEventListener('abort',abort,{once:true});
+  await new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      reject(new DOMException('취소됐습니다.', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, 600);
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
   });
-  return createMockGeneration(value,scenario);
+  return createMockGeneration(value, scenario);
 }

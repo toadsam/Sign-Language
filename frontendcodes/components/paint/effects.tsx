@@ -6,7 +6,8 @@
  * 모두 누르기를 막지 않고, 움직임 줄이기를 켠 사람에게는 나타나지 않는다.
  */
 import { useEffect, useMemo } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -132,7 +133,7 @@ function Flake({ p, x, delay, fall, sway, size, color, seed, spin, star }: { p: 
 /** trigger 값이 바뀔 때마다 화면 가득 물감 조각이 쏟아진다 (약 2.6초) */
 export function PaintConfetti({ trigger, count = 34 }: { trigger: number; count?: number }) {
   const reduce = useReducedMotion();
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useAppSize();
   const p = useSharedValue(0);
   const flakes = useMemo(() => {
     const r = rng(trigger * 13 + 1);

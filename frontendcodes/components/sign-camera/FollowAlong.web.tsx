@@ -36,7 +36,8 @@ type ReadState = { kind: 'loading' } | { kind: 'rows'; rows: ReadRow[]; classes:
  * 점수 기준선(body-score.ts 의 POSITION_RANGE · SHAPE_RANGE)을 실제 시도 숫자로 다시 정하려는 것이다.
  */
 type Attempt = { kind: string; score: number; position: number; shape: number | null; mirrored: boolean; words: string };
-const ATTEMPT_KINDS = ['잘 따라 함', '대충 따라 함', '다른 동작'];
+// '손 모양만 다름': 손 자리는 친구와 똑같이, 손 모양만 일부러 다르게(주먹 · 다른 손가락). 웹캠이 손 모양을 가르는지 보려는 것 (2026-11-17 재훈 요청)
+const ATTEMPT_KINDS = ['잘 따라 함', '대충 따라 함', '손 모양만 다름', '다른 동작'];
 const ATTEMPT_KEY = 'signlingo-follow-attempts';
 function loadAttempts(): Attempt[] {
   try {

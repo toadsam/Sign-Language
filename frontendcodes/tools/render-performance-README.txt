@@ -63,3 +63,44 @@ node tools/check-render-metrics.cjs
 10/26에는 check-render-metrics.cjs로 합성 타임스탬프 계산을 다시 검사합니다.
 이번 정리는 새 브라우저/GPU 실측이 아니며 브라우저 버전별 전체 표도 미완료입니다.
 실제 최종 평가자료·모바일 WebView 검증은 남아 있습니다.
+
+실제 화면 표시 측정 (2026-11-23, 슬로모션 촬영)
+10초 점검은 그리기 요청 시점만 잰다. 모니터에 실제로 보인 갱신은 화면을 찍어서 센다.
+1. 배포 빌드를 띄우고(preview-sign-build-README.txt) 재생 화면 주소에 ?fpsmark=1 을 붙인다.
+   예: http://127.0.0.1:8084/Sign-Language/sign-player?fpsmark=1
+   동작 위에 동작 프레임마다 흑↔백이 바뀌는 네모와 프레임 번호가 뜬다. 주소에 없으면 안 보인다.
+2. '10초 점검 시작'을 누르고 바로 아이폰 슬로모션(240fps)으로 네모를 정면에서 5초쯤 찍는다.
+3. AirDrop으로 받은 영상은 30fps 파일(8배 느림)이다. 네모 위치(영상 화소)를 잡아 센다:
+   python3 tools/fps-from-video.py 영상.MOV --crop 110:110:487:100 --capture-fps 240 --start 3 --duration 63.5
+   --start/--duration은 파일 시각 기준이며, 앞뒤 보통 속도 구간을 뺀다.
+   updatesPerSecond: 화면에 새 그림이 보인 횟수/초. missedFramesEstimate: 빠진 장 추정.
+   shortFrames/longFrames: 23ms보다 짧게 · 43ms보다 길게 보인 장(60Hz에서 16.7ms · 50ms). 빠진 것은 아니다.
+4. 의심 구간은 프레임 번호를 직접 읽어 확인한다(ffmpeg로 몇 장 잘라 보기).
+검사: python3 -I tools/check-fps-from-video.py (합성 240fps 영상 6항목. 실제 촬영 측정이 아님)
+
+11/23 결과 (MacBook · Chrome 157 · 배포 빌드 · 창 1440×812 · DPR2 · 화면 60Hz(rAF 59.7회/초) · 합성 샘플 120프레임 · 몸/손 켬 · 얼굴 끔)
+- 10초 점검: 갱신 30.10회/초, 간격 p95 50.1ms · 최대 61.1ms, 50ms 넘은 간격 16번(300번 중), CPU 평균 1.03ms.
+- 슬로모션 7.87초: 화면 갱신 29.98회/초, 한 장 가운값 33.3ms, 빠진 장 0, 짧게 보인 장 6 · 길게 보인 장 5(236장 중 약 5%).
+  처음 고정 문턱으로 셌을 때 '빠진 장 6'으로 나왔지만, 영상의 프레임 번호를 읽어 보니 빠진 것이 아니라
+  16.7ms만 보인 장(액정이 끝까지 안 바뀜)이었다. 그래서 밝기가 꺾이는 지점을 세도록 고쳤다.
+- 고르지 않은 장은 재생기가 60Hz rAF마다 시간을 더해 프레임을 고르는 방식(SignPlayer.web.tsx)에서 생기는 것으로 보인다.
+  10초 점검의 50ms 초과 간격과 같은 현상이다. 고치지 않았다.
+- 한 기기 · 한 번 · 합성 샘플이다. 다른 PC · 모델 응답 재생 · 아이폰 · 두 칸/네 칸 비교는 재지 않았다.
+
+재생 프레임 고르기 개선 (2026-11-24)
+- 11/23 측정의 "고르지 않은 장 5%"는 재생기가 Math.floor(커서)로 프레임을 골라서 생겼다. 60Hz에서 커서가 화면마다 0.5씩 늘어
+  정수 경계에 정확히 닿기 때문에, 1ms 미만의 시간 흔들림으로 어떤 장은 16.7ms · 어떤 장은 50ms 보였다.
+- components/sign-player/frame-pick.ts의 pickFrame: 이번 화면 이동량의 절반만큼 앞당겨 고른다(60Hz에서 약 8ms). SignPlayer · ComparisonPlayer에 적용.
+  녹화 중에는 앞당기지 않는다(마지막 장 뒤에 첫 장이 끼어 녹화되지 않게).
+- 검사: node tools/check-frame-pick.cjs (흔들림 ±0.3ms를 흉내 낸 계산. 고르지 않은 장 60Hz 209 → 0 / 594장, 120Hz 194 → 0, 2배속 건너뜀 453 → 0)
+- 10초 점검(11/24, 배포 빌드, 앱 안 브라우저 Chromium 156 · 창 460×549 · DPR2, 화면 60Hz): 두 번 모두 갱신 30.0 · 30.1회/초, 간격 p95 34.2ms, 최대 34.9 · 34.7ms, 50ms 초과 0 · 0번 (11/23 Chrome 157 · 1440×812: p95 50.1ms, 최대 61.1ms, 16번). 창 크기 · 브라우저가 달라 같은 조건 비교는 아니다. 슬로모션 재측정은 아직.
+
+화면을 떠날 때 정리 (설계서 UT-12, 2026-11-24)
+- 통역 화면에서 따라 하기 카메라를 켠 뒤 아래 탭으로 옮기면 카메라 트랙이 ended, 영상 · 3D 친구(iframe)가 사라짐. 탭을 두 번 오가도 남은 애니메이션 예약 수가 늘지 않음(가짜 카메라로 확인).
+- 작업실 화면(sign-player 등)은 링크가 push여서 떠난 재생 화면이 뒤에서 계속 돌았다(애니메이션 1개 · WebGL 그대로). 작업실 링크를 replace로 바꿔,
+  떠나면 애니메이션 0 · 캔버스 0 · WebGL 해제됨을 확인. 작업실 웹캠 화면 3곳(sign-camera · sign-follow · sign-body)도 떠나면 카메라 ended · 애니메이션 0.
+
+콘솔 경고 (2026-11-24, 고치지 않음)
+- "Received false for a non-boolean attribute collapsable": react-native-reanimated가 웹에서 내는 경고. 실행 로그에 기대 버전보다 낮은 패키지가 있어 팀 단위 의존성 갱신이 필요.
+- "props.pointerEvents is deprecated": 재훈의 마을 화면 부품들(paint-ui 등)에서 나옴.
+- 404 HEAD pose-landmarker/pose_landmarker_lite.task: 상체 인식 모델을 이 서버에서 먼저 찾고 없으면 Google 저장소에서 받는 의도된 확인. 파일을 public/에 둘지는 팀 결정.

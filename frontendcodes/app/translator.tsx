@@ -9,7 +9,8 @@ import { useEventListener } from 'expo';
 import * as SecureStore from 'expo-secure-store';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useAppSize } from '@/hooks/use-app-size';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
@@ -26,6 +27,7 @@ import { usePaintNav } from '@/components/paint/transition';
 import { Font, Paint, Size } from '@/constants/paint';
 import { useAuth } from '@/context/auth-context';
 import { motionEndpoint, requestMotion, type Motion, type MotionResult } from '@/lib/api/generate';
+import { motionNoteFor } from '@/lib/motion-note';
 import { fetchTranslatorBookmarks, saveTranslatorBookmark, TranslatorBookmarkItem } from '@/lib/api/translator-bookmarks';
 import { TranslateClip, TranslatePlaybackItem, TranslateResponse, translateText } from '@/lib/api/translate';
 
@@ -44,7 +46,7 @@ export default function TranslatorScreen() {
   const nav = usePaintNav();
   const reduce = useReducedMotion();
   const { user } = useAuth();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth } = useAppSize();
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1409,13 +1411,6 @@ function motionOnlyResult(text: string, motion: Motion): TranslateResponse {
   };
 }
 
-/** AI 동작 결과를 화면 한 줄로. explicit 이 아니면(주소를 따로 정해 두지 않은 앱) 실패는 조용히 넘긴다 */
-function motionNoteFor(m: MotionResult, explicit: boolean): string | null {
-  if (m.kind === 'motion') return m.unknown.length > 0 ? `AI가 그린 손짓이에요 · 못 그린 낱말: ${m.unknown.join(', ')}` : 'AI가 그린 손짓이에요';
-  if (m.kind === 'empty') return `AI가 그릴 수 있는 낱말이 없어서 영상으로 보여 줘요${m.unknown.length > 0 ? ` (${m.unknown.join(', ')})` : ''}`;
-  if (m.kind === 'error') return explicit ? `AI 손짓을 받지 못해 영상으로 보여 줘요 · ${m.message}` : null;
-  return null;
-}
 
 function buildPlaybackUrlMap(sourceUrls: string[]): Record<string, string> {
   const uniqueUrls = Array.from(new Set(sourceUrls.filter((url) => !!url)));
