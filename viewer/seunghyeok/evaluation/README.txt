@@ -42,6 +42,14 @@ VM에서 실제로 한 순서 (2026-11-23, 지헌 자료 /data/work/jiheon/eval/
   - 승인된 Mac으로 가져오기: gcloud compute scp --recurse "${O[@]}" yuseunghyeok@sign-ml:/data/work/yuseunghyeok/eval/export_20_<날짜> <Mac 폴더>
     → /sign-batch-record 일괄 녹화 → prepare_videos.py --conditions B1,Ours-H
   - 43개 전체 변환 시험(eval/export_all43_20261123, 86개 JSON, 15MB)은 성공했다.
+  - 2026-11-24 실제 평가 20문장 변환 (VM 안에서만):
+    · 42개 표: eval/candidates_42.tsv · clips_all42.txt (43표의 16번이 빠짐)
+    · 승현 번호 20개(1, 5, 7, 8, 9, 13, 18, 19, 20, 21, 22, 25, 27, 28, 29, 34, 37, 38, 40, 43)는 43개 표 기준이라,
+      번호가 아니라 단어 열(글로스)로 42개 표의 클립을 찾았다. 14개는 42표 번호가 달랐다. 이 순서가 sentence-01~20.
+      → eval/selection_20.tsv(문장 · 승현 번호 · 42표 번호 · 낱말수 · 글로스 · 클립), eval/clips_20.txt
+    · 낱말 수별 2낱말 6 · 3낱말 6 · 4낱말 4 · 5낱말 2 · 6낱말 2 (승현이 비례 무작위 seed 0으로 뽑음), 화자 REAL03 19 · REAL12 1
+    · 변환: eval/export_20_20261124 (B1 · Ours-H 각 20개, 700 권한, 6.6MB). B1 37~137프레임, Ours-H 36~144프레임.
+      clip-map의 문장 순서가 clips_20.txt와 같음을 확인. 좌표 파일은 확인될 때까지 VM 밖으로 내보내지 않는다.
 검사: python3 -I viewer/seunghyeok/evaluation/test_export_motion_json.py
   (합성 동작 5항목. 출력 JSON을 frontendcodes의 motion.ts decodeMotion에 넣어 좌표가 같게 돌아오는지 포함)
 
