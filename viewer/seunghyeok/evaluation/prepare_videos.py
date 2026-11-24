@@ -93,7 +93,36 @@ def probe(path):
         raise ValueError(f'{path.name}: 유효한 영상 프레임·재생 정보를 찾지 못했습니다.') from None
 
 
-def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS):
+def first_shown(clips):
+    """문장마다 번호가 가장 앞선(먼저 보이는) 조건을 세어 {조건: 문장 수}로 준다. clips는 번호 순서대로."""
+    first = {}
+    for clip in clips:
+        first.setdefault(clip['sentence'], clip['condition'])
+    counts = {}
+    for condition in first.values():
+        counts[condition] = counts.get(condition, 0) + 1
+    return counts
+
+
+def shuffle_clips(clips, conditions, balance=True, rng=None, tries=20000):
+    """번호 순서를 무작위로 섞는다. balance면 문장마다 먼저 보이는 조건이 고르게(조건 사이 차이 1 이하) 될 때까지 다시 섞는다.
+
+    2026-11-24 승현: 완전 무작위로 섞으니 같은 문장에서 Ours-H가 먼저인 것이 12개, B1이 먼저인 것이 8개였다.
+    평가자는 먼저 본 영상을 기준 삼기 쉬워(순서 효과) 2조건이면 10 : 10이 되게 맞춘다. 섞기 자체는 그대로 무작위다.
+    """
+    rng = rng or random.SystemRandom()
+    sentences = len({clip['sentence'] for clip in clips})
+    for _ in range(tries):
+        rng.shuffle(clips)
+        if not balance:
+            return clips
+        counts = [first_shown(clips).get(condition, 0) for condition in conditions]
+        if sum(counts) == sentences and max(counts) - min(counts) <= 1:
+            return clips
+    raise ValueError('먼저 보이는 조건을 고르게 맞추지 못했습니다. --no-balance-order로 다시 해 보세요.')
+
+
+def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS, balance_order=True):
     conditions = parse_conditions(','.join(conditions))
     root, output = Path(root).resolve(), Path(output).resolve()
     if not root.is_dir():
@@ -110,7 +139,7 @@ def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS):
         clip['video'] = probe(clip['path'])
     if len({(c['video']['width'], c['video']['height']) for c in clips}) != 1:
         raise ValueError('영상 해상도가 서로 다릅니다. 같은 화면 크기로 준비해주세요.')
-    random.SystemRandom().shuffle(clips)
+    shuffle_clips(clips, conditions, balance_order)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Stage the complete package before exposing it. Input clips are never modified.
     with tempfile.TemporaryDirectory(prefix='sign-evaluation-', dir=output.parent) as temporary:
@@ -135,6 +164,7 @@ def package(root, output, test_mode=False, conditions=DEFAULT_CONDITIONS):
                             'inputFile': str(clip['path']), 'video': exported})
         (private / 'condition-map.json').write_text(json.dumps({'testMode': test_mode, 'sentences': count,
             'conditions': list(conditions), 'clips': mapping, 'credit': CREDIT,
+            'orderBalanced': balance_order, 'firstShown': first_shown(clips),
             'note': '조건표는 승현에게 별도로 전달할 관리 자료입니다. 평가 참가자에게 전달하지 마세요.'}, ensure_ascii=False, indent=2), encoding='utf-8')
         # Shared archive contains only numbered clips, never the condition map.
         with zipfile.ZipFile(stage / 'evaluation-videos.zip', 'w', zipfile.ZIP_STORED) as archive:
@@ -159,9 +189,12 @@ def main():
     parser.add_argument('--conditions', default=','.join(DEFAULT_CONDITIONS),
                         help=f'쉼표로 구분한 조건 (2개 이상). 기본 {",".join(DEFAULT_CONDITIONS)}. 쓸 수 있는 조건: {",".join(CONDITIONS)}')
     parser.add_argument('--test-mode', action='store_true', help='1문장×조건으로 기능만 점검; 실제 평가용이 아님')
+    parser.add_argument('--no-balance-order', action='store_true',
+                        help='문장마다 먼저 보이는 조건을 고르게 맞추지 않고 완전 무작위로 섞기 (기본은 맞춤)')
     args = parser.parse_args()
     try:
-        count = package(args.input, args.output, args.test_mode, parse_conditions(args.conditions))
+        count = package(args.input, args.output, args.test_mode, parse_conditions(args.conditions),
+                        balance_order=not args.no_balance_order)
     except (ValueError, OSError) as error:
         parser.exit(1, f'정리 실패:\n{error}\n')
     print(f'{count}개 영상 정리 완료: {args.output}')

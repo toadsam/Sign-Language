@@ -56,6 +56,10 @@ VM에서 실제로 한 순서 (2026-11-23, 지헌 자료 /data/work/jiheon/eval/
     · prepare_videos.py --conditions B1,Ours-H → bundle/videos/001~040.webm, evaluation-videos.zip(번호 영상만),
       private/condition-map.json(B1 20 · Ours-H 20, 출처 포함). 조건표는 승현에게만, 참가자에게는 ZIP만 준다.
     · 브라우저 녹화 WebM 하나가 평균 프레임 속도 0/0이라 prepare_videos.py가 멈췄다 → 프레임 수 ÷ 길이로 계산하게 고쳤다.
+    · 승현 확인(11/24): 같은 문장에서 먼저 보이는 조건이 Ours-H 12 · B1 8이었다. prepare_videos.py가 기본으로 고르게 섞게 하고
+      (조건 사이 차이 1 이하, 끄려면 --no-balance-order) 같은 녹화로 묶음을 다시 만들었다(v2: B1 10 · Ours-H 10).
+      옛 묶음은 bundle-v1-unbalanced-DO-NOT-USE로 이름을 바꿔 두었다. 승현에게 v2 전달, v1 조건표는 버리게 한다.
+      묶음 영상 하나(Ours-H 문장 01)는 정보에 60fps로 보이지만 83장/2.73초로 실제 30fps다.
 검사: python3 -I viewer/seunghyeok/evaluation/test_export_motion_json.py
   (합성 동작 5항목. 출력 JSON을 frontendcodes의 motion.ts decodeMotion에 넣어 좌표가 같게 돌아오는지 포함)
 

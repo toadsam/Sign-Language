@@ -98,6 +98,21 @@ class PrepareVideosTest(unittest.TestCase):
         self.assertIn('2개 이상', bad.stderr)
         self.assertFalse((self.base / 'cli-bad').exists())
 
+    def test_order_balance(self):
+        # 2026-11-24 승현: 같은 문장에서 먼저 보이는 조건이 12 : 8로 기울었다 → 고르게 맞추는 섞기
+        import random
+        def fake(conditions, sentences=20):
+            return [{'sentence': s, 'condition': c} for s in range(1, sentences + 1) for c in conditions]
+        for seed in range(20):
+            clips = P.shuffle_clips(fake(['B1', 'Ours-H']), ['B1', 'Ours-H'], True, random.Random(seed))
+            self.assertEqual(P.first_shown(clips), {'B1': 10, 'Ours-H': 10})
+            self.assertEqual(len(clips), 40)
+        clips = P.shuffle_clips(fake(['B1', 'B2', 'Ours-H']), ['B1', 'B2', 'Ours-H'], True, random.Random(1))
+        self.assertEqual(sorted(P.first_shown(clips).values()), [6, 7, 7])
+        # 끄면 완전 무작위(고르지 않을 수 있음), 개수는 그대로
+        clips = P.shuffle_clips(fake(['B1', 'Ours-H']), ['B1', 'Ours-H'], False, random.Random(3))
+        self.assertEqual(sum(P.first_shown(clips).values()), 20)
+
     def test_probe_falls_back_when_frame_rate_missing(self):
         # 브라우저 녹화 WebM은 avg_frame_rate가 "0/0"일 때가 있다 (2026-11-24 평가 녹화 40개 중 1개)
         from unittest import mock
