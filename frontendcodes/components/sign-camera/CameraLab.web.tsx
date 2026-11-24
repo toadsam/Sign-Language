@@ -8,15 +8,8 @@ import HandInputPreview from './HandInputPreview';
 import type { HandFrame } from './hand-features';
 import HandOverlay from './HandOverlay.web';
 import { CameraSession, cameraError } from './camera-session';
+import { control } from '../sign-player/lab-style';
 
-const control = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
 
 export default function CameraLab() {
   const capture = useHandSequence();
@@ -158,7 +151,9 @@ export default function CameraLab() {
       setError(e instanceof Error ? e.message : '좌표 결과를 열 수 없습니다. JSON 저장 후 다시 불러와주세요.');
     }
   };
-  const displayMirrored = photoMode || !!stream || !!localVideo ? mirrored : false;
+  // 2026-11-24 승혁: 점검용 시험 영상(testMode)만 빠져 있어 "카메라 좌우 반전" 체크를 따르지 않았다.
+  // 사진 · 카메라 · 내 영상과 같이 체크를 따르게 맞춘다 (SEUNGHYEOK_GUIDE: 좌우 반전은 미리보기만 바꾼다).
+  const displayMirrored = photoMode || testMode || !!stream || !!localVideo ? mirrored : false;
   return (
     <section
       aria-label="웹캠 입력 실습"

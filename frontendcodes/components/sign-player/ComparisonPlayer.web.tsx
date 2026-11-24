@@ -1,6 +1,5 @@
 import { pickFrame } from './frame-pick';
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
 import ReconstructionMetrics from './ReconstructionMetrics.web';
 import AiViewerImport from './AiViewerImport.web';
 import RecordingControls from './RecordingControls';
@@ -13,6 +12,7 @@ import type { DecodedMotion } from './motion';
 import type { ComparisonPlayerProps } from './ComparisonPlayer';
 import { createComparisonSamples, createReconstructionSamples } from './demo-comparison';
 import { frameAtTime, TIMELINE_FPS, timelineFrames } from './timeline';
+import { control } from './lab-style';
 
 type Slot = { label: string; name: string; motion: DecodedMotion; error: string | null; loading: boolean };
 const initialSlots = (mode: ComparisonPlayerProps['mode']): Slot[] => {
@@ -24,14 +24,6 @@ const initialSlots = (mode: ComparisonPlayerProps['mode']): Slot[] => {
     error: null,
     loading: false,
   }));
-};
-const control: CSSProperties = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
 };
 export default function ComparisonPlayer({ mode = 'four' }: ComparisonPlayerProps) {
   const pair = mode === 'reconstruction';

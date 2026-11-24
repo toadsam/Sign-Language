@@ -105,7 +105,7 @@ export default function SignPlayerScreen() {
             </label>
             <Text style={styles.filename}>{loading ? '파일을 읽고 있습니다…' : name}</Text>
             <Text style={styles.description}>
-              {motion.frames}프레임 · {motion.fps}fps · {motion.frames / motion.fps}초
+              {motion.frames}프레임 · {motion.fps}fps · {(motion.frames / motion.fps).toFixed(2)}초
             </Text>
             {motion.demo ? (
               <Text style={styles.notice}>화면 점검용 합성 동작입니다. 실제 수어 또는 모델 결과가 아닙니다.</Text>

@@ -2,14 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { nextVideoIndex } from './playback';
 import type { PlaybackResponse, VideoResponse } from './playback';
 import SignPlayer from './SignPlayer.web';
-const control = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
+import { control } from './lab-style';
 function VideoPlayback({ response }: { response: VideoResponse }) {
   const video = useRef<HTMLVideoElement>(null);
   const [index, setIndex] = useState(0);

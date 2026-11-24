@@ -6,16 +6,9 @@ import demo from './demo-codebook.json';
 import TokenAtlasView from './TokenAtlas.web';
 import { readTokenAtlas } from './token-atlas';
 import type { TokenAtlas } from './token-atlas';
+import { control } from './lab-style';
 
 const PAGE_SIZE = 6;
-const control = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
 const sectionStyle = { fontFamily: 'system-ui,sans-serif', color: '#152239' };
 export default function CodebookGrid() {
   const [entries, setEntries] = useState(() => decodeCodebook(demo));

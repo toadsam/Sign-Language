@@ -4,15 +4,8 @@ import type { HandSequenceData } from './sequence-reader';
 import { HAND_EDGES } from './hand-overlay';
 import SequenceQuality from './SequenceQuality.web';
 import { takeSequenceReview } from './sequence-transfer';
+import { control } from '../sign-player/lab-style';
 
-const control = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
 
 function HandCanvas({ data, frame }: { data: HandSequenceData; frame: number }) {
   const canvas = useRef<HTMLCanvasElement>(null);

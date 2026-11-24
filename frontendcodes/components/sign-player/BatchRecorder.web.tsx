@@ -5,11 +5,11 @@
  * 좌표 파일은 브라우저 안에서만 읽고 어디로도 보내지 않는다.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
 import MotionCanvas from './MotionCanvas.web';
 import { frameAtTime } from './timeline';
 import { outputName, planJobs, type BatchJob, type BatchPlan } from './batch-jobs';
 import { makeZip } from './zip-store';
+import { control } from './lab-style';
 
 const CREDIT = '한국지능정보사회진흥원 AI Hub 「수어 영상」 데이터 활용';
 const HOLD_SECONDS = 0.5; // 앞뒤 정지 화면
@@ -17,14 +17,6 @@ const HOLD_SECONDS = 0.5; // 앞뒤 정지 화면
 const WIDTH = 640;
 const HEIGHT = 480;
 const MAX_FILE_BYTES = 40 * 1024 * 1024;
-const control: CSSProperties = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
 const nextPaint = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 /**
  * 녹화된 영상의 실제 길이(초). 창이 가려지면 캔버스가 화면에 안 그려져 녹화가 한두 장면만 담기므로,

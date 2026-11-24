@@ -8,14 +8,7 @@ import type { MockScenario } from './mock-generation';
 import type { PlaybackResponse } from './playback';
 import { readResponseFile } from './response-file';
 import { summarizeResponse } from './response-summary';
-const control = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
+import { control } from './lab-style';
 const helpText = { fontSize: 13, color: '#526078' };
 type Mode = 'sample' | 'local-api' | 'api' | 'file';
 const localScenarios = [

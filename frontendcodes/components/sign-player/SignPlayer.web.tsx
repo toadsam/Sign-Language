@@ -8,15 +8,8 @@ import PerformanceCheck from './PerformanceCheck';
 import { useRenderCheck } from './useRenderCheck';
 import MotionCanvas from './MotionCanvas.web';
 import { pickFrame } from './frame-pick';
+import { control } from './lab-style';
 
-const control: CSSProperties = {
-  background: '#232935',
-  color: '#edf0fa',
-  border: '1px solid #495266',
-  borderRadius: 8,
-  padding: '8px 12px',
-  font: 'inherit',
-};
 const plainFieldset: CSSProperties = { border: 0, padding: 0, margin: 0 };
 const toolbar: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' };
 
