@@ -7,6 +7,7 @@ import { useCanvasRecorder } from './useCanvasRecorder';
 import PerformanceCheck from './PerformanceCheck';
 import { useRenderCheck } from './useRenderCheck';
 import MotionCanvas from './MotionCanvas.web';
+import { pickFrame } from './frame-pick';
 
 const control: CSSProperties = {background:'#232935',color:'#edf0fa',border:'1px solid #495266',borderRadius:8,padding:'8px 12px',font:'inherit'};
 function FrameInput({label,value,min,max,onCommit}:{label:string;value:number;min:number;max:number;onCommit:(n:number)=>void}) {
@@ -40,11 +41,13 @@ export default function SignPlayer({motion}: SignPlayerProps) {
     let id=0, last:number|undefined;
     const tick=(now:number)=>{
       const dt=last===undefined?0:Math.min((now-last)/1000,.1);last=now;
-      cursor.current+=dt*data.response.fps*speed;
+      const step=dt*data.response.fps*speed;
+      cursor.current+=step;
       if(recordingActive.current && cursor.current>=data.response.frames){cursor.current=data.response.frames-1;setFrame(data.response.frames-1);setPlaying(false);stopRecording(true);return;}
       const length=loopEnd-loopStart+1;
       if(cursor.current>=loopEnd+1)cursor.current=loopStart+(cursor.current-loopStart)%length;
-      setFrame(Math.floor(cursor.current));id=requestAnimationFrame(tick);
+      // 녹화 중에는 앞당기지 않는다(마지막 장 뒤에 첫 장이 한 번 끼어 녹화되지 않게). 고르는 방식은 frame-pick.ts
+      setFrame(pickFrame(cursor.current,recordingActive.current?0:step,loopStart,loopEnd));id=requestAnimationFrame(tick);
     };
     id=requestAnimationFrame(tick);return()=>cancelAnimationFrame(id);
   },[data,playing,speed,loopStart,loopEnd,recordingActive,stopRecording]);

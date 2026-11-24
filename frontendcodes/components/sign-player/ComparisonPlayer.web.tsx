@@ -1,3 +1,4 @@
+import { pickFrame } from './frame-pick';
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import ReconstructionMetrics from './ReconstructionMetrics.web';
@@ -47,10 +48,11 @@ export default function ComparisonPlayer({mode = 'four'}: ComparisonPlayerProps)
     let id = 0, previous: number | undefined;
     const tick = (now: number) => {
       const dt = previous === undefined ? 0 : Math.min((now - previous) / 1000, .1); previous = now;
-      cursor.current += dt * TIMELINE_FPS * speed;
+      const step = dt * TIMELINE_FPS * speed;
+      cursor.current += step;
       if(recordingActive.current && cursor.current>=recordEnd.current){cursor.current=Math.max(0,Math.ceil(recordEnd.current)-1);setFrame(Math.floor(cursor.current));setFinalSlot(recordSlot);setPlaying(false);stopRecording(true);return;}
       cursor.current %= count;
-      setFrame(Math.floor(cursor.current)); id = requestAnimationFrame(tick);
+      setFrame(pickFrame(cursor.current, recordingActive.current ? 0 : step, 0, count - 1)); id = requestAnimationFrame(tick);
     };
     id = requestAnimationFrame(tick); return () => cancelAnimationFrame(id);
   }, [playing, speed, count, recordSlot,recordingActive,stopRecording]);

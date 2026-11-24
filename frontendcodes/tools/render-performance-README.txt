@@ -86,3 +86,21 @@ node tools/check-render-metrics.cjs
 - 고르지 않은 장은 재생기가 60Hz rAF마다 시간을 더해 프레임을 고르는 방식(SignPlayer.web.tsx)에서 생기는 것으로 보인다.
   10초 점검의 50ms 초과 간격과 같은 현상이다. 고치지 않았다.
 - 한 기기 · 한 번 · 합성 샘플이다. 다른 PC · 모델 응답 재생 · 아이폰 · 두 칸/네 칸 비교는 재지 않았다.
+
+재생 프레임 고르기 개선 (2026-11-24)
+- 11/23 측정의 "고르지 않은 장 5%"는 재생기가 Math.floor(커서)로 프레임을 골라서 생겼다. 60Hz에서 커서가 화면마다 0.5씩 늘어
+  정수 경계에 정확히 닿기 때문에, 1ms 미만의 시간 흔들림으로 어떤 장은 16.7ms · 어떤 장은 50ms 보였다.
+- components/sign-player/frame-pick.ts의 pickFrame: 이번 화면 이동량의 절반만큼 앞당겨 고른다(60Hz에서 약 8ms). SignPlayer · ComparisonPlayer에 적용.
+  녹화 중에는 앞당기지 않는다(마지막 장 뒤에 첫 장이 끼어 녹화되지 않게).
+- 검사: node tools/check-frame-pick.cjs (흔들림 ±0.3ms를 흉내 낸 계산. 고르지 않은 장 60Hz 209 → 0 / 594장, 120Hz 194 → 0, 2배속 건너뜀 453 → 0)
+- 실제 화면 확인은 아직: Chrome에서 /sign-player의 10초 점검 "50ms 초과"(11/23: 300번 중 16번)가 줄어드는지, 또는 슬로모션으로 다시 잰다.
+
+화면을 떠날 때 정리 (설계서 UT-12, 2026-11-24)
+- 통역 화면에서 따라 하기 카메라를 켠 뒤 아래 탭으로 옮기면 카메라 트랙이 ended, 영상 · 3D 친구(iframe)가 사라짐. 탭을 두 번 오가도 남은 애니메이션 예약 수가 늘지 않음(가짜 카메라로 확인).
+- 작업실 화면(sign-player 등)은 링크가 push여서 떠난 재생 화면이 뒤에서 계속 돌았다(애니메이션 1개 · WebGL 그대로). 작업실 링크를 replace로 바꿔,
+  떠나면 애니메이션 0 · 캔버스 0 · WebGL 해제됨을 확인. 작업실 웹캠 화면 3곳(sign-camera · sign-follow · sign-body)도 떠나면 카메라 ended · 애니메이션 0.
+
+콘솔 경고 (2026-11-24, 고치지 않음)
+- "Received false for a non-boolean attribute collapsable": react-native-reanimated가 웹에서 내는 경고. 실행 로그에 기대 버전보다 낮은 패키지가 있어 팀 단위 의존성 갱신이 필요.
+- "props.pointerEvents is deprecated": 재훈의 마을 화면 부품들(paint-ui 등)에서 나옴.
+- 404 HEAD pose-landmarker/pose_landmarker_lite.task: 상체 인식 모델을 이 서버에서 먼저 찾고 없으면 Google 저장소에서 받는 의도된 확인. 파일을 public/에 둘지는 팀 결정.
