@@ -9,7 +9,7 @@ export default function SignCodebookScreen() {
     <LabHomeLink/>
     <Text style={styles.title}>토큰별 짧은 동작 살펴보기</Text>
     <Text style={styles.description}>코드북의 토큰 하나에 대응하는 4프레임 동작을 나란히 확인하세요.</Text>
-    <Link href={'/sign-player' as Href} style={{color:'#1f80e3'}}>단일 동작 재생 화면 →</Link>
+    <Link replace href={'/sign-player' as Href} style={{color:'#1f80e3'}}>단일 동작 재생 화면 →</Link>
     <CodebookGrid/>
   </ScrollView>;
 }

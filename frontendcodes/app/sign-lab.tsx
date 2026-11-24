@@ -19,7 +19,7 @@ export default function SignLab(){return <ScrollView style={styles.root} content
   <Text style={styles.description}>현재 만든 화면을 한곳에서 열고 점검하세요. 아래 상태는 구현 범위 안내이며 서버나 모델의 실시간 상태가 아닙니다.</Text>
   <View style={styles.notice}><Text style={styles.noticeText}>E5 자모표와 원본·복원 파일을 불러올 수 있습니다. 단어(11/4)와 문장(11/17) 생성은 실제 모델 응답으로 재생 · 자막 · 미지원 단어 안내를 확인했습니다. 화면 재생 확인이며 수어 뜻의 정확도 평가는 아닙니다. 합성 자료를 실제 수어 결과로 판단하지 마세요.</Text></View>
   {Platform.OS!=='web'&&<Text style={styles.description}>동작 재생 화면은 WebView 서버 주소가 필요합니다. 손 좌표 수집·점검은 PC 웹에서 사용하세요.</Text>}
-  <View style={styles.grid}>{screens.map(screen=><Link key={screen.route} href={screen.route as Href} asChild>
+  <View style={styles.grid}>{screens.map(screen=><Link key={screen.route} replace href={screen.route as Href} asChild>
     <Pressable accessibilityRole="link" style={styles.card}>
       <Text style={styles.cardTitle}>{screen.title}</Text><Text style={styles.state}>{screen.state}</Text>
       <Text style={styles.description}>{screen.description}</Text><Text style={styles.open}>화면 열기 →</Text>

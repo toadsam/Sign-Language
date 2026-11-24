@@ -51,11 +51,11 @@ export default function SignPlayerScreen() {
     <LabHomeLink/>
     <Text style={styles.title}>수어 동작 재생</Text>
     <Text style={styles.description}>샘플을 재생하거나 동작 JSON 파일을 불러오세요.</Text>
-    <Link href={'/sign-compare' as Href} style={{color:'#1f80e3',fontSize:16}}>4개 동작 비교 화면 열기 →</Link>
-    <Link href={'/sign-codebook' as Href} style={{color:'#1f80e3',fontSize:16}}>코드북 격자 화면 열기 →</Link>
-    <Link href={'/sign-reconstruct' as Href} style={{color:'#1f80e3',fontSize:16}}>원본·복원 비교 화면 열기 →</Link>
-    <Link href={'/sign-generate' as Href} style={{color:'#1f80e3',fontSize:16}}>문장 입력 실습 화면 열기 →</Link>
-    <Link href={'/sign-camera' as Href} style={{color:'#1f80e3',fontSize:16}}>웹캠 입력 실습 화면 열기 →</Link>
+    <Link replace href={'/sign-compare' as Href} style={{color:'#1f80e3',fontSize:16}}>4개 동작 비교 화면 열기 →</Link>
+    <Link replace href={'/sign-codebook' as Href} style={{color:'#1f80e3',fontSize:16}}>코드북 격자 화면 열기 →</Link>
+    <Link replace href={'/sign-reconstruct' as Href} style={{color:'#1f80e3',fontSize:16}}>원본·복원 비교 화면 열기 →</Link>
+    <Link replace href={'/sign-generate' as Href} style={{color:'#1f80e3',fontSize:16}}>문장 입력 실습 화면 열기 →</Link>
+    <Link replace href={'/sign-camera' as Href} style={{color:'#1f80e3',fontSize:16}}>웹캠 입력 실습 화면 열기 →</Link>
     {Platform.OS==='web'? <>
       <View style={styles.card}>
         <label style={{fontFamily:'system-ui,sans-serif',fontSize:15,color:'#1f2937'}}>동작 JSON 열기{' '}
