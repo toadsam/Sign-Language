@@ -14,35 +14,55 @@ export function parseJobPath(path: string): { condition: string; sentence: numbe
   const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
   if (parts.length < 2) return null;
   const condition = parts[parts.length - 2];
-  const m = /^sentence-(\d{2})\.json$/i.exec(parts[parts.length - 1]);
-  if (!m || !(KNOWN_CONDITIONS as readonly string[]).includes(condition)) return null;
-  const sentence = Number(m[1]);
+  const match = /^sentence-(\d{2})\.json$/i.exec(parts[parts.length - 1]);
+  if (!match || !(KNOWN_CONDITIONS as readonly string[]).includes(condition)) return null;
+  const sentence = Number(match[1]);
   return sentence >= 1 ? { condition, sentence } : null;
 }
 
 /** files: 상대 경로와 글. 정렬은 문장 번호 → 조건 순서 */
 export function planJobs(files: { path: string; text: string }[]): BatchPlan {
-  const jobs: BatchJob[] = [], skipped: string[] = [], problems: string[] = [];
+  const jobs: BatchJob[] = [];
+  const skipped: string[] = [];
+  const problems: string[] = [];
   const seen = new Set<string>();
-  for (const f of files) {
-    const id = parseJobPath(f.path);
-    if (!id) { skipped.push(f.path); continue; }
+  for (const file of files) {
+    const id = parseJobPath(file.path);
+    if (!id) {
+      skipped.push(file.path);
+      continue;
+    }
     const key = `${id.condition}/${id.sentence}`;
-    if (seen.has(key)) { problems.push(`${f.path}: ${id.condition} 문장 ${String(id.sentence).padStart(2, '0')}이 두 번 있습니다.`); continue; }
+    if (seen.has(key)) {
+      problems.push(`${file.path}: ${id.condition} 문장 ${String(id.sentence).padStart(2, '0')}이 두 번 있습니다.`);
+      continue;
+    }
     seen.add(key);
     let motion: DecodedMotion;
-    try { motion = decodeMotion(JSON.parse(f.text)); }
-    catch (e) { problems.push(`${f.path}: ${e instanceof Error ? e.message : '읽지 못했습니다.'}`); continue; }
-    if (motion.response.frames < 1) { problems.push(`${f.path}: 재생할 프레임이 없습니다.`); continue; }
-    jobs.push({ condition: id.condition, sentence: id.sentence, source: f.path, motion });
+    try {
+      motion = decodeMotion(JSON.parse(file.text));
+    } catch (error) {
+      problems.push(`${file.path}: ${error instanceof Error ? error.message : '읽지 못했습니다.'}`);
+      continue;
+    }
+    if (motion.response.frames < 1) {
+      problems.push(`${file.path}: 재생할 프레임이 없습니다.`);
+      continue;
+    }
+    jobs.push({ condition: id.condition, sentence: id.sentence, source: file.path, motion });
   }
-  const order = (c: string) => (KNOWN_CONDITIONS as readonly string[]).indexOf(c);
+  const order = (condition: string) => (KNOWN_CONDITIONS as readonly string[]).indexOf(condition);
   jobs.sort((a, b) => a.sentence - b.sentence || order(a.condition) - order(b.condition));
   // 조건마다 같은 문장 번호가 있어야 평가에서 짝이 맞는다
-  const conditions = [...new Set(jobs.map((j) => j.condition))];
-  const sentences = [...new Set(jobs.map((j) => j.sentence))];
-  for (const c of conditions) for (const s of sentences)
-    if (!jobs.some((j) => j.condition === c && j.sentence === s)) problems.push(`${c}: 문장 ${String(s).padStart(2, '0')}이 없습니다.`);
+  const conditions = [...new Set(jobs.map((job) => job.condition))];
+  const sentences = [...new Set(jobs.map((job) => job.sentence))];
+  for (const condition of conditions) {
+    for (const sentence of sentences) {
+      if (!jobs.some((job) => job.condition === condition && job.sentence === sentence)) {
+        problems.push(`${condition}: 문장 ${String(sentence).padStart(2, '0')}이 없습니다.`);
+      }
+    }
+  }
   return { jobs, skipped, problems };
 }
 
