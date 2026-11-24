@@ -78,9 +78,14 @@ def probe(path):
     try:
         data = json.loads(result.stdout)
         stream = data['streams'][0]
+        frames = int(stream['nb_read_frames'])
+        duration = float(data['format']['duration'])
+        # 브라우저 녹화(MediaRecorder WebM)는 평균 프레임 속도가 "0/0"으로 빠질 때가 있다(2026-11-24 평가 녹화 40개 중 1개).
+        # 그때는 실제로 읽은 프레임 수 ÷ 길이로 계산한다.
+        rate = Fraction(stream['avg_frame_rate']) if stream['avg_frame_rate'] not in ('0/0', '') else None
+        fps = float(rate) if rate else (frames / duration if duration > 0 else 0)
         info = {'codec': stream['codec_name'], 'width': int(stream['width']), 'height': int(stream['height']),
-                'fps': float(Fraction(stream['avg_frame_rate'])), 'frames': int(stream['nb_read_frames']),
-                'durationSeconds': float(data['format']['duration'])}
+                'fps': fps, 'frames': frames, 'durationSeconds': duration}
         if min(info['width'], info['height'], info['frames'], info['fps'], info['durationSeconds']) <= 0:
             raise ValueError()
         return info

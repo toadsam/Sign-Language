@@ -98,6 +98,23 @@ class PrepareVideosTest(unittest.TestCase):
         self.assertIn('2개 이상', bad.stderr)
         self.assertFalse((self.base / 'cli-bad').exists())
 
+    def test_probe_falls_back_when_frame_rate_missing(self):
+        # 브라우저 녹화 WebM은 avg_frame_rate가 "0/0"일 때가 있다 (2026-11-24 평가 녹화 40개 중 1개)
+        from unittest import mock
+        fake = {'streams': [{'codec_name': 'vp9', 'width': 1280, 'height': 960,
+                             'avg_frame_rate': '0/0', 'nb_read_frames': '83'}],
+                'format': {'duration': '2.716705'}}
+        done = subprocess.CompletedProcess([], 0, stdout=json.dumps(fake), stderr='')
+        with mock.patch.object(P.subprocess, 'run', return_value=done):
+            info = P.probe(Path('Ours-H/sentence-01.webm'))
+        self.assertEqual(info['frames'], 83)
+        self.assertAlmostEqual(info['fps'], 83 / 2.716705, places=3)
+        fake['format']['duration'] = '0'
+        done = subprocess.CompletedProcess([], 0, stdout=json.dumps(fake), stderr='')
+        with mock.patch.object(P.subprocess, 'run', return_value=done):
+            with self.assertRaises(ValueError):
+                P.probe(Path('Ours-H/sentence-01.webm'))
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
