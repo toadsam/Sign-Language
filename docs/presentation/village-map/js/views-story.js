@@ -10,9 +10,9 @@
     { id: 'signup', x: 30, y: 340, t: '가입', c: 'var(--yellow-soft)', what: '처음 온 사람만. 이름, 연락처, 소속을 받는다.', api: 'POST /api/auth/signup · /signup/complete' },
     { id: 'home', x: 235, y: 200, t: '마을', c: 'var(--yellow)', what: '오늘 목표와 연속 학습일. 배운 장소만 색이 칠해진다. 아래 탭 네 개의 출발점.', api: 'GET /api/users/{uid}' },
     { id: 'learn', x: 455, y: 40, t: '표현', c: 'var(--leaf)', what: '스케치북에서 퀴즈 묶음을 고른다. 기본, 일상, 오답 복습.', api: 'GET /api/users/{uid}' },
-    { id: 'quiz', x: 665, y: 40, t: '퀴즈', c: 'var(--leaf)', what: '영상을 보고 넷 중 하나. 맞고 틀림이 사용자 문서에 쌓인다.', api: 'GET /api/quiz/session · POST /api/quiz/answer' },
+    { id: 'quiz', x: 665, y: 40, t: '퀴즈', c: 'var(--leaf)', what: '3D 친구(AI가 그린 손짓)나 영상을 보고 넷 중 하나. AI가 그 단어 하나로 빠짐없이 그릴 때만 친구가 나오고, 정답 영상으로 바꿔 볼 수 있다. 맞고 틀림이 사용자 문서에 쌓인다.', api: 'GET /api/quiz/session · POST /api/quiz/answer · POST /api/sign/generate' },
     { id: 'wrongnote', x: 875, y: 40, t: '오답노트', c: 'var(--blossom)', what: '저장한 오답을 모아 다시 푼다.', api: '/api/users/{uid}/wrong-note-saved' },
-    { id: 'translator', x: 455, y: 240, t: '통역', c: 'var(--sky)', what: '문장을 넣으면 수어 어순으로 바꿔 단어 영상을 차례로 재생한다.', api: 'POST /translate' },
+    { id: 'translator', x: 455, y: 240, t: '통역', c: 'var(--sky)', what: '문장을 넣으면 수어 어순으로 바꾸고, AI가 만든 동작을 3D 친구가 보여 준다. 카메라로 따라 하면 점수가 나온다. AI 서버가 꺼져 있으면 단어 영상을 차례로 재생한다.', api: 'POST /translate · POST /api/sign/generate' },
     { id: 'bookmark', x: 665, y: 240, t: '북마크', c: 'var(--sky)', what: '담아 둔 통역 문장. 로그인 전에는 기기에만 20개까지.', api: '/api/users/{uid}/translator-bookmarks' },
     { id: 'mypage', x: 455, y: 448, t: '기록', c: 'var(--blossom)', what: '푼 문제 수, 자주 틀린 단어, 도장 달력, 스티커.', api: 'GET /api/users/{uid} · /top-wrong-words' },
     { id: 'lab', x: 880, y: 448, t: 'AI 작업실', c: 'var(--core-wash)', core: 1, what: 'AI 화면 일곱 개의 입구. 탭에는 없고 주소(/sign-lab)로 들어간다.', api: '없음' },
@@ -84,9 +84,9 @@
   /* ───────────── 결과 ───────────── */
   SJ.view('results', {
     build(root) {
-      root.appendChild(h('div', { class: 'view-head' }, [h('h1', { text: '숫자로 본 지금' }), h('p', { text: '모든 숫자는 처음 보는 사람 두 명(REAL03 · REAL12)의 동작으로 잰 것이다. 막대에 올리면 설명이 뜬다.' })]));
+      root.appendChild(h('div', { class: 'view-head' }, [h('h1', { text: '숫자로 본 지금' }), h('p', { text: '① ~ ③은 처음 보는 사람 두 명(REAL03 · REAL12)의 동작으로 잰 것이고, ④는 켜져 있는 서버에 낱말과 문장을 넣어 잰 것이다. 막대에 올리면 설명이 뜬다.' })]));
       root.appendChild(h('div', { class: 'facts' }, [
-        ['97.33%', '읽는 모델이 3,000단어 중 맞히는 비율', 1], ['28.2mm', '자모표로 되돌린 손의 평균 오차'], ['74.2%', '만든 동작이 제 단어로 읽히는 비율 (사람 동작 71.7%)', 1], ['0.090', '정답과의 손 모양 거리 (목표 0.082)'], ['0.40초', '3단어 만드는 시간, T4'], ['100%', '쓰이는 자모표 칸 (관문 기준 50%)'],
+        ['97.33%', '읽는 모델이 3,000단어 중 맞히는 비율', 1], ['28.2mm', '자모표로 되돌린 손의 평균 오차'], ['74.2%', '만든 동작이 제 단어로 읽히는 비율 (사람 동작 71.7%)', 1], ['0.090', '정답과의 손 모양 거리 (목표 0.082)'], ['0.40초', '3단어 만드는 시간, T4'], ['100%', '쓰이는 자모표 칸 (관문 기준 50%)'], ['1% → 93%', '문장 속 일상 낱말이 제 낱말로 읽히는 비율 (대표 동작 끼워 넣기, 11월 16일)', 1], ['61.4%', '문장 속 낱말 전체가 제 낱말로 읽히는 비율 (예전 26.5%)'],
       ].map((f) => h('div', { class: 'fact' + (f[2] ? ' core' : '') }, [h('b', { text: f[0] }), h('span', { text: f[1] })]))));
 
       const F1 = SJ.fig(1240, 360, { minw: 900, file: 'suji-result-vq', label: '자모표 실험별 복원 오차', caption: '자모표(재훈). 단어 기준 손 오차는 E1 28.1mm와 E5 28.2mm로 비슷하다. E5를 고른 이유는 오른쪽이다. 문장에서 손 오차가 37.3mm에서 28.1mm로 줄었다.' });
@@ -109,7 +109,15 @@
       F3.svg.appendChild(text(650, 24, '정답과의 손 모양 거리 (2,999단어)', { size: 14, cls: 't-story', anchor: 'start' }));
       SJ.chart.hbars(F3.svg, { x: 650, y: 50, w: 580, labelW: 220, max: 0.11, dec: 3, gap: 40, barH: 18, ref: 0.082, refLabel: '목표 0.082', rows: D.genDist.map((r) => ({ label: r.name, value: r.hand, color: r.human ? C.gray : r.pick ? C.ochre : C.blue, pick: r.pick, note: '몸+손 전체 ' + r.all })) });
 
-      root.appendChild(h('div', { class: 'block' }, [h('h2', { text: '아직 숫자가 없는 것' }), h('ul', {}, ['네 조건 비교표: B1 · B2 · Ours-H · Ours-HF를 한 표로 잰 결과가 없다. B2는 정식 학습 전이다.', '사람 평가: 네 조건 비교 영상은 준비 중이고 결과가 없다.', '따라 하기 점수: 기준선이 임시값이다. 실제로 따라 한 기록으로 맞춰야 한다.', '읽는 모델로 문장 동작 읽기: 연결은 했지만 문장 속 낱말은 거의 못 읽는다 (단어 클립으로 배운 모델).'].map((t) => h('li', { text: t })))]));
+      const F4 = SJ.fig(1240, 330, { minw: 900, file: 'suji-result-stage', label: '단계별로 읽히는 비율과, 대표 동작을 끼워 넣기 전후', caption: '11월 16일(재훈). 왼쪽: 깎이는 곳은 자모표(97 → 78)보다 문장 모델이 낱말 데이터 낱말을 만드는 단계(86 → 1)다. 오른쪽: 그 낱말 자리에 대표 동작을 끼우니 93%가 읽힌다. 대표 동작은 사람 동작을 자모표로 다시 그린 것 가운데 하나라, 93%는 처음 보는 동작의 정확도가 아니다. 끼운 앞뒤가 눈에 자연스러운지는 아직 보지 않았다.' });
+      root.appendChild(h('div', { class: 'block' }, [h('h2', { text: '④ 문장 모델: 어디서 깎이나, 어떻게 올렸나' }), F4.figure]));
+      F4.svg.appendChild(text(10, 24, '단계마다 제 낱말이 1등인 비율', { size: 14, cls: 't-story', anchor: 'start' }));
+      SJ.chart.hbars(F4.svg, { x: 10, y: 50, w: 560, labelW: 230, max: 100, dec: 1, unit: '%', gap: 46, barH: 20, rows: D.stage.map((r) => ({ label: r.name, value: r.top1, color: r.bad ? C.blue : r.ctrl ? C.gray : C.ochre, dash: r.ctrl, pick: r.bad, note: r.note + ' · 5등 안 ' + r.top5 + '%' })) });
+      F4.svg.appendChild(text(20, 270, '86 → 1', { size: 44, cls: 't-hand t-core', anchor: 'start' })); F4.svg.appendChild(text(190, 264, '가장 크게 깎이는 곳', { size: 13, cls: 't-soft', anchor: 'start' }));
+      F4.svg.appendChild(text(630, 24, '대표 동작을 끼워 넣기 전과 후 (문장 284개)', { size: 14, cls: 't-story', anchor: 'start' }));
+      SJ.chart.hbars(F4.svg, { x: 630, y: 50, w: 600, labelW: 270, max: 100, dec: 1, unit: '%', gap: 46, barH: 20, rows: D.splice.map((r) => ({ label: r.name, value: r.v, color: r.pick ? C.ochre : r.same ? C.gray : C.blue, pick: r.pick, note: r.note })) });
+
+      root.appendChild(h('div', { class: 'block' }, [h('h2', { text: '아직 숫자가 없는 것' }), h('ul', {}, ['네 조건 비교표: B1 · B2 · Ours-H · Ours-HF를 한 표로 잰 결과가 없다. B2는 정식 학습 전이다.', '사람 평가: 네 조건 비교 영상은 준비 중이고 결과가 없다.', '따라 하기 점수: 기준선이 임시값이다. 실제로 따라 한 기록으로 맞춰야 한다.', '끼운 자리의 자연스러움: 낱말 데이터 낱말에 대표 동작을 끼운 앞뒤가 눈에 어색하지 않은지 아직 사람이 보지 않았다.', '문장 데이터 낱말: 가다는 33번 중 30번 읽히지만 아프다 · 없다 · 오다는 한 번도 읽히지 않았다. 읽는 모델이 문장 속 짧은 동작에 약해(사람 동작도 45%) 더 나아졌는지를 지금 도구로는 볼 수 없다.', '아는 낱말: 3,140개이고 교통 · 길 찾기에 몰려 있다. 좋아하다 · 집 · 내일 · 언제 같은 낱말이 없다 (문장 323개 중 284개만 빠짐없이 그려졌다).'].map((t) => h('li', { text: t })))]));
     },
   });
 
@@ -117,7 +125,7 @@
   const day = (m, d) => (m === 9 ? d : m === 10 ? 30 + d : m === 11 ? 61 + d : 91 + d);
   const LANES = [
     { k: 'all', name: '함께', ev: [[9, 22, '방향 결정', 1, '영상 재생 대신 토큰으로 동작을 만드는 방식으로 정했다'], [9, 29, '계획 발표', 0, '계획서 일정'], [10, 3, '역할 나누기', 1, '모델마다 주인을 정했다'], [10, 11, '규칙 · 계약 초안', 1, 'CLAUDE.md와 docs/contracts.md'], [10, 27, '중간 발표', 1, ''], [11, 13, '모두 합치기', 1, '통합 브랜치 jjh-sum에 일곱 갈래를 합쳤다'], [11, 15, 'main · 배포', 1, 'jjh-sum을 main에 합치고 웹과 서버를 새로 배포했다'], [11, 21, '자모표 v2 마감', 0, '꼭 필요할 때만 (계획)', 'plan'], [12, 8, '최종 발표', 1, '계획서 일정', 'plan']] },
-    { k: 'jaehun', name: '정재훈', ev: [[9, 15, '샘플 실측', 0, '샘플 20단어로 좌표와 떨림을 확인'], [10, 14, '8만 클립 정리', 1, '정식 데이터 변환과 품질 점검 v1'], [10, 15, 'E1 ~ E4b', 0, '자모표 실험 네 번'], [10, 16, 'E5 · 토큰', 1, '단어+문장 자모표와 토큰 v0.3'], [10, 18, '인수인계', 0, '사람별 전달 문서와 서버 안내'], [11, 4, '색칠 마을', 1, '앱 전체 디자인을 새로'], [11, 8, '3D 캐릭터 데모', 0, '통역 화면에 발표 영상의 3D 캐릭터를 데모로 넣어 봄'], [11, 7, 'v1 동결(예정)', 1, '예정일이었고 확정은 아직 팀 결정 전', 'open'], [11, 15, '친구 · 따라 하기', 1, '통역 화면에 AI 친구 연결, 55점 좌표, 따라 하기 채점, 읽는 모델 연결']] },
+    { k: 'jaehun', name: '정재훈', ev: [[9, 15, '샘플 실측', 0, '샘플 20단어로 좌표와 떨림을 확인'], [10, 14, '8만 클립 정리', 1, '정식 데이터 변환과 품질 점검 v1'], [10, 15, 'E1 ~ E4b', 0, '자모표 실험 네 번'], [10, 16, 'E5 · 토큰', 1, '단어+문장 자모표와 토큰 v0.3'], [10, 18, '인수인계', 0, '사람별 전달 문서와 서버 안내'], [11, 4, '색칠 마을', 1, '앱 전체 디자인을 새로'], [11, 8, '3D 캐릭터 데모', 0, '통역 화면에 발표 영상의 3D 캐릭터를 데모로 넣어 봄'], [11, 7, 'v1 동결(예정)', 1, '예정일이었고 확정은 아직 팀 결정 전', 'open'], [11, 15, '친구 · 따라 하기', 1, '통역 화면에 AI 친구 연결, 55점 좌표, 따라 하기 채점, 읽는 모델 연결, 퀴즈 문제도 3D 친구로, 웹 입력 칸과 마을 건물 누르기 수정'], [11, 16, '단계별 표 · 끼워 넣기', 1, '어디서 정확도가 깎이는지 재고, 낱말 데이터 낱말 자리에 대표 동작을 끼워 1% → 93%. 브랜치 jjh-accuracy, main 전']] },
     { k: 'jiheon', name: '박지헌', ev: [[10, 25, '생성 API 통합', 1, 'Generator · FastAPI · Spring을 잇고 오류 약속을 정했다'], [10, 28, '3,000단어 재학습', 1, '조건을 강하게 주는 구조로 다시 학습'], [10, 29, '거리 채점', 0, '등수 대신 정답과의 거리로'], [11, 1, '후보 24개 · 속도', 1, '화자 12명 × 2개에서 대표 고르기, 8단어 2.0초 → 1.2초'], [11, 14, '문장 GPT · 번역기', 1, '글로스 표 v2, 번역기, 문장 GPT 학습과 서버 문장 모드']] },
     { k: 'seunghyun', name: '류승현', ev: [[10, 18, '100단어', 0, '읽는 모델 첫 확인'], [10, 22, '500단어', 0, ''], [10, 27, '3,000단어 97.3%', 1, '86,400회, 162분'], [11, 1, '역번역 · 후보 실험', 1, 'E5 복원 77.98%, 손 가중과 뼈 방향 후보'], [11, 5, 'main 반영', 0, '']] },
     { k: 'seunghyeok', name: '유승혁', ev: [[10, 27, '아이폰 확인', 0, '응답 파일 가져오기와 Safari 재생'], [10, 28, '생성 화면 계약', 1, '오류 안내와 다시 시도 버튼'], [11, 2, '단어 입력 화면', 0, ''], [11, 4, '실제 모델 첫 재생', 1, '"병원" 60프레임']] },
@@ -129,7 +137,7 @@
       const F = SJ.fig(1280, 690, { minw: 1000, file: 'suji-timeline', label: '2학기 일정표. 9월 방향 결정, 10월 데이터와 모델, 11월 통합, 12월 8일 최종 발표.', caption: '날짜는 커밋과 작업 기록에서 가져왔다. 계획 발표와 최종 발표 날짜는 계획서 기준이다.' });
       root.appendChild(F.figure); const svg = F.svg;
       [[9, 7, '9월'], [10, 1, '10월'], [11, 1, '11월'], [12, 1, '12월']].forEach((m) => { const x = xx(m[0], m[1]); svg.appendChild(s('line', { x1: x, x2: x, y1: 70, y2: 664, stroke: 'var(--line)', 'stroke-width': 1.2 })); svg.appendChild(text(x + 8, 62, m[2], { size: 24, cls: 't-hand t-soft', anchor: 'start' })); });
-      const tx = xx(11, 15); svg.appendChild(s('path', { class: 'wash', d: SJ.blob(tx - 9, 74, 18, 590, 5, 2), fill: 'var(--core-pale)' })); svg.appendChild(text(tx, 34, '그린 날 11월 15일', { size: 20, cls: 't-hand t-core' }));
+      const tx = xx(11, 16); svg.appendChild(s('path', { class: 'wash', d: SJ.blob(tx - 9, 74, 18, 590, 5, 2), fill: 'var(--core-pale)' })); svg.appendChild(text(tx, 34, '그린 날 11월 16일', { size: 20, cls: 't-hand t-core' }));
       svg.appendChild(s('path', { class: 'wash', d: SJ.blob(tx + 12, 86, X1 - tx + 10, 574, 6, 4), fill: 'var(--paper-deep)', opacity: 0.5 })); svg.appendChild(text((tx + X1) / 2 + 10, 652, '앞으로', { size: 22, cls: 't-hand t-faint' }));
       const leaders = s('g'); svg.appendChild(leaders);
       LANES.forEach((ln, li) => {
@@ -158,8 +166,9 @@
           h('thead', {}, h('tr', {}, ['할 일', '누가', '왜 중요한가'].map((c) => h('th', { text: c })))),
           h('tbody', {}, [
             ['자모표 v1 확정', '넷이서', 'E5로 갈지 손 · 뼈 방향 후보로 갈지. 바뀌면 받아쓰기는 토큰 변환과 재학습을 다시 한다'],
-            ['문장 모델 학습과 연결', '박지헌', '지금은 단어를 하나씩 만들어 이어 붙인다'],
-            ['통역 화면에 AI 동작 연결', '유승혁', '지금은 AI 작업실에서만 볼 수 있다'],
+            ['문장 모델이 낱말 데이터 낱말을 못 만든다', '박지헌 · 정재훈', '모델이 만들면 1%만 읽힌다. 지금은 대표 동작을 끼워 가린다. 다시 학습할지 정해야 한다'],
+            ['끼워 넣기를 main과 배포에 반영', '정재훈 · 박지헌', '지금은 jjh-accuracy 브랜치에만 있다. 지헌 폴더(ml/gen)를 고친 것이라 지헌 확인이 먼저다'],
+            ['따라 하기 점수 기준선', '정재훈', '임시값이다. 실제로 따라 한 기록으로 맞춰야 한다'],
             ['네 조건 비교 영상과 사람 평가', '류승현 · 유승혁', '숫자만으로는 자연스러움을 말할 수 없다'],
             ['최종 발표 (12월 8일)', '넷이서', '계획서 일정'],
           ].map((r) => h('tr', {}, r.map((c) => h('td', { text: c }))))),

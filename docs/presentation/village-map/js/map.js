@@ -14,7 +14,7 @@
     { id: 'a-learn', x: 44, y: 232, w: 152, h: 52, t: '표현 (배우기)', sub: '스케치북에서 고르기', k: 'touch', sem: '1학기 · 2학기에 새 단장',
       what: '퀴즈 묶음(기본 · 일상 · 오답 복습)을 고르는 화면.', files: ['app/learn.tsx', 'components/paint/sketchbook.tsx'], talks: 'GET /api/users/{uid}' },
     { id: 'a-quiz', x: 208, y: 232, w: 152, h: 52, t: '퀴즈', sub: '영상 보고 넷 중 하나', k: 'touch', sem: '1학기 · 2학기에 새 단장',
-      what: '수어 영상을 보고 뜻을 고른다. 채점 결과와 오답이 기록된다.', files: ['app/quiz.tsx', 'lib/api/quiz.ts'], talks: 'GET /api/quiz/session · POST /api/quiz/answer · PATCH /api/users/{uid}/tryQuestion' },
+      what: '3D 친구(AI가 그린 손짓, 11월 15일)나 수어 영상을 보고 뜻을 고른다. AI가 그 단어 하나로 빠짐없이 그릴 때만 친구가 나오고, 정답 영상으로 바꿔 볼 수 있다. 채점 결과와 오답이 기록된다.', files: ['app/quiz.tsx', 'lib/api/quiz.ts', 'lib/api/generate.ts'], talks: 'GET /api/quiz/session · POST /api/quiz/answer · PATCH /api/users/{uid}/tryQuestion · POST /api/sign/generate' },
     { id: 'a-translator', x: 44, y: 294, w: 152, h: 52, t: '통역 (번역기)', sub: '문장 → AI 친구 · 따라 하기', k: 'touch', sem: '1학기 · 2학기에 AI 연결',
       what: '문장을 넣으면 AI가 만든 3D 친구가 수어를 한다. 카메라로 따라 하면 점수와 고칠 곳을 알려 준다. AI 동작을 못 받으면 1학기처럼 단어 영상을 차례로 재생한다.', files: ['app/translator.tsx', 'lib/api/generate.ts', 'lib/api/recognize.ts', 'components/sign-camera/FollowAlong.web.tsx'], talks: 'POST /translate · POST /api/sign/generate · POST /api/sign/recognize' },
     { id: 'a-mypage', x: 208, y: 294, w: 152, h: 52, t: '기록 (마이페이지)', sub: '도장 달력 · 스티커', k: 'touch', sem: '1학기 · 2학기에 새 단장',
