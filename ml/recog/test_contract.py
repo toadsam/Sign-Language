@@ -10,7 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from eval.compare import evaluate, transition_jerk
+from eval.compare import evaluate, manifest_conditions, transition_jerk
 from recog.features import joint_index
 from recog.infer import Recognizer, validate_motion
 from recog.model import SignRecognizer
@@ -88,6 +88,21 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(same["diversity_mm"], 0)
         self.assertAlmostEqual(same["size_ratio"], 1)
 
+    def test_manifest_conditions_allow_shared_subset(self):
+        def record(clip, *names):
+            return {"clip": clip, "conditions": {n: {"motions": []} for n in names}}
+        # 일부 조건만 있어도 되고, 순서는 CONDITIONS를 따른다.
+        self.assertEqual(manifest_conditions([record("a", "Ours-H", "B1"), record("b", "B1", "Ours-H")]),
+                         ("B1", "Ours-H"))
+        self.assertEqual(manifest_conditions([record("a", "B1", "B2", "Ours-H", "Ours-HF")]),
+                         ("B1", "B2", "Ours-H", "Ours-HF"))
+        with self.assertRaisesRegex(ValueError, "조건 구성이 같아야"):
+            manifest_conditions([record("a", "B1", "Ours-H"), record("b", "B1")])
+        with self.assertRaisesRegex(ValueError, "알 수 없는 조건"):
+            manifest_conditions([record("a", "B1", "B3")])
+        with self.assertRaisesRegex(ValueError, "하나 이상"):
+            manifest_conditions([record("a")])
+
     def test_training_and_four_condition_cli(self):
         root = Path(self.tmp.name) / "pipeline"
         data = root / "data"
@@ -125,7 +140,29 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(table["clips"], 2)
         self.assertEqual(len(table["rows"]), 10)
         self.assertEqual(table["table"]["B1"]["dtw_mm"], 0)
+        self.assertEqual(table["conditions"], ["B1", "B2", "Ours-H", "Ours-HF"])
         self.assertTrue((root / "out" / "rows.csv").exists())
+        # B1과 Ours-H 두 조건만 있어도 돌아가고, 표에는 있는 조건만 나온다.
+        two = [{"clip": r["clip"], "conditions": {c: r["conditions"][c] for c in ("B1", "Ours-H")}} for r in records]
+        manifest.write_text(json.dumps({"records": two}))
+        result = subprocess.run([sys.executable, "-m", "eval.compare", "--data", str(data),
+                                 "--recog", str(run), "--manifest", str(manifest), "--out", str(root / "two")],
+                                cwd=cwd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        table = json.loads((root / "two" / "summary.json").read_text())
+        self.assertEqual(table["conditions"], ["B1", "Ours-H"])
+        self.assertEqual(list(table["table"]), ["Original", "B1", "Ours-H"])
+        self.assertEqual(len(table["rows"]), 6)
+        self.assertNotIn("B2", (root / "two" / "table.md").read_text(encoding="utf-8"))
+        # record마다 조건 구성이 다르면 실패해야 한다.
+        two[1]["conditions"].pop("Ours-H")
+        manifest.write_text(json.dumps({"records": two}))
+        result = subprocess.run([sys.executable, "-m", "eval.compare", "--data", str(data),
+                                 "--recog", str(run), "--manifest", str(manifest), "--out", str(root / "mixed")],
+                                cwd=cwd, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("조건 구성이 같아야", result.stderr)
+        manifest.write_text(json.dumps({"records": records}))
         # train 클립을 정식 평가에 넣으면 실행이 실패해야 한다.
         records[0]["clip"] = next(m["clip"] for m in metas if m["signer"] != test_signer)
         manifest.write_text(json.dumps({"records": records}))

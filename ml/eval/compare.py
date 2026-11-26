@@ -2,6 +2,9 @@
 
 python -m eval.compare --data data/full --recog runs/recog_100 \
     --manifest runs/generated.json --out runs/compare
+
+조건은 CONDITIONS 중 일부만 있어도 된다(예: B1과 Ours-H). 단, 모든 record의
+조건 구성이 같아야 한다. 표에는 원본과 manifest에 있는 조건만 나온다.
 """
 import argparse
 import csv
@@ -15,6 +18,25 @@ from common.data import apply_split, load_data
 from recog.infer import Recognizer, validate_motion
 
 CONDITIONS = ("B1", "B2", "Ours-H", "Ours-HF")
+
+
+def manifest_conditions(records):
+    """모든 record가 공유하는 조건을 CONDITIONS 순서로 돌려준다.
+
+    일부 조건만 있어도 되지만, record마다 조건이 다르면 조건별 평균이 서로 다른
+    클립 집합에서 나오므로 거부한다.
+    """
+    present = set(records[0]["conditions"])
+    if not present:
+        raise ValueError(f"{records[0]['clip']}: 조건이 하나 이상 필요합니다.")
+    unknown = present - set(CONDITIONS)
+    if unknown:
+        raise ValueError(f"{records[0]['clip']}: 알 수 없는 조건 {sorted(unknown)}. 가능한 조건은 {list(CONDITIONS)}입니다.")
+    for record in records:
+        if set(record["conditions"]) != present:
+            raise ValueError(f"{record['clip']}: 모든 record의 조건 구성이 같아야 합니다. "
+                             f"기준 {sorted(present)}, 이 record {sorted(record['conditions'])}")
+    return tuple(c for c in CONDITIONS if c in present)
 
 
 def transition_jerk(x, boundaries, fps=30, radius=8):
@@ -67,10 +89,9 @@ def main():
     records = manifest["records"]
     if not records or len({r["clip"] for r in records}) != len(records):
         raise ValueError("records는 비어 있지 않고 clip이 중복되지 않아야 합니다.")
+    conditions = manifest_conditions(records)
     rows = []
     for record in records:
-        if set(record["conditions"]) != set(CONDITIONS):
-            raise ValueError(f"{record['clip']}: 네 조건이 모두 필요합니다.")
         if record["clip"] not in refs:
             raise ValueError(f"{record['clip']}: 채점관이 아는 단어의 test 클립이 아닙니다.")
         m = refs[record["clip"]]
@@ -86,14 +107,15 @@ def main():
                                     spec.get("boundaries"), spec.get("fps", 30))})
     keys = ("top1", "top5", "dtw_mm", "size_ratio", "transition_jerk", "diversity_mm")
     table = {}
-    for condition in ("Original", *CONDITIONS):
+    for condition in ("Original", *conditions):
         group = [r for r in rows if r["condition"] == condition]
         table[condition] = {k: float(np.mean([r[k] for r in group if r[k] is not None]))
                             if any(r[k] is not None for r in group) else None for k in keys}
         table[condition]["measured_clips"] = {k: sum(r[k] is not None for r in group) for k in keys}
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    result = {"smoke_only": args.smoke, "config": vars(args), "clips": len(records), "table": table, "rows": rows}
+    result = {"smoke_only": args.smoke, "config": vars(args), "clips": len(records),
+              "conditions": list(conditions), "table": table, "rows": rows}
     (out / "summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
     with (out / "rows.csv").open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
