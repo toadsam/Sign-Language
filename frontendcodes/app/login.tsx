@@ -272,6 +272,12 @@ function LoginContent({ googleAuth }: { googleAuth: ReturnType<typeof useGoogleI
             seed={11}
           />
           <PaintButton variant="ghost" label="로그인 없이 둘러보기" onPress={handleGuestStart} seed={12} />
+          {/* 2026-11-26 재훈: Google 설정(client ID)이 없는 PC 에서는 구글 버튼이 꺼지기만 하고 까닭이 안 보였다. 시연 · 심사 PC 에서 헤매지 않게 알린다 */}
+          {!googleAuth && !errorMessage ? (
+            <BodyText size={Size.small} soft style={styles.note}>
+              Google 로그인이 아직 설정되지 않았어요. '로그인 없이 둘러보기'로 시작해 주세요.
+            </BodyText>
+          ) : null}
           {errorMessage ? (
             <BodyText size={Size.small} style={styles.error} accessibilityRole="alert">
               {errorMessage}
@@ -293,5 +299,6 @@ const styles = StyleSheet.create({
   copy: { marginTop: 8 },
   buttons: { marginTop: 'auto', gap: 10, paddingBottom: 6 },
   error: { color: '#B5462F', textAlign: 'center' },
+  note: { textAlign: 'center' },
   footer: { alignItems: 'center', gap: 2, marginTop: 4 },
 });

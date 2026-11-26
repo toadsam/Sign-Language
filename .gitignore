@@ -13,3 +13,8 @@ backend/.env
 
 # Local-only Codex planning documents and session reports
 /docs/plans/
+
+# 2026-11-26 OS · 파이썬 · 이클립스(Gradle) 부산물 (승혁 요청)
+.DS_Store
+__pycache__/
+backend/bin/
