@@ -107,9 +107,9 @@
             'POST /generate   { "gloss": ["화장실", "있다"], "nonmanual": ["의문"] }\n\n→ { "fps": 30, "joints": 125, "frames": T, "units": "shoulder",\n    "data": "base64( float32 little-endian, T × 125 × 3 )",\n    "tokens": [...], "segments": [{"gloss", "start", "end"}, …], "unknown": [], "source": "model" }\n# segments: 문장 모드에서 낱말마다의 구간(프레임). 단어 모드는 []\n\n# 받는 쪽\nraw    = base64.b64decode(data)          # 길이 = T × 125 × 3 × 4\nmotion = np.frombuffer(raw, "<f4").reshape(T, 125, 3)' }),
           h('aside', { class: 'note' }, [
             h('h3', { text: '숫자로 본 추론 서버' }),
-            h('div', { class: 'facts' }, [['0.2 ~ 0.7초', '문장 하나, T4 GPU (11월 15일 12문장)'], ['0.40초', '3단어(단어 모델), T4 GPU'], ['2.3초', '3단어, CPU 8코어'], ['1개', '동시에 받는 요청']].map((f) => h('div', { class: 'fact' }, [h('b', { text: f[0], style: { fontSize: '21px' } }), h('span', { text: f[1] })]))),
+            h('div', { class: 'facts' }, [['0.39 / 0.63초', '문장 응답 P50 / P95, 새 문장 30개 (11월 24일 승혁)'], ['0.40초', '3단어(단어 모델), T4 GPU'], ['2.3초', '3단어, CPU 8코어'], ['1개', '동시에 받는 요청']].map((f) => h('div', { class: 'fact' }, [h('b', { text: f[0], style: { fontSize: '21px' } }), h('span', { text: f[1] })]))),
             h('h4', { text: '알아 둘 점' }),
-            h('ul', {}, [h('li', { text: '모델은 서버가 켜질 때 한 번만 올린다.' }), h('li', { text: '배포된 Spring(Cloud Run)이 내부 네트워크로 VM의 추론 서버를 부른다. VM은 쓸 때만 켜고, 꺼져 있으면 앱은 1학기 영상으로 보여 준다.' }), h('li', { text: '읽기 주소 POST /recognize 는 동작 좌표를 읽는 모델에 넣어 어떤 단어로 읽히는지 돌려준다 (11월 15일 추가).' }), h('li', { text: '낱말 데이터에서 온 낱말 자리에 대표 동작을 끼우는 설정(word_source = exemplar, 11월 16일)으로 켤 수 있다. 아직 jjh-accuracy 브랜치에만 있다.' }), h('li', { text: '"의문" 표시는 전달되지만 동작에는 아직 반영되지 않는다.' })]),
+            h('ul', {}, [h('li', { text: '모델은 서버가 켜질 때 한 번만 올린다.' }), h('li', { text: '배포된 Spring(Cloud Run)이 내부 네트워크로 VM의 추론 서버를 부른다. VM은 쓸 때만 켜고, 꺼져 있으면 앱은 1학기 영상으로 보여 준다.' }), h('li', { text: '읽기 주소 POST /recognize 는 동작 좌표를 읽는 모델에 넣어 어떤 단어로 읽히는지 돌려준다 (11월 15일 추가).' }), h('li', { text: '낱말 데이터에서 온 낱말 자리에 대표 동작을 끼우는 설정(word_source = exemplar, 11월 16일)으로 켤 수 있다. 11월 25일 main에 합쳤고, 시연 때 이 설정으로 서버를 켠다.' }), h('li', { text: '"의문" 표시는 전달되지만 동작에는 아직 반영되지 않는다.' })]),
           ]),
         ]),
       ]));
@@ -131,13 +131,13 @@
     { id: 'sign-lab', t: '작업실 입구', m: 'list', st: '입구', what: 'AI 화면 일곱 개로 가는 목록. 탭 메뉴에는 없고 주소로 들어간다.', files: ['app/sign-lab.tsx'] },
     { id: 'sign-generate', t: '단어 → 동작 만들기', m: 'input', st: '실제 모델과 확인', hot: 1, what: '단어를 넣으면 Spring을 거쳐 실제 모델이 만든 좌표를 받아 재생한다. 오류 안내와 다시 시도 버튼, 모르는 단어 안내가 있다. 가짜 서버로도 켤 수 있다.', files: ['components/sign-player/GenerationLab.web.tsx', 'components/sign-player/playback.ts'] },
     { id: 'sign-player', t: '3D 뼈대 재생기', m: 'player', st: '동작', hot: 1, what: '동작 JSON 하나를 재생한다. 속도와 보는 방향을 바꾸고, 몸 · 손 · 얼굴을 따로 켠다.', files: ['components/sign-player/SignPlayer.tsx', 'components/sign-player/motion.ts'] },
-    { id: 'sign-compare', t: '네 조건 나란히', m: 'four', st: '동작', what: '원본, 이어 붙이기(B1), 좌표 회귀(B2), 토큰 방식을 같은 시간과 방향으로 맞춰 본다. 사람 평가용 영상도 여기서 뽑는다.', files: ['components/sign-player/ComparisonPlayer'] },
+    { id: 'sign-compare', t: '네 조건 나란히', m: 'four', st: '동작', what: '원본, 이어 붙이기(B1), 좌표 회귀(B2), 토큰 방식을 같은 시간과 방향으로 맞춰 본다. 11월 24일 이 화면으로 사람 평가 영상 40개를 한 번에 녹화했다.', files: ['components/sign-player/ComparisonPlayer'] },
     { id: 'sign-reconstruct', t: '원본과 복원 비교', m: 'two', st: '동작', what: '자모표가 되돌린 동작을 원본과 겹쳐 보고 좌표 오차를 계산한다. 학습 결과 viewer.html을 그대로 읽는다.', files: ['components/sign-player/AiViewerImport', 'components/sign-player/reconstruction-metrics.ts'] },
     { id: 'sign-codebook', t: '자모표 구경', m: 'grid', st: '동작', what: '토큰 512개가 각각 어떤 동작 조각인지 격자로 본다.', files: ['components/sign-player/CodebookGrid', 'components/sign-player/TokenAtlas'] },
     { id: 'sign-camera', t: '카메라로 손 모으기', m: 'cam', st: '수집까지', what: 'MediaPipe 손 인식으로 양손 21점씩을 5초(최대 150프레임) 모은다. 손목을 원점으로 맞춘 2D 점이다. 상체까지 잡는 판은 sign-body, 친구와 견주는 판은 sign-follow 다.', files: ['components/sign-camera/CameraLab.web.tsx', 'components/sign-camera/hand-features.ts'] },
     { id: 'sign-hand-review', t: '모은 손 점검', m: 'gaps', st: '수집까지', what: '저장한 손 기록을 다시 재생하며 손이 빠진 비율, 초당 장수, 끊긴 구간을 잰다.', files: ['components/sign-camera/SequenceReview.web.tsx', 'components/sign-camera/sequence-quality.ts'] },
     { id: 'sign-body', t: '카메라로 상체 + 손', m: 'cam', st: '동작', hot: 1, what: 'MediaPipe 상체와 손 인식을 같이 돌려, AI 동작과 같은 55점 좌표(목 원점, 어깨너비 1)로 바꾼다. 영상은 저장하거나 보내지 않는다.', files: ['components/sign-camera/BodyTracker.web.tsx', 'components/sign-camera/body-frame.ts', 'components/sign-camera/body-sequence.ts'] },
-    { id: 'sign-follow', t: '따라 하고 점수 받기', m: 'cam', st: '동작 · 기준선 임시', hot: 1, what: '친구(AI 동작)를 보며 따라 하면 손 자리와 손가락 모양을 시간에 맞춰 견주어 점수와 고칠 곳을 알려 준다. 통역 화면의 "따라 하기"가 같은 부품이다.', files: ['components/sign-camera/FollowAlong.web.tsx', 'components/sign-camera/body-score.ts', 'lib/api/recognize.ts'] },
+    { id: 'sign-follow', t: '따라 하고 점수 받기', m: 'cam', st: '동작 · 기준 보정', hot: 1, what: '친구(AI 동작)를 보며 따라 하면 손 자리와 손가락 모양을 시간에 맞춰 견주어 0~100점과 고칠 곳을 알려 준다. 승혁이 손 자리 9 : 손 모양 1, 65점 기준으로 맞췄다. 통역 화면의 "따라 하기"가 같은 부품이다.', files: ['components/sign-camera/FollowAlong.web.tsx', 'components/sign-camera/body-score.ts', 'lib/api/recognize.ts'] },
   ];
 
   SJ.room('screens', {
@@ -177,7 +177,9 @@
             ['오류 안내와 다시 시도', '확인함', '가짜 503에서 서버 문구 표시, 입력 유지, 다시 시도 버튼'],
             ['아이폰 Safari · Chrome', '확인함', '응답 파일 가져오기와 재생, 렌더링 전후 성능 비교'],
             ['통역 화면에서 AI 동작 쓰기', '이어짐', '11월 15일 배포 주소에서 문장 → 3D 친구를 확인. AI 서버가 꺼져 있으면 영상으로 넘어간다'],
-            ['카메라로 따라 하기 · 채점', '이어짐 · 기준선 임시', '친구 동작과 직접 견주는 점수. 읽는 모델도 연결했지만 점수에 넣지 않는다 (문장 속 낱말 전체 61.4%, 끼워 넣기 전 26.5%)'],
+            ['3D 재생 30fps', '확인함', '11월 23~24일 240fps 슬로모션 촬영. 화면 갱신 29.98회/초, 빠진 장 0 (승혁)'],
+            ['AI 서버를 못 받을 때', '고침', '11월 24일 배포판에서도 까닭을 알리고 1학기 영상으로 넘어간다 (승혁)'],
+            ['카메라로 따라 하기 · 채점', '이어짐 · 기준 보정', '친구 동작과 DTW로 견주는 0~100점. 기록 20개로 손 자리 9 : 손 모양 1, 65점 기준 오판 0건 (승혁). 읽는 모델도 연결했지만 점수에 넣지 않는다 (문장 속 낱말 전체 61.4%, 끼워 넣기 전 26.5%)'],
             ['웹 입력 칸 · 마을 건물 누르기', '고침', '11월 15일. 상자 바탕 그림이 글 칸을 덮던 것, 웹에서 누른 자리 값이 오지 않아 건물이 눌리지 않던 것'],
             ['뷰어 (viewer/)', '쓰는 중', '학습 결과를 원본 · 복원 나란히 보는 HTML. 앱 재생기의 바탕이 됐다'],
           ].map((r) => h('tr', {}, r.map((c, i) => h('td', { text: c, style: i === 1 ? { whiteSpace: 'nowrap', fontWeight: 700 } : null }))))),

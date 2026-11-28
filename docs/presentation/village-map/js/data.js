@@ -4,7 +4,7 @@
   const D = {};
 
   D.people = {
-    jaehun: { key: 'jaehun', name: '정재훈', role: '자모표 · 데이터 정리', folders: ['ml/prep', 'ml/vq', 'ml/common'] },
+    jaehun: { key: 'jaehun', name: '정재훈', role: '자모표 · 데이터 정리 · 통합 · 배포', folders: ['ml/prep', 'ml/vq', 'ml/common'] },
     jiheon: { key: 'jiheon', name: '박지헌', role: '받아쓰기 · 추론 서버', folders: ['ml/gen', 'ml/serve', 'backend'] },
     seunghyun: { key: 'seunghyun', name: '류승현', role: '읽는 모델 · 비교 실험', folders: ['ml/recog', 'ml/eval'] },
     seunghyeok: { key: 'seunghyeok', name: '유승혁', role: '화면 · 3D · 손 인식', folders: ['viewer', 'frontendcodes'] },
@@ -14,7 +14,7 @@
   D.contracts = [
     { n: '①', name: '동작 데이터 + 분할표', from: 'jaehun', to: ['jiheon', 'seunghyun', 'seunghyeok'], what: 'npy [T,125,3] + meta.jsonl + splits/*.json', where: 'ml/common/data.py · ml/splits/', state: '코드 있음' },
     { n: '②', name: '토큰 + 디코더', from: 'jaehun', to: ['jiheon'], what: 'tokens.json + vq.decode()', where: 'ml/gen/tokenize.py · ml/vq/model.py', state: '코드 있음' },
-    { n: '③', name: '생성 함수', from: 'jiheon', to: ['seunghyun'], what: 'Generator.generate(gloss) → 동작', where: 'ml/gen/infer.py', state: '단어 모델 연결됨' },
+    { n: '③', name: '생성 함수', from: 'jiheon', to: ['seunghyun'], what: 'Generator.generate(gloss) → 동작', where: 'ml/gen/infer.py', state: '단어 · 문장 모델 연결됨' },
     { n: '④', name: '채점 함수', from: 'seunghyun', to: ['jaehun', 'jiheon'], what: 'Recognizer.score(동작) → top5', where: 'ml/recog/infer.py', state: '3000단어 모델' },
     { n: '⑤', name: 'API 응답 JSON', from: 'jiheon', to: ['seunghyeok'], what: 'POST /generate → 좌표 base64', where: 'ml/serve/ · backend/', state: '앱에서 재생 확인' },
   ];
